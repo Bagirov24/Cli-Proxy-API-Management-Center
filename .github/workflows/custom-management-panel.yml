@@ -3,6 +3,16 @@ on:
   push:
     branches:
       - custom-no-apikey-fun
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'assets/**'
+      - 'index.html'
+      - 'logo.jpg'
+      - 'package.json'
+      - 'bun.lock'
+      - 'vite.config.ts'
+      - '.github/workflows/custom-management-panel.yml'
   workflow_dispatch:
 permissions:
   contents: write
