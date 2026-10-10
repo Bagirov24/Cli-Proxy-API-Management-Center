@@ -298,3 +298,30 @@ idempotency key. Аналитика не должна блокировать о�
 Никаких подтверждений server-side AuthZ, маршрутизации Core, VPN либо
 runtime network isolation эта проверка не предоставляет.
 
+## 12. Control API v1 — проектная порт-адаптерная граница
+
+Добавлены `src/features/saasBlueprint/controlApi/contracts.ts`,
+`authorization.ts`, `readOnlyProjection.ts`. Они независимы от React
+и Core и **не создают** HTTP-сервер или реальные tenant sessions.
+
+Контракт control-plane: SaaS Auth → trusted Actor → tenant Membership
+→ RBAC read action → tenant-state check → owner/grant check →
+allow-listed Read DTO → UI. Для каждого Pool/Account/Egress действует
+независимый grant. Client-provided tenant header не может заменить
+аутентификацию, равно как CPA key не даёт доступа к SaaS Control API.
+
+Проектор возвращает только `source=synthetic-simulation`; отдельный
+интерфейс `ReadOnlyTenantMetadataAdapter` предусматривает будущий
+`core-metadata-readonly` только после server-side проверки доступа,
+tenant-scoped SQL + RLS, trust boundary, cache invalidation и изолированного
+staging. Ресурсы чужого tenant без grants не перечисляются;
+Account.egressProfileId, Pool.accountIds и Routing.poolId фильтруются
+**раздельно**. Read-only интерфейс не выбирает аккаунт Core и не является
+runtime enforcement.
+
+См. [CONTROL_API_V1.ru.md](CONTROL_API_V1.ru.md),
+[AUTHZ_RBAC_V1.ru.md](AUTHZ_RBAC_V1.ru.md),
+[CORE_METADATA_ADAPTER_V1.ru.md](CORE_METADATA_ADAPTER_V1.ru.md).
+Backend implementation, SSO, Vault, PostgreSQL, RLS, audit ledger и
+instrumentation остаются `PROPOSED`.
+

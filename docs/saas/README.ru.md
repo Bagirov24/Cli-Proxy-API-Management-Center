@@ -23,6 +23,9 @@
 | [UX_UI.ru.md](UX_UI.ru.md) | Навигация, экраны, понятные статусы, мастера подключения, доступность и ошибки |
 | [ROADMAP.ru.md](ROADMAP.ru.md) | Очерёдность разработки, CI-проверки, критерии готовности, откат |
 | [DECISIONS.ru.md](DECISIONS.ru.md) | Архитектурные решения, открытые вопросы и реестр будущих задач |
+| [CONTROL_API_V1.ru.md](CONTROL_API_V1.ru.md) | Read-only HTTP SPEC, DTO, ошибки и модель происхождения |
+| [AUTHZ_RBAC_V1.ru.md](AUTHZ_RBAC_V1.ru.md) | Роли, membership и независимые grants для pool/account/egress |
+| [CORE_METADATA_ADAPTER_V1.ru.md](CORE_METADATA_ADAPTER_V1.ru.md) | Интерфейс staging-only read metadata без раскрытия Core Management API |
 
 ## Что добавлено в код
 
@@ -36,6 +39,8 @@
 | `tests/saasBlueprintEgress.test.ts` | Приватные/служебные адреса, URL credentials, схемы и статусы |
 | `src/features/saasBlueprint/demo/` | Read-only интерфейс, вымышленные tenants, RU/EN тексты, feature flag |
 | `tests/saasBlueprintDemo.test.ts` | Проверки разграничения demo-ресурсов, сценариев и UI-безопасности |
+| `src/features/saasBlueprint/controlApi/` | **SPEC/SIMULATED:** DTO, RBAC и whitelist-only tenant projection, не HTTP backend |
+| `tests/saasControlApiV1.test.ts` | Чистые contract tests: роли, членство, grants, no-secret, no-IDOR |
 
 Локально: `bun test tests/saasBlueprintRouting.test.ts tests/saasBlueprintEgress.test.ts`,
 или полный `bun run verify`. При изменениях нужен PR CI и актуализация документов.
@@ -172,4 +177,20 @@ WCAG A/AA аудитов** с JSON-отчётами и **25 PNG**. Провер�
 contrast audit, скринридеры, реальное 200/400% увеличение, 400% reflow,
 крупный текст и UX-приёмка. Backend/AuthZ/network enforcement по-прежнему
 `SPEC / PROPOSED`, публикация production запрещена.
+
+## Этап 2 / SPEC — контракт SaaS Control API v1
+
+Зафиксированы [версионированный read-only контракт](CONTROL_API_V1.ru.md),
+[матрица AuthZ/RBAC](AUTHZ_RBAC_V1.ru.md) и
+[порт read-only metadata adapter](CORE_METADATA_ADAPTER_V1.ru.md).
+В TypeScript добавлены только чистые `controlApi` модули и тесты на
+синтетическом `BlueprintSnapshot`. Доступ к tenant требует единственного
+активного membership, доступ к каждому общему пулу/аккаунту/egress —
+**отдельного grant**. Ответ строится из allow-listed DTO:
+без credentials, неизвестных исходных полей и чужих идентификаторов.
+
+**Статус: SPEC для HTTP/AuthZ/backend adapter; SIMULATED для функций и тестов.**
+Нет сервера, SaaS login, write endpoints, базы данных, сетевых вызовов и
+реального data-plane enforcement. UI пока не подключён к Control API.
+Никакой новый endpoint не опубликован.
 

@@ -180,7 +180,8 @@ RBAC+RLS double enforcement, backup+restore dry run.
 - [x] Добавлен статический regression test на обязательные подписи симуляции.
 - [x] Browser smoke в Chromium 1440/820/390/320 px RU/EN light/dark с PNG; tenant-safe inspector и reduced motion проверены.
 - [ ] Полная ручная UX/a11y проверка и WCAG-аудит на staging. Анимация — только объясняющая и необязательная.
-- [ ] Следующий ограниченный этап (`SPEC`): SaaS Control API v1, actor/tenant/role/resource/action AuthZ матрица, read-only adapter к Core metadata, типовые error/denial contracts и контрактные тесты. Без изменения production.
+- [x] **SPEC/SIMULATED:** версии и DTO Control API v1, actor/tenant/membership RBAC, независимые grants, синтетические read-only contract tests.
+- [ ] **STAGING/PROPOSED:** серверная AuthZ, HTTP endpoints, PostgreSQL/RLS, SSO, реальный read-only Core metadata adapter. Production не изменять.
 
 ## Итерация 2 — результат и оставшийся гейт
 
@@ -191,7 +192,8 @@ RBAC+RLS double enforcement, backup+restore dry run.
 - [x] Автоматический Chromium browser QA RU/EN, light/dark, desktop/tablet/mobile и скриншоты: [SUCCESS #38075528744](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38075528744).
 - [x] Сетка 2×2 на mobile, все вкладки в пределах viewport, ArrowUp/Down для клавиатуры.
 - [ ] Ручная UX-приёмка, полный WCAG-аудит, screen reader и staging проверки с отказами сервиса.
-- [ ] SaaS Control API, RBAC/AuthZ, read-only adapter, реальный trace и enforcement: строго `SPEC/PROPOSED`, не реализованы.
+- [x] SaaS Control API v1 **контракты и тестируемый pure AuthZ/DTO-прототип**: SPEC/SIMULATED, не сервер.
+- [ ] SaaS Control API **HTTP backend**, SSO, RLS, Core adapter, реальный trace и enforcement: PROPOSED/STAGING, не реализованы.
 
 ## Этап 1, браузерные ворота (SIMULATED)
 
@@ -213,4 +215,28 @@ RBAC+RLS double enforcement, backup+restore dry run.
       элементов), увеличение браузера, скринридеры и а11y UX-приёмку.
 - [ ] Backend API/AuthZ/RBAC/read-only adapter и настоящие метрики/трейсы
       остаются `SPEC / PROPOSED`; не переходить к production без согласия.
+
+## Этап 2A — Control API read-only contracts (SPEC/SIMULATED)
+
+- [x] `controlApi/contracts.ts`: версия 1, allow-listed resource DTO,
+      generic 403/404/503 response и интерфейс будущего backend adapter.
+- [x] `controlApi/authorization.ts`: активное уникальное membership,
+      deny при revoked/duplicated, роли owner/admin/viewer/auditor.
+- [x] Отдельная authorisation owner+grant для pool/account/egress с
+      проверкой grantee, владельца, expiry и состояния.
+- [x] `controlApi/readOnlyProjection.ts`: tenant-scoped поля;
+      redaction чужих account/egress/pool references и отказ от core-native
+      key bindings; source только synthetic-simulation.
+- [x] `tests/saasControlApiV1.test.ts`: контрактные unit тесты на
+      межклиентскую изоляцию, owner/grant, ошибки, безопасную сериализацию.
+- [x] Спецификации
+      [CONTROL_API_V1](CONTROL_API_V1.ru.md),
+      [AUTHZ_RBAC_V1](AUTHZ_RBAC_V1.ru.md),
+      [CORE_METADATA_ADAPTER_V1](CORE_METADATA_ADAPTER_V1.ru.md).
+- [ ] Реальная trusted SaaS-сессия и AuthZ middleware; не принимать
+      actorId/tenantId из пользовательских заголовков.
+- [ ] Реальная БД, RLS, audit, vault, server-side read adapter к Core,
+      staged contract tests и cancellation при tenant-switch.
+- [ ] Manual security review и интеграционные проверки с Core/CPA на
+      отдельном staging, без любых реальных production credentials.
 

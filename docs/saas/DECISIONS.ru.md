@@ -116,3 +116,27 @@ credentials. Пять конфигураций × шесть состояний 
 Ручной WCAG/assistive technology review остаётся `PROPOSED`, включая
 реальное 200/400% zoom. PR остаётся Draft; production не меняется.
 
+## D-023 — Control API v1 scoped read-only contract (SPEC/SIMULATED)
+
+Контракт SaaS Control HTTP в отдельном пространстве
+`/control-api/v1/tenants/{tenantId}/metadata/{collection}`
+не является Core Management API и не содержит write методов.
+Чистая `readSyntheticTenantCollection` реализована **только для
+тестирования DTO и tenant filters**, не аутентифицирует реального
+пользователя и не обеспечивает server-side isolation. Внешние 404/403/503
+имеют фиксированные generic messages без чужих ID. CPA key не является
+SaaS Control credential. Источник `core-metadata-readonly` не
+реализован. Статус: **SIMULATED prototype, backend SPEC**.
+
+## D-024 — RBAC членство не заменяет grants (SPEC/SIMULATED)
+
+Роли read-only v1: tenant-owner / tenant-admin / tenant-viewer /
+tenant-auditor (последний видит только tenant/projects/applications).
+Дублирующиеся или отозванные memberships блокируются. Каждый
+Pool/Account/Egress требует собственной проверки owner + active grant +
+expiry; grant на Pool не открывает Account и Egress, а Account не
+раскрывает чужой Egress. Никаких write прав, global admin bypass и
+implicit direct egress. Для реального backend требуется session
+verification, scoped DB, RLS, audit и staging security tests.
+См. [AUTHZ_RBAC_V1.ru.md](AUTHZ_RBAC_V1.ru.md).
+
