@@ -39,6 +39,8 @@ import {
   useThemeStore,
 } from '@/stores';
 import { AUTH_FILES_CHANGED_EVENT } from '@/features/authFiles/authFilesEvents';
+import { SAAS_BLUEPRINT_DEMO_ENABLED } from '@/features/saasBlueprint/demo/featureFlag';
+import { getSaasDemoCopy } from '@/features/saasBlueprint/demo/demoCopy';
 import {
   collectPluginResourceEntries,
   PLUGIN_RESOURCES_REFRESH_EVENT,
@@ -92,7 +94,8 @@ const NAV_TOOLTIP_VIEWPORT_MARGIN = 8;
 
 interface SidebarNavGroup {
   id: string;
-  labelKey: string;
+  labelKey?: string;
+  label?: string;
   items: SidebarNavItem[];
 }
 
@@ -319,6 +322,7 @@ export function MainLayout() {
   const theme = useThemeStore((state) => state.theme);
   const setTheme = useThemeStore((state) => state.setTheme);
   const language = useLanguageStore((state) => state.language);
+  const saasDemoCopy = getSaasDemoCopy(language);
   const setLanguage = useLanguageStore((state) => state.setLanguage);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -597,6 +601,18 @@ export function MainLayout() {
         },
       ],
     },
+    ...(SAAS_BLUEPRINT_DEMO_ENABLED
+      ? [{
+          id: 'saas-demo',
+          label: saasDemoCopy.navGroup,
+          items: [{
+            path: '/saas-demo',
+            label: saasDemoCopy.navItem,
+            meta: saasDemoCopy.demoBadge,
+            icon: sidebarIcons.aiProviders,
+          }],
+        }]
+      : []),
     {
       id: 'gateway',
       labelKey: 'nav_groups.gateway',
@@ -1156,7 +1172,7 @@ export function MainLayout() {
             {navGroups.map((group, idx) => (
               <div className="nav-group" key={group.id}>
                 {showSidebarLabels ? (
-                  <div className="nav-group-label">{t(group.labelKey)}</div>
+                  <div className="nav-group-label">{group.label ?? (group.labelKey ? t(group.labelKey) : '')}</div>
                 ) : (
                   idx > 0 && <div className="nav-group-divider" aria-hidden="true" />
                 )}
