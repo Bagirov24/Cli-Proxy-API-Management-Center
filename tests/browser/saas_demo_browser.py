@@ -15,12 +15,16 @@ from playwright.sync_api import Page, sync_playwright
 BASE_URL = os.environ.get("SAAS_BROWSER_URL", "http://127.0.0.1:5173/#/saas-demo-preview")
 OUTPUT = Path(os.environ.get("SAAS_BROWSER_ARTIFACTS", "tests/browser/artifacts"))
 OUTPUT.mkdir(parents=True, exist_ok=True)
+AXE_SCRIPT = Path(os.environ.get(
+    "SAAS_AXE_SCRIPT", "/tmp/saas-axe/node_modules/axe-core/axe.min.js"))
 
 CASES = [
     ("desktop-ru-light", 1440, 900, "ru-RU", "light", "no-preference"),
     ("tablet-en-dark", 820, 1180, "en-US", "dark", "no-preference"),
     ("mobile-ru-dark-reduced", 390, 844, "ru-RU", "dark", "reduce"),
     ("small-mobile-en-light-reduced", 320, 720, "en-US", "light", "reduce"),
+    # This emulates the 640 CSS px reflow width of a 1280px desktop at 200%.
+    ("reflow-200pct-ru-light", 640, 900, "ru-RU", "light", "no-preference"),
 ]
 
 
@@ -46,6 +50,41 @@ def assert_no_document_overflow(page: Page, label: str) -> None:
 def screenshot(page: Page, name: str) -> None:
     page.screenshot(path=str(OUTPUT / name), full_page=True,
                     animations="disabled", timeout=30000)
+
+
+def audit_accessibility(page: Page, case_name: str, view: str) -> None:
+    """Run pinned local axe-core on synthetic SaaS markup, with JSON evidence.
+
+    Tagged automated WCAG A/AA checks are not a substitute for manual audit.
+    """
+    result = page.evaluate("""async () => {
+      const root = document.querySelector('[data-saas-demo-root]');
+      if (!root || !window.axe) throw new Error('Synthetic SaaS root/axe missing');
+      const audit = await window.axe.run(root, {
+        runOnly: { type: 'tag', values: [
+          'wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'
+        ] }
+      });
+      return {
+        version: window.axe.version,
+        passes: audit.passes.map(rule => rule.id),
+        incomplete: audit.incomplete.map(rule => ({
+          id: rule.id, impact: rule.impact,
+          nodes: rule.nodes.map(node => node.target).slice(0, 5)
+        })),
+        violations: audit.violations.map(rule => ({
+          id: rule.id, impact: rule.impact, help: rule.help,
+          nodes: rule.nodes.slice(0, 12).map(node => ({
+            target: node.target, summary: node.failureSummary
+          }))
+        }))
+      };
+    }""")
+    (OUTPUT / f"{case_name}-{view}-axe.json").write_text(
+        json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+    ensure(not result["violations"],
+           f"{case_name}/{view}: axe WCAG violations: "
+           + json.dumps(result["violations"], ensure_ascii=False)[:3000])
 
 
 def check_tenants_search_wizard(page: Page, language: str, case_name: str) -> None:
@@ -111,6 +150,7 @@ def check_tenants_search_wizard(page: Page, language: str, case_name: str) -> No
     page.get_by_role("button", name=("Сначала" if ru else "Restart"), exact=True).click()
     ensure("1/4" in visible_text(page), "Wizard did not restart")
     screenshot(page, case_name + "-accounts.png")
+    audit_accessibility(page, case_name, "accounts")
 
     # A tenant change must reset the tab/search and not display foreign metadata.
     search.fill("account-north")
@@ -131,6 +171,7 @@ def check_tenants_search_wizard(page: Page, language: str, case_name: str) -> No
     ensure("EU SOCKS5" not in text and "Shared HTTPS" not in text,
            "Orbit network view leaked North/platform egress")
     screenshot(page, case_name + "-network.png")
+    audit_accessibility(page, case_name, "network")
     tenant.select_option("demo-north")
 
 
@@ -182,6 +223,7 @@ def check_flow(page: Page, language: str, case_name: str) -> None:
     ensure(("Не достигнуто" if ru else "Not reached") in visible_text(page),
            "Downstream AI provider cannot be marked reached after denial")
     screenshot(page, case_name + "-denied.png")
+    audit_accessibility(page, case_name, "denied")
 
     selector.select_option("north-direct")
     ensure(nodes.nth(5).get_attribute("aria-pressed") == "true",
@@ -224,6 +266,8 @@ def run_case(browser, case: tuple[str, int, int, str, str, str]) -> dict:
         response = page.goto(BASE_URL, wait_until="domcontentloaded", timeout=45000)
         ensure(response is not None and response.ok, f"{name}: dev preview unavailable")
         page.locator("#saas-demo-tenant").wait_for(state="visible", timeout=30000)
+        ensure(AXE_SCRIPT.is_file(), f"Pinned local axe-core missing: {AXE_SCRIPT}")
+        page.add_script_tag(path=str(AXE_SCRIPT))
         ensure(page.locator("html").get_attribute("lang") == language,
                f"{name}: expected {language} language")
         ensure(page.locator("html").get_attribute("data-theme") ==
@@ -233,12 +277,14 @@ def run_case(browser, case: tuple[str, int, int, str, str, str]) -> dict:
                in visible_text(page), f"{name}: missing synthetic-data badge")
         assert_no_document_overflow(page, name + ": initial")
         screenshot(page, name + "-overview.png")
+        audit_accessibility(page, name, "clients")
 
         check_tenants_search_wizard(page, language, name)
         assert_no_document_overflow(page, name + ": account and network views")
         check_flow(page, language, name)
         assert_no_document_overflow(page, name + ": request flow")
         screenshot(page, name + "-flow.png")
+        audit_accessibility(page, name, "flow")
 
         if motion == "reduce":
             ensure(page.evaluate("matchMedia('(prefers-reduced-motion: reduce)').matches"),
@@ -250,7 +296,8 @@ def run_case(browser, case: tuple[str, int, int, str, str, str]) -> dict:
 
         ensure(not js_errors, f"{name}: browser JS errors: {js_errors}")
         ensure(not outbound, f"{name}: synthetic preview made external HTTP requests: {outbound}")
-        return {"name": name, "status": "passed", "locale": language,
+        return {"name": name, "status": "passed", "axe_wcag_views": 5,
+                "locale": language,
                 "theme": scheme, "width": width, "reduced_motion": motion}
     except Exception:
         # Keep evidence even on a failure for fast diagnosis.

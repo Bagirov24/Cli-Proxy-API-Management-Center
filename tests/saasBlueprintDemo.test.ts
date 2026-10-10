@@ -245,6 +245,8 @@ describe('SaaS opt-in UI and no-live-API safeguards', () => {
     expect(page).toContain('ownerLabel(account.owner, copy)');
     expect(page).toContain('ownerLabel(profile.owner, copy)');
     expect(page).toContain('role="region"');
+    expect(page).toContain('data-saas-demo-root');
+    expect(page).toContain('label={copy.referenceLabel}');
 
     expect(page).not.toMatch(/onClick=\{.*create(Real|Account|Key|Proxy)/i);
   });
@@ -258,5 +260,12 @@ describe('SaaS opt-in UI and no-live-API safeguards', () => {
     expect(scss).toContain('.flowList');
     expect(scss).toContain('.flowNodeSelected');
     expect(scss).toContain('.flowNodeBlocked');
+    const browserTest = read('./browser/saas_demo_browser.py');
+    const browserWorkflow = read('../.github/workflows/saas-blueprint-browser-ci.yml');
+    expect(browserTest).toContain('audit_accessibility');
+    expect(browserTest).toContain('wcag22aa');
+    expect(browserTest).toContain('reflow-200pct-ru-light');
+    expect(browserWorkflow).toContain('axe-core@4.10.3');
+    expect(browserWorkflow).not.toMatch(/railway (up|deploy)|deploy to production/i);
   });
 });

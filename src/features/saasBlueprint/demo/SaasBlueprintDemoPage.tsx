@@ -88,7 +88,7 @@ function ClientPanel({ view, copy, query }: {
             <ResourceCard key={project.id} eyebrow={copy.project} title={project.name}>
               <dl className={styles.details}>
                 <Detail label={copy.owner} value={view.tenant.name} />
-                <Detail label="Reference" value={project.id} />
+                <Detail label={copy.referenceLabel} value={project.id} />
               </dl>
             </ResourceCard>
           ))}
@@ -447,7 +447,7 @@ export function SaasBlueprintDemoPage() {
   };
 
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-saas-demo-root>
       <header className={styles.hero}>
         <div className={styles.heroLeft}>
           <span className={styles.eyebrow}>{copy.eyebrow}</span>

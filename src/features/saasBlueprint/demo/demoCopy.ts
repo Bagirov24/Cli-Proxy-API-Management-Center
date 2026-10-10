@@ -41,6 +41,7 @@ export interface DemoCopy {
   readonly application: string;
   readonly accessKind: string;
   readonly owner: string;
+  readonly referenceLabel: string;
   readonly selfOwned: string;
   readonly shared: string;
   readonly platformOwner: string;
@@ -130,6 +131,7 @@ const ru: DemoCopy = {
   application: 'Приложение',
   accessKind: 'CPA-ключ',
   owner: 'Владелец',
+  referenceLabel: 'Идентификатор',
   selfOwned: 'Собственный ресурс',
   shared: 'Доступ по отдельному разрешению',
   platformOwner: 'Платформа',
@@ -269,6 +271,7 @@ const en: DemoCopy = {
   application: 'Application',
   accessKind: 'CPA key',
   owner: 'Owner',
+  referenceLabel: 'Reference',
   selfOwned: 'Owned resource',
   shared: 'Explicitly shared',
   platformOwner: 'Platform',
