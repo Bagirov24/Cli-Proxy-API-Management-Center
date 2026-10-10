@@ -7,14 +7,20 @@ from urllib import request, error
 BASE = os.environ.get("GATEWAY_TEST_BASE", "http://127.0.0.1:8080")
 CORE = os.environ.get("MOCK_CORE_BASE", "http://127.0.0.1:8317")
 KEY = "cpa_" + "a" * 43
+REQUEST_SEQ = 0
 
 
 def call(path, payload=None, headers=None, base=BASE):
+    global REQUEST_SEQ
     data = None if payload is None else json.dumps(payload).encode()
+    outbound_headers = dict(headers or {})
+    if base == BASE and "X-Real-IP" not in outbound_headers:
+        REQUEST_SEQ += 1
+        outbound_headers["X-Real-IP"] = f"198.51.100.{REQUEST_SEQ}"
     req = request.Request(
         base + path,
         data=data,
-        headers=headers or {},
+        headers=outbound_headers,
         method="POST" if data is not None else "GET",
     )
     try:
@@ -74,9 +80,10 @@ def main():
     # Two successive requests are allowed in the test configuration, third
     # is rejected with 429 and never reaches the synthetic Core.
     before = hits()
+    isolated = {**good, "X-Real-IP": "192.0.2.234"}
     for _ in range(2):
-        must("/v1/chat/completions", payload, good, 200, "forwarded")
-    must("/v1/chat/completions", payload, good, 429, "not_forwarded")
+        must("/v1/chat/completions", payload, isolated, 200, "forwarded")
+    must("/v1/chat/completions", payload, isolated, 429, "not_forwarded")
     assert hits() == before + 2
 
     print("ALL GATEWAY REVIEW TESTS PASSED")
