@@ -173,6 +173,13 @@ describe('SaaS opt-in UI and no-live-API safeguards', () => {
     expect(page).toContain("event.key === 'ArrowRight'");
     expect(page).toContain('aria-live="polite"');
     expect(page).toContain('role="note"');
+    expect(page).toContain('Request path · simulation only');
+    expect(page).toContain('Логический маршрут (симуляция)');
+    expect(page).toContain("['gateway', 'API Gateway', 'illustrative']");
+    expect(page).toContain("['provider', 'AI Provider', 'illustrative']");
+    expect(page).toContain('stage === \'illustrative\'');
+    expect(page).toContain("id === 'provider' && !decision.allowed");
+
     expect(page).not.toMatch(/onClick=\{.*create(Real|Account|Key|Proxy)/i);
   });
 
