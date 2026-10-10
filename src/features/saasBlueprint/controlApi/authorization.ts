@@ -25,7 +25,8 @@ export function authorizeTenantRead(
   if (!actor?.id?.trim() || !tenantId?.trim() || !Array.isArray(actor.memberships)) {
     return { allowed: false, reason: 'not-found' };
   }
-  const matching = actor.memberships.filter((entry) => entry.tenantId === tenantId);
+  const memberships: readonly TenantMembership[] = actor.memberships;
+  const matching = memberships.filter((entry) => entry.tenantId === tenantId);
   // Ambiguous memberships must never elevate rights by choosing the first match.
   if (matching.length !== 1 || matching[0].status !== 'active') {
     return { allowed: false, reason: 'not-found' };

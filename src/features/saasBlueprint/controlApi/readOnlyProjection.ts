@@ -84,6 +84,12 @@ export function readSyntheticTenantCollection(
   collection: ControlCollection,
   nowMs: number
 ): ControlReadResult {
+  // Unknown path segments are not a role probe; reject them with generic 404.
+  const knownCollections: readonly ControlCollection[] = [
+    'tenant', 'projects', 'applications', 'client-keys',
+    'accounts', 'pools', 'egress', 'routing',
+  ];
+  if (!knownCollections.includes(collection)) return HIDDEN;
   const auth = authorizeTenantRead(actor, tenantId, collection);
   if (!auth.allowed) return auth.reason === 'not-found' ? HIDDEN : DENIED;
   if (snapshot.schemaVersion !== 1 || !Number.isFinite(nowMs)) return UNAVAILABLE;
