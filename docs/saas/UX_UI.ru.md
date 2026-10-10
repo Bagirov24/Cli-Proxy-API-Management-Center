@@ -249,3 +249,7 @@ VPN Business  | Владелец: Platform | Коннектор не настр�
 9. Любые действия изменения настроек видны в audit с actor/resource/time.
 10. Принятие нового UI требует проверки на staging с реальными
     network/service errors до разрешения публикации.
+
+## Дополнение: видимый семиузловой маршрут (SIMULATED)
+
+В текущем макете дополнительно к подробному таймлайну resolver показаны Client/Application → Gateway → CPA Policy → Account Pool → Account → Proxy/VPN → AI Provider. Отказы отмечаются на соответствующей стадии policy resolver; недостигнутые стадии не рисуются успешными. Gateway и Provider имеют нейтральное обозначение «Только схема / Schematic only», поэтому `ALLOW` не означает, что настоящий AI-запрос выполнен. Это read-only решение без живых метрик или анимации сетевого трафика.
