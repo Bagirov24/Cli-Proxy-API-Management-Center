@@ -140,6 +140,34 @@ describe('Stage 2E — signed SQL scoped query boundary (fake pool, no network)'
     expect(h.releases).toEqual([true]);
   });
 
+  test('passes AbortSignal to connection acquisition for waiting reservations', async () => {
+    const controller = new AbortController();
+    let forwarded: AbortSignal | undefined;
+    const pool: ScopedSqlPool = {
+      async connect(signal) {
+        forwarded = signal;
+        throw new Error('SYNTHETIC_POOL_DRIVER_DETAILS');
+      },
+    };
+    await expect(readSignedScopedMetadata(pool, signer, {
+      scope, collection: 'projects', signal: controller.signal,
+    }, () => now)).rejects.toThrow('Scoped metadata unavailable');
+    expect(forwarded).toBe(controller.signal);
+  });
+
+  test('cancellation during COMMIT discards connection and cannot return stale rows', async () => {
+    const controller = new AbortController();
+    const h = harness();
+    h.onQuery((sql) => {
+      if (sql === 'COMMIT') controller.abort();
+    });
+    await expect(readSignedScopedMetadata(h.pool, signer, {
+      scope, collection: 'projects', signal: controller.signal,
+    }, () => now)).rejects.toThrow('Scoped metadata unavailable');
+    expect(h.calls.some((call) => call.sql === 'COMMIT')).toBe(true);
+    expect(h.releases).toEqual([true]);
+  });
+
   test('every resource category is a fixed, read-only SQL template', async () => {
     for (const category of [
       'tenant', 'projects', 'applications', 'client-keys',

@@ -99,7 +99,15 @@ function createBoundedDriver(sql) {
             // Bun ReservedSQL has no release(true) signature. Closing the
             // reserved connection is required; NEVER put failed contexts
             // back into the pool via release().
-            await reserved.close({ timeout: 0 });
+            try {
+              await reserved.close({ timeout: 0 });
+            } finally {
+              // A closed reserved handle still owns a pool reservation in
+              // Bun 1.3.14; release that reservation AFTER destroying it.
+              // Releasing before close could expose dirty state to another
+              // tenant. A new connection is required for any later read.
+              reserved.release();
+            }
           } else {
             completed += 1;
             reserved.release();
