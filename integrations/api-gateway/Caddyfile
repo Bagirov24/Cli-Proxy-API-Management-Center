@@ -38,7 +38,7 @@
     # model allowlisting and per-key RPM remain exclusively in the private Core.
     # Query-string keys and native API keys are intentionally not allowed publicly.
     # Retain header variants supported by CPA's key-policy plugin.
-    @bad_credential `!(header_regexp('auth_bearer', 'Authorization', '(?i)^Bearer cpa_[A-Za-z0-9_-]+$') || header_regexp('auth_x_api_key', 'X-API-Key', '^cpa_[A-Za-z0-9_-]+$') || header_regexp('auth_api_key', 'api-key', '^cpa_[A-Za-z0-9_-]+$') || header_regexp('auth_google', 'x-goog-api-key', '^cpa_[A-Za-z0-9_-]+$'))`
+    @bad_credential `!(header_regexp('auth_bearer', 'Authorization', '(?i)^Bearer cpa_[A-Za-z0-9_-]{43}$') || header_regexp('auth_x_api_key', 'X-API-Key', '^cpa_[A-Za-z0-9_-]{43}$') || header_regexp('auth_api_key', 'api-key', '^cpa_[A-Za-z0-9_-]{43}$') || header_regexp('auth_google', 'x-goog-api-key', '^cpa_[A-Za-z0-9_-]{43}$'))`
 
     handle @public_api {
         # 'route' fixes handler ordering: rate limit -> reject malformed
