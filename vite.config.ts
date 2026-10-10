@@ -44,7 +44,8 @@ export default defineConfig({
     })
   ],
   define: {
-    __APP_VERSION__: JSON.stringify(getVersion())
+    __APP_VERSION__: JSON.stringify(getVersion()),
+    __SAAS_BLUEPRINT_DEMO_ENABLED__: JSON.stringify(process.env.VITE_ENABLE_SAAS_BLUEPRINT_DEMO === 'true')
   },
   resolve: {
     alias: {
