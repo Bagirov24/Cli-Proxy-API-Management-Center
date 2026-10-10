@@ -25,6 +25,8 @@ const reservedSuffixes = [
 
 function publicIpv4(hostname: string): boolean | null {
   if (!/^\d+(?:\.\d+){3}$/.test(hostname)) return null;
+  // Do not permit octal-looking IPv4 components: parsers can interpret them differently.
+  if (hostname.split('.').some((part) => part.length > 1 && part.startsWith('0'))) return false;
   const parts = hostname.split('.').map(Number);
   if (parts.some((part) => !Number.isSafeInteger(part) || part < 0 || part > 255)) return false;
   const [a, b, c] = parts;
