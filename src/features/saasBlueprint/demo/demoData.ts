@@ -5,7 +5,6 @@
 import type {
   AccessGrant,
   BlueprintSnapshot,
-  EgressProfile,
   ProviderAccount,
   RouteRequest,
   Tenant,
