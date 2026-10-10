@@ -48,7 +48,7 @@ def screenshot(page: Page, name: str) -> None:
                     animations="disabled", timeout=30000)
 
 
-def check_tenants_search_wizard(page: Page, language: str) -> None:
+def check_tenants_search_wizard(page: Page, language: str, case_name: str) -> None:
     ru = language == "ru"
     tenant = page.locator("#saas-demo-tenant")
     tabs = page.get_by_role("tab")
@@ -64,6 +64,27 @@ def check_tenants_search_wizard(page: Page, language: str) -> None:
     page.keyboard.press("Home")
     ensure(tabs.nth(0).get_attribute("aria-selected") == "true",
            "Home did not select first tab")
+
+    if page.viewport_size and page.viewport_size["width"] <= 740:
+        # All four tab labels must be fully visible, without scroll-hunting.
+        for index in range(4):
+            bounds = tabs.nth(index).bounding_box()
+            ensure(bounds is not None and bounds["x"] >= -1 and
+                   bounds["x"] + bounds["width"] <= page.viewport_size["width"] + 1,
+                   f"Mobile tab {index} is hidden outside the visible navigation")
+        tabs.nth(0).focus()
+        page.keyboard.press("ArrowRight")
+        ensure(tabs.nth(1).get_attribute("aria-selected") == "true",
+               "Mobile Right should move within the first row")
+        page.keyboard.press("ArrowDown")
+        ensure(tabs.nth(3).get_attribute("aria-selected") == "true",
+               "Mobile Down should move to the second row")
+        page.keyboard.press("ArrowLeft")
+        ensure(tabs.nth(2).get_attribute("aria-selected") == "true",
+               "Mobile Left should move within the second row")
+        page.keyboard.press("ArrowUp")
+        ensure(tabs.nth(0).get_attribute("aria-selected") == "true",
+               "Mobile Up should return to the first row")
 
     tabs.nth(1).click()
     text = visible_text(page)
@@ -89,6 +110,7 @@ def check_tenants_search_wizard(page: Page, language: str) -> None:
     ensure("4/4" in visible_text(page), "Wizard did not reach step 4")
     page.get_by_role("button", name=("Сначала" if ru else "Restart"), exact=True).click()
     ensure("1/4" in visible_text(page), "Wizard did not restart")
+    screenshot(page, case_name + "-accounts.png")
 
     # A tenant change must reset the tab/search and not display foreign metadata.
     search.fill("account-north")
@@ -105,14 +127,14 @@ def check_tenants_search_wizard(page: Page, language: str) -> None:
 
     tabs.nth(2).click()
     text = visible_text(page)
-    ensure("vpn-orbit" not in text or "VPN connector" in text,
-           "VPN fixture label not rendered as expected")
+    ensure("VPN connector" in text, "Synthetic VPN connector card is missing")
     ensure("EU SOCKS5" not in text and "Shared HTTPS" not in text,
            "Orbit network view leaked North/platform egress")
+    screenshot(page, case_name + "-network.png")
     tenant.select_option("demo-north")
 
 
-def check_flow(page: Page, language: str) -> None:
+def check_flow(page: Page, language: str, case_name: str) -> None:
     ru = language == "ru"
     page.get_by_role("tab").nth(3).click()
     selector = page.locator("#saas-demo-scenario")
@@ -159,6 +181,7 @@ def check_flow(page: Page, language: str) -> None:
            "Blocked egress must include a recovery action")
     ensure(("Не достигнуто" if ru else "Not reached") in visible_text(page),
            "Downstream AI provider cannot be marked reached after denial")
+    screenshot(page, case_name + "-denied.png")
 
     selector.select_option("north-direct")
     ensure(nodes.nth(5).get_attribute("aria-pressed") == "true",
@@ -211,9 +234,9 @@ def run_case(browser, case: tuple[str, int, int, str, str, str]) -> dict:
         assert_no_document_overflow(page, name + ": initial")
         screenshot(page, name + "-overview.png")
 
-        check_tenants_search_wizard(page, language)
+        check_tenants_search_wizard(page, language, name)
         assert_no_document_overflow(page, name + ": account and network views")
-        check_flow(page, language)
+        check_flow(page, language, name)
         assert_no_document_overflow(page, name + ": request flow")
         screenshot(page, name + "-flow.png")
 

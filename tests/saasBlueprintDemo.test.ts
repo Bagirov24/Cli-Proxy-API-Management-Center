@@ -233,6 +233,9 @@ describe('SaaS opt-in UI and no-live-API safeguards', () => {
     }
     expect(page).toContain('aria-selected={activeTab === tab}');
     expect(page).toContain("event.key === 'ArrowRight'");
+    expect(page).toContain("event.key === 'ArrowDown'");
+    expect(page).toContain("event.key === 'ArrowUp'");
+    expect(page).toContain("const isMobileGrid = window.matchMedia('(max-width: 740px)').matches");
     expect(page).toContain('aria-live="polite"');
     expect(page).toContain('role="note"');
     expect(page).toContain('buildDemoFlow(preview)');

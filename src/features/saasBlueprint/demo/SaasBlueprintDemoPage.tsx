@@ -425,10 +425,19 @@ export function SaasBlueprintDemoPage() {
 
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, tab: DemoTab) => {
     const position = TABS.indexOf(tab);
+    // The narrow-screen tablist is a visible 2x2 grid. Horizontal arrows
+    // navigate within a row; vertical arrows navigate between rows.
+    const isMobileGrid = window.matchMedia('(max-width: 740px)').matches;
     let next: number;
-    if (event.key === 'ArrowRight') next = (position + 1) % TABS.length;
-    else if (event.key === 'ArrowLeft') next = (position + TABS.length - 1) % TABS.length;
-    else if (event.key === 'Home') next = 0;
+    if (event.key === 'ArrowRight') next = isMobileGrid
+      ? Math.floor(position / 2) * 2 + (position + 1) % 2
+      : (position + 1) % TABS.length;
+    else if (event.key === 'ArrowLeft') next = isMobileGrid
+      ? Math.floor(position / 2) * 2 + (position + 1) % 2
+      : (position + TABS.length - 1) % TABS.length;
+    else if (isMobileGrid && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+      next = (position + 2) % TABS.length;
+    } else if (event.key === 'Home') next = 0;
     else if (event.key === 'End') next = TABS.length - 1;
     else return;
     event.preventDefault();
