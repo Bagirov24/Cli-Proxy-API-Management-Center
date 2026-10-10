@@ -1,0 +1,27 @@
+name: API Gateway security review
+
+on:
+  push:
+    branches:
+      - api-gateway-security-review-20261010
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build isolated gateway with pinned rate limit module
+        run: docker build -f integrations/api-gateway/Dockerfile -t gateway-security-review .
+      - name: Validate Caddyfile and module in built image
+        run: |
+          docker run --rm --entrypoint caddy gateway-security-review list-modules | grep -Fx http.handlers.rate_limit
+          docker run --rm --entrypoint caddy gateway-security-review adapt --config /etc/caddy/Caddyfile --adapter caddyfile --validate
+      - name: Ensure review does not ship native credentials
+        run: |
+          ! grep -qi 'cpa_[A-Za-z0-9_-]\{43\}' integrations/api-gateway/Caddyfile
+          ! grep -Eq '^\s*log_key\s*$' integrations/api-gateway/Caddyfile
