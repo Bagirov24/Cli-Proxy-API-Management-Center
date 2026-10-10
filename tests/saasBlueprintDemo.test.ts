@@ -9,6 +9,7 @@ import {
   type DemoScenarioId,
 } from '../src/features/saasBlueprint/demo/demoData';
 import { getSaasDemoCopy } from '../src/features/saasBlueprint/demo/demoCopy';
+import { getSaasDemoNavigation } from '../src/features/saasBlueprint/demo/demoNavigation';
 
 const fixtureIds = DEMO_SNAPSHOT.tenants.map((tenant) => tenant.id);
 
@@ -101,6 +102,12 @@ describe('SaaS Blueprint UI fixture isolation', () => {
     const ru = getSaasDemoCopy('ru');
     const en = getSaasDemoCopy('en');
     expect(getSaasDemoCopy('zh-CN')).toEqual(en);
+    for (const language of ['ru', 'en', 'zh-CN']) {
+      const copy = getSaasDemoCopy(language);
+      expect(getSaasDemoNavigation(language)).toEqual({
+        navGroup: copy.navGroup, navItem: copy.navItem, demoBadge: copy.demoBadge,
+      });
+    }
     for (const scenario of DEMO_SCENARIOS) {
       expect(ru.scenarios[scenario.id].length).toBeGreaterThan(8);
       expect(en.scenarios[scenario.id].length).toBeGreaterThan(8);
@@ -140,7 +147,9 @@ describe('SaaS opt-in UI and no-live-API safeguards', () => {
     const routes = read('../src/router/MainRoutes.tsx');
     const layout = read('../src/components/layout/MainLayout.tsx');
     const app = read('../src/App.tsx');
-    expect(flag).toContain("VITE_ENABLE_SAAS_BLUEPRINT_DEMO === 'true'");
+    const vite = read('../vite.config.ts');
+    expect(vite).toContain("process.env.VITE_ENABLE_SAAS_BLUEPRINT_DEMO === 'true'");
+    expect(flag).toContain('__SAAS_BLUEPRINT_DEMO_ENABLED__');
     expect(routes).toContain('...(SAAS_BLUEPRINT_DEMO_ENABLED');
     expect(routes).toContain("path: '/saas-demo'");
     expect(layout).toContain('...(SAAS_BLUEPRINT_DEMO_ENABLED');
