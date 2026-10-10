@@ -178,7 +178,8 @@ RBAC+RLS double enforcement, backup+restore dry run.
 
 - [x] Встроенная семиузловая схема request path поверх существующего policy resolver, с отдельной маркировкой Gateway и AI Provider как схематичных узлов.
 - [x] Добавлен статический regression test на обязательные подписи симуляции.
-- [ ] Довести browser/a11y и mobile screenshot acceptance, показать конкретные ресурсы безопасным tenant-scoped способом, добавить анимацию только с `prefers-reduced-motion`.
+- [x] Browser smoke в Chromium 1440/820/390/320 px RU/EN light/dark с PNG; tenant-safe inspector и reduced motion проверены.
+- [ ] Полная ручная UX/a11y проверка и WCAG-аудит на staging. Анимация — только объясняющая и необязательная.
 - [ ] Следующий ограниченный этап (`SPEC`): SaaS Control API v1, actor/tenant/role/resource/action AuthZ матрица, read-only adapter к Core metadata, типовые error/denial contracts и контрактные тесты. Без изменения production.
 
 ## Итерация 2 — результат и оставшийся гейт
@@ -187,5 +188,15 @@ RBAC+RLS double enforcement, backup+restore dry run.
 - [x] `SIMULATED`: инспектор строится из tenant-visible проекции контекста. Чужие account/egress references не раскрываются, в том числе при DENY.
 - [x] `SIMULATED`: владелец и право `owned/shared` отдельно в account и network cards, модель и провайдер в доступных метаданных.
 - [x] CSS focus-visible, keyboard button activation, responsive 7/4/2/1, reduced-motion без сетевой «анимации».
-- [ ] Browser / a11y / screenshot acceptance (desktop, tablet, mobile, light/dark) и согласование UX человеком.
+- [x] Автоматический Chromium browser QA RU/EN, light/dark, desktop/tablet/mobile и скриншоты: [SUCCESS #38075528744](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38075528744).
+- [x] Сетка 2×2 на mobile, все вкладки в пределах viewport, ArrowUp/Down для клавиатуры.
+- [ ] Ручная UX-приёмка, полный WCAG-аудит, screen reader и staging проверки с отказами сервиса.
 - [ ] SaaS Control API, RBAC/AuthZ, read-only adapter, реальный trace и enforcement: строго `SPEC/PROPOSED`, не реализованы.
+
+## Этап 1, браузерные ворота (SIMULATED)
+
+- [x] GitHub Actions устанавливает Playwright/Chromium изолированно и запускает Vite только с синтетикой.
+- [x] 4 конфигурации, 20 скриншотов (overview/accounts/network/deny/allow flow), JSON-результаты, no-external-HTTP проверка.
+- [x] Tenant isolation при смене tenant, восстановление поиска, табы с клавиатуры, демонстрационный BYOK/BYOA wizard, mobile overflow и reduced-motion.
+- [ ] Согласовать скриншоты с пользователем; до этого не считать UX окончательно принятым.
+- [ ] Полный WCAG и end-to-end staging — отдельно, без реальных production токенов/CPA/VPN.

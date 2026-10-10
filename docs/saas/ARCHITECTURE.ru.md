@@ -278,3 +278,7 @@ idempotency key. Аналитика не должна блокировать о�
 Функция `projectScenarioContext` возвращает только разрешённые демонстрационные ссылки: проект/приложение, CPA binding, пул, аккаунт, сетевой профиль, владелец и доступ. **Имена и ID недоступного tenant resource исключаются до передачи в UI**. Контекст не содержит URL с секретами, API-ключей, OAuth-токенов, VPN-конфигураций и raw request/response. `buildDemoFlow` проецирует результаты чистого resolver на семь этапов без network I/O.
 
 Эта frontend-изоляция — только **SIMULATED**, не enforcement. Для настоящего SaaS Control API следует реализовать серверную проверку AuthZ/RBAC + grants на каждой выдаче read-only metadata, а не передавать весь snapshot клиенту. Gateway и AI Provider всегда обозначаются `illustrative`, не `passed`, даже если решение resolver — allow.
+
+## Изолированный браузерный QA (SIMULATED)
+
+Браузерный smoke-test работает против локального `http://127.0.0.1:5173/#/saas-demo-preview` с флагом `true`, не против Railway/Core/Gateway. Workflow запускает только Vite и временный Chromium, загружает screenshot-артефакты (только синтетические данные) и проверяет отсутствие внешних HTTP-вызовов. Egress/VPN, SaaS AuthZ, CPA enforcement и реальные provider connections этим тестом **не проверяются**. CI не осуществляет deploy и не изменяет release `management.html`.

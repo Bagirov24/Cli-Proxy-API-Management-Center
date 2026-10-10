@@ -125,4 +125,22 @@ VPN Connector, полноценный billing ledger, live trace pipeline.
 - Семь узлов request flow стали **выбираемыми**: выбор этапа открывает инспектор безопасных ссылок, владельца ресурса и типа разрешения; при отказе показывает причину и следующий шаг.
 - Все детали выбранного аккаунта, пула и egress проецируются через `selectTenantDemoView`. Сценарии чужого аккаунта/прокси возвращают нейтральное «Недоступно или нет разрешения», а не имя чужого ресурса.
 - Аккаунты и сетевые профили теперь раздельно показывают **владельца** и **доступ: собственный / явно предоставленный**.
-- Данные остаются синтетическими; даже `ALLOW` не означает реального запроса к Gateway или AI-провайдеру. Браузерная визуальная приёмка пока не проводилась.
+- Данные остаются синтетическими; даже `ALLOW` не означает реального запроса к Gateway или AI-провайдеру. Автоматический browser smoke с Chromium выполнен в CI; полная ручная a11y/UX-приёмка на staging остаётся открытой.
+
+## Реальная браузерная проверка изолированного макета (10.10.2026)
+
+- `tests/browser/saas_demo_browser.py` проверяет живой React-макет через Chromium/Playwright: смену клиента, изоляцию отображаемых ресурсов, поиск, 4 шага мастера, сценарии Allow/Deny, клавиатуру, статусы и запрет внешних HTTP-запросов.
+- Workflow: `.github/workflows/saas-blueprint-browser-ci.yml`. Запускается только на изменениях SaaS UI/браузерного теста в PR и по ручному `workflow_dispatch`; **не разворачивает приложение**. Python Playwright устанавливается временно в runner, без изменений `bun.lock`.
+- Проверенные конфигурации: desktop 1440 px RU/light; tablet 820 px EN/dark; mobile 390 px RU/dark/reduced motion; small mobile 320 px EN/light/reduced motion.
+- [Успешный Browser QA и 20 скриншотов](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38075528744) — артефакт `saas-blueprint-browser-qa` (хранение 7 дней).
+- Это **browser smoke и реальные снимки синтетики**, но не полный WCAG-аудит, не staging с backend и не проверка network enforcement.
+
+Запуск локально после `VITE_ENABLE_SAAS_BLUEPRINT_DEMO=true bun run dev`:
+
+```bash
+python -m pip install playwright==1.55.0
+python -m playwright install chromium
+python tests/browser/saas_demo_browser.py
+```
+
+Публичный Core Management API не требуется; настоящие учётные данные не вводить.

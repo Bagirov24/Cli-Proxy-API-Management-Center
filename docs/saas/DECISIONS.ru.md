@@ -92,3 +92,11 @@
 ## D-019 — безопасный инспектор контекста (SIMULATED)
 
 Отображаемые в схеме ссылки на пул, аккаунт и egress происходят **исключительно из разрешённого tenant-scoped представления**. Незнакомые/запрещённые ресурсы заменяются нейтральным unknown, но не выводятся в ошибках. UI отдельно показывает owner и `owned/shared`; `Gateway` и `AI Provider` не считаются проверенными узлами. Это решение реализовано только в демонстрационном UI и чистых тестах, а серверная AuthZ и сетевое enforcement остаются **PROPOSED**.
+
+## D-020 — мобильная навигация без скрытых разделов (SIMULATED)
+
+После **реального** Chromium screenshot QA принято решение показывать четыре раздела макета сеткой 2×2 при ширине до 740 px вместо горизонтальной полосы со скрытыми вкладками. Для клавиатуры стрелки Left/Right перемещают фокус внутри ряда, Up/Down — между рядами. Это не меняет навигацию Management Center или разрешения. На desktop вкладки остаются в один ряд.
+
+## D-021 — автоматический browser smoke, не production acceptance
+
+Скрипт `tests/browser/saas_demo_browser.py` и изолированный workflow тестируют синтетический standalone preview. Результат [SUCCESS #38075528744](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38075528744), четыре viewport/locale/theme комбинации и 20 PNG. Тест не содержит и не использует Core credentials, Railway deployment, VPN-конфигурации или реальные запросы. **Manual WCAG + staging оставлены PROPOSED; browser smoke — VERIFIED только в изолированном CI.**
