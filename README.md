@@ -15,7 +15,7 @@ Manage providers, credentials, quotas, and logs — from a single HTML file.
 
 **English** · [简体中文](README_CN.md) · [Русский](README_RU.md)
 
-[Get started](#quick-start) · [Features](#features) · [Development](#development) · [Releases](https://github.com/router-for-me/Cli-Proxy-API-Management-Center/releases)
+[Get started](#quick-start) · [Features](#features) · [System architecture (RU)](docs/SYSTEM_DESIGN_RU.md) · [Development](#development) · [Releases](https://github.com/router-for-me/Cli-Proxy-API-Management-Center/releases)
 
 </div>
 
