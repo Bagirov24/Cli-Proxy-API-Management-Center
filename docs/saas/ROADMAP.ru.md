@@ -24,7 +24,7 @@ PR с тестами, возможностью отката и указание�
 - [x] Egress syntax/SSRF precheck, default deny для private IP.
 - [x] Safe preview с только разрешёнными полями.
 - [x] Документы: Architecture, UX/UI, Roadmap, Decisions.
-- [ ] Зелёный CI для итоговой ветки и PR.
+- [x] GitHub Actions CI: 1 659 тестов, 0 ошибок, ESLint, TypeScript и Vite build — SUCCESS ([run 38071132757](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38071132757), проверен SHA c0137c2459a14239ff687331874f7326f2f9ac26).
 - [ ] Отдельное архитектурное ревью реального CPA scheduler/API contract.
 
 Критерий: `bun run verify` зелёный; отсутствует импорт нового
