@@ -13,7 +13,7 @@
 [![单文件构建](https://img.shields.io/badge/Build-single_HTML-0F766E?style=flat-square)](#部署)
 [![许可证：MIT](https://img.shields.io/badge/License-MIT-64748B?style=flat-square)](LICENSE)
 
-[English](README.md) · **简体中文**
+[English](README.md) · **简体中文** · [Русский](README_RU.md)
 
 [快速开始](#快速开始) · [功能一览](#功能一览) · [本地开发](#本地开发) · [下载发布版本](https://github.com/router-for-me/Cli-Proxy-API-Management-Center/releases)
 
