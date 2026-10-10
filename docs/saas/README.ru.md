@@ -115,3 +115,7 @@ VPN Connector, полноценный billing ledger, live trace pipeline.
 контролирует реальную сеть, выбор аккаунтов Core, DNS-резолвер, IPv6 или
 правила провайдера. Положительный результат `resolveSaasRoute` **не является**
 разрешением отправлять реальный запрос, пока backend enforcement отсутствует.
+
+## Уточнение прототипа: request path (SIMULATED)
+
+Вкладка «Схема запроса» теперь показывает семь логических точек: Client/Application → API Gateway → CPA Key Policy → Account Pool → Account → Proxy/VPN → AI Provider. Gateway и провайдер помечены «Только схема»: ни одно реальное соединение не создаётся. Восьмиэтапная проверка policy resolver остаётся отдельной, более подробной диагностикой. Настоящие network trace, токены, стоимость и задержки отсутствуют.
