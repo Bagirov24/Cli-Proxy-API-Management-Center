@@ -268,3 +268,7 @@ idempotency key. Аналитика не должна блокировать о�
   схем и событий развивать отдельно, с миграциями, rollback и contract tests.
 - Функционал вводить через feature flags, сначала read-only, затем стенд,
   затем ограниченный rollout. Production Core SHA pinned, отдельный release.
+
+## Демонстрационное представление request path (SIMULATED)
+
+В SaaS UI рисуется семиузловая **логическая** цепочка Client → Gateway → CPA Policy → Pool → Account → Egress → Provider. Показанные этапы политики берутся исключительно из чистого `safeDecisionPreview`; Gateway/Provider явно имеют обозначение `illustrative` и не являются ни тестами сети, ни фактом отправки запроса. Настоящее runtime enforcement и серверная изоляция ресурсов относятся к будущему SaaS Control API/adapter; включать Core или публиковать Gateway для просмотра этой схемы нельзя.
