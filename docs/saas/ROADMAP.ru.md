@@ -27,20 +27,26 @@ PR с тестами, возможностью отката и указание�
 - [x] GitHub Actions CI: 1 659 тестов, 0 ошибок, ESLint, TypeScript и Vite build — SUCCESS ([run 38071132757](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38071132757), проверен SHA c0137c2459a14239ff687331874f7326f2f9ac26).
 - [ ] Отдельное архитектурное ревью реального CPA scheduler/API contract.
 
-Критерий: `bun run verify` зелёный; отсутствует импорт нового
-модуля из production Router, нет изменение Core/Gateway, OAuth или `/data`.
+Критерий: `bun run verify` зелёный; доменная модель не связана с Core,
+а demo Router импортирует **только opt-in read-only UI** с синтетическими
+данными. Нет изменения Core/Gateway, OAuth или `/data`.
 
 ## Этап 1 — Read-only SaaS UI
 
-**Статус:** `SPEC`.
+**Статус:** `SIMULATED` для UX-макета, `SPEC` для реального SaaS API.
 
-- [ ] UX wireframes и интерактивный **демо** экран с явно помеченными mock-данными.
-- [ ] RU/EN microcopy всех denial reasons; локализации остальных языков.
-- [ ] Router добавляет SaaS-раздел только за feature flag, без статуса «здоров».
-- [ ] Списки аккаунтов и их метаданные из **read-only** adapter, без secret fields.
-- [ ] Screens: loading/empty/error/no-permission/stale/disabled, mobile + keyboard.
-- [ ] React component tests, a11y tests, screenshot visual regression при возможности.
-- [ ] Backend API не меняется, кнопки без реального backend не вводят в заблуждение.
+- [x] Read-only интерактивный **демо** экран на синтетических данных.
+- [x] RU/EN microcopy **всех** denial reasons (остальные локали временно English).
+- [x] Router добавляет SaaS-раздел **только за feature flag**; в DEV есть standalone preview.
+- [x] Списки из изолированных demo fixture selectors (без credentials/API).
+- [x] Понятные empty/blocked/unknown состояния, mobile и клавиатурные вкладки;
+      локальный error boundary для отказа страницы.
+- [x] Unit regression tests demo: tenant-switch scopes, scenarios и no-network UI.
+- [ ] Реальный **read-only SaaS API adapter**, серверная фильтрация и AuthZ.
+- [ ] Live loading/stale/error/no-permission состояния + проверка изоляции кэша.
+- [ ] Browser UI/a11y и screenshot regression tests на staging.
+- [ ] Зафиксировать результаты пользовательского UX-ревью до подключения backend.
+- [x] Backend API не меняется, live write/connect кнопок нет.
 
 Гейт: UI показывает источник и время данных; переключение tenant не
 показывает чужой state. Нет работающих изменений маршрутизации.
