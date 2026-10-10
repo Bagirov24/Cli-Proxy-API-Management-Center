@@ -114,7 +114,8 @@ jobs:
             echo "Invalid ephemeral signing fixture"
             exit 1
           fi
-          SAAS_EPHEMERAL_DRIVER_CI=true SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+          timeout --signal=TERM --kill-after=5s 90s env \
+            SAAS_EPHEMERAL_DRIVER_CI=true SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
             bun scripts/saas-staging/verify-bun-postgres.mjs
           unset scope_key
 

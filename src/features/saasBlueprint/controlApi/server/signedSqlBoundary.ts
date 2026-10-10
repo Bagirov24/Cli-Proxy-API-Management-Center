@@ -22,7 +22,8 @@ export interface SignedTransactionIssuer {
   sign(scope: AuthorizedReadScope, txid: string, expiry: number): Promise<string>;
 }
 
-const SELECT_SQL: Readonly<Record<ControlCollection, string>> = {
+/** Exact, server-owned SQL templates; may be used for staging driver allowlisting. */
+export const CONTROL_READ_SELECT_SQL: Readonly<Record<ControlCollection, string>> = {
   tenant: 'SELECT id, name, status FROM saas_rls.tenants WHERE id = $1 ORDER BY id LIMIT $2',
   projects: 'SELECT id, tenant_id, name, status FROM saas_rls.projects WHERE tenant_id = $1 ORDER BY id LIMIT $2',
   applications: 'SELECT id, tenant_id, project_id, name, status FROM saas_rls.applications WHERE tenant_id = $1 ORDER BY id LIMIT $2',
@@ -99,7 +100,7 @@ export async function readSignedScopedMetadata(
   const { scope, collection, signal } = request;
   const limit = request.limit ?? 50;
   if (!scope || !scopedIdentity(scope) ||
-      !Object.prototype.hasOwnProperty.call(SELECT_SQL, collection) ||
+      !Object.prototype.hasOwnProperty.call(CONTROL_READ_SELECT_SQL, collection) ||
       !Number.isSafeInteger(limit) || limit < 1 || limit > 100 || signal?.aborted) {
     throw new Error('Invalid scoped read');
   }
@@ -146,7 +147,7 @@ export async function readSignedScopedMetadata(
     // do not connect as a superuser or grant access to signing tables.
     await connection.query('SET LOCAL ROLE saas_rls_reader', []);
     if (signal?.aborted) throw new Error('Request cancelled');
-    const result = await connection.query(SELECT_SQL[collection], [scope.tenantId, limit]);
+    const result = await connection.query(CONTROL_READ_SELECT_SQL[collection], [scope.tenantId, limit]);
     if (signal?.aborted || !Array.isArray(result.rows) || result.rows.length > limit) {
       throw new Error('Invalid scoped database response');
     }

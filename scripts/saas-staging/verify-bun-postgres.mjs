@@ -8,6 +8,7 @@ import { SQL } from 'bun';
 import {
   createPinnedHmacScopeIssuer,
   readSignedScopedMetadata,
+  CONTROL_READ_SELECT_SQL,
 } from '../../src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts';
 
 const expected = process.env.SAAS_EPHEMERAL_DRIVER_CI === 'true' &&
@@ -46,6 +47,7 @@ function nativeSql(max) {
   });
 }
 
+const SELECT_ALLOWLIST = new Set(Object.values(CONTROL_READ_SELECT_SQL));
 const FIXED = new Set([
   'BEGIN', 'COMMIT', 'ROLLBACK',
   'SELECT txid_current()::text AS transaction_id',
@@ -58,9 +60,7 @@ function canExecuteSql(sql, params) {
     return (sql === 'SELECT set_config($1::text, $2::text, true)')
       ? params.length === 2 : params.length === 0;
   }
-  return sql.startsWith('SELECT id, ') &&
-    sql.includes(' FROM saas_rls.') &&
-    sql.endsWith(' ORDER BY id LIMIT $2') && params.length === 2;
+  return SELECT_ALLOWLIST.has(sql) && params.length === 2;
 }
 
 function createBoundedDriver(sql) {
@@ -116,13 +116,15 @@ function read(pool, actorId, tenantId, collection, options = {}) {
       correlationId: 'ci-isolated-driver' },
     collection,
     limit: options.limit ?? 20,
-    signal: options.signal,
+    signal: options.signal ?? AbortSignal.timeout(15000),
   });
 }
 
+console.info('STEP: creating native PostgreSQL client with max=2');
 const dbPool = nativeSql(2);
 const driver = createBoundedDriver(dbPool);
 try {
+  console.info('STEP: testing non-superuser runner identity');
   const identity = await dbPool.unsafe(
     'SELECT current_user::text AS db_user, session_user::text AS login_user'
   );
@@ -142,7 +144,9 @@ try {
       ? read(driver, 'actor-north', 'demo-north', 'projects')
       : read(driver, 'actor-orbit', 'demo-orbit', 'projects')
   );
+  console.info('STEP: starting 12 concurrent North/Orbit reads');
   const data = await Promise.all(tasks);
+  console.info('STEP: 12 concurrent tenant reads completed');
   for (let i = 0; i < data.length; i += 1) {
     assert.deepEqual(
       data[i].map(row => row.id),
@@ -180,6 +184,7 @@ try {
 
 // Force max=1 to prove that a physically REUSED connection does not retain
 // SET LOCAL ROLE, actor/tenant GUCs or a previous signed transaction.
+console.info('STEP: checking pool reuse with max=1');
 const reuseDb = nativeSql(1);
 const reuseDriver = createBoundedDriver(reuseDb);
 try {
@@ -215,6 +220,7 @@ try {
 
 // A failed source and aborted query are fail-closed. The affected reserved
 // connection is DESTROYED, never released for a different tenant.
+console.info('STEP: checking forced discard of reserved connection');
 const errorDb = nativeSql(1);
 const errorDriver = createBoundedDriver(errorDb);
 try {
