@@ -40,7 +40,7 @@ import {
 } from '@/stores';
 import { AUTH_FILES_CHANGED_EVENT } from '@/features/authFiles/authFilesEvents';
 import { SAAS_BLUEPRINT_DEMO_ENABLED } from '@/features/saasBlueprint/demo/featureFlag';
-import { getSaasDemoCopy } from '@/features/saasBlueprint/demo/demoCopy';
+import { getSaasDemoNavigation } from '@/features/saasBlueprint/demo/demoNavigation';
 import {
   collectPluginResourceEntries,
   PLUGIN_RESOURCES_REFRESH_EVENT,
@@ -322,7 +322,7 @@ export function MainLayout() {
   const theme = useThemeStore((state) => state.theme);
   const setTheme = useThemeStore((state) => state.setTheme);
   const language = useLanguageStore((state) => state.language);
-  const saasDemoCopy = getSaasDemoCopy(language);
+  const saasDemoCopy = SAAS_BLUEPRINT_DEMO_ENABLED ? getSaasDemoNavigation(language) : null;
   const setLanguage = useLanguageStore((state) => state.setLanguage);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -604,11 +604,11 @@ export function MainLayout() {
     ...(SAAS_BLUEPRINT_DEMO_ENABLED
       ? [{
           id: 'saas-demo',
-          label: saasDemoCopy.navGroup,
+          label: saasDemoCopy?.navGroup || 'SaaS',
           items: [{
             path: '/saas-demo',
-            label: saasDemoCopy.navItem,
-            meta: saasDemoCopy.demoBadge,
+            label: saasDemoCopy?.navItem || 'Clients & connections',
+            meta: saasDemoCopy?.demoBadge || 'Synthetic data',
             icon: sidebarIcons.aiProviders,
           }],
         }]
