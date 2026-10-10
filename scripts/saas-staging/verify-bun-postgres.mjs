@@ -22,10 +22,13 @@ if (!expected) {
 }
 
 const keyHex = process.env.SAAS_EPHEMERAL_SCOPE_KEY_HEX;
-if (typeof keyHex !== 'string' || !/^[0-9a-f]{64}$/.test(keyHex)) {
-  throw new Error('Synthetic HMAC key missing or invalid');
+const databasePassword = process.env.SAAS_EPHEMERAL_DB_PASSWORD;
+if (typeof keyHex !== 'string' || !/^[0-9a-f]{64}$/.test(keyHex) ||
+    typeof databasePassword !== 'string' || !/^[0-9a-f]{48}$/.test(databasePassword)) {
+  throw new Error('Ephemeral CI key or random database password missing');
 }
 delete process.env.SAAS_EPHEMERAL_SCOPE_KEY_HEX;
+delete process.env.SAAS_EPHEMERAL_DB_PASSWORD;
 
 const secret = Uint8Array.from(Buffer.from(keyHex, 'hex'));
 const cryptoKey = await crypto.subtle.importKey(
@@ -41,7 +44,7 @@ function nativeSql(max) {
     hostname: '127.0.0.1', port: 5432,
     database: 'saas_ephemeral_test',
     username: 'saas_ci_runner',
-    password: 'ci_ephemeral_runner_only',
+    password: databasePassword,
     max, connectionTimeout: 5, idleTimeout: 5,
     prepare: false, tls: false,
   });
@@ -66,10 +69,16 @@ function canExecuteSql(sql, params) {
 function createBoundedDriver(sql) {
   let discarded = 0;
   let completed = 0;
+  let poisoned = false;
   return {
-    stats: () => ({ discarded, completed }),
+    stats: () => ({ discarded, completed, poisoned }),
     async connect(signal) {
+      if (poisoned) throw new Error('Ephemeral pool already destroyed');
       const reserved = await sql.reserve(signal ? { signal } : undefined);
+      if (poisoned) {
+        reserved.release();
+        throw new Error('Ephemeral pool already destroyed');
+      }
       let released = false;
       return {
         async query(statement, params) {
@@ -96,18 +105,15 @@ function createBoundedDriver(sql) {
           released = true;
           if (discard) {
             discarded += 1;
-            // Bun ReservedSQL has no release(true) signature. Closing the
-            // reserved connection is required; NEVER put failed contexts
-            // back into the pool via release().
-            try {
-              await reserved.close({ timeout: 0 });
-            } finally {
-              // A closed reserved handle still owns a pool reservation in
-              // Bun 1.3.14; release that reservation AFTER destroying it.
-              // Releasing before close could expose dirty state to another
-              // tenant. A new connection is required for any later read.
-              reserved.release();
-            }
+            // Bun 1.3.14 cannot reliably close a ReservedSQL and then
+            // close its pool: the shutdown stalls even after release().
+            // Fail CLOSED by invalidating the *entire test-only pool*.
+            // No further connect() is allowed on this adapter, so released
+            // state cannot be used by another tenant. Production must use
+            // a driver with a documented atomic discard(connection).
+            poisoned = true;
+            reserved.release();
+            await sql.close({ timeout: 0 });
           } else {
             completed += 1;
             reserved.release();
@@ -238,9 +244,13 @@ try {
   await invalidRole.query('ROLLBACK', []);
   await invalidRole.release(true);
   assert.equal(errorDriver.stats().discarded, 1);
-  console.info('PASS: native driver supports forced discard of reserved connection');
+  assert.equal(errorDriver.stats().poisoned, true);
+  await assert.rejects(errorDriver.connect());
+  console.info('PASS: failed reservation poisons and closes entire staging pool');
 } finally {
-  await errorDb.close({ timeout: 0 });
+  if (!errorDriver.stats().poisoned) {
+    await errorDb.close({ timeout: 0 });
+  }
 }
 
 console.info('PASS: stage 2F genuine Bun PostgreSQL driver integration (ephemeral database only)');

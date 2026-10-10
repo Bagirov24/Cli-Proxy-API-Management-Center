@@ -2,6 +2,7 @@
 -- Only for the disposable GitHub Actions PostgreSQL database.
 -- The runner is never a superuser and has neither ownership nor LOGIN access
 -- to the private membership, grant and signer tables.
+BEGIN;
 DO $role$
 BEGIN
   IF current_database() <> 'saas_ephemeral_test' THEN
@@ -10,10 +11,12 @@ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'saas_ci_runner') THEN
     RAISE EXCEPTION 'Expected a fresh ephemeral role';
   END IF;
-  CREATE ROLE saas_ci_runner LOGIN NOINHERIT NOBYPASSRLS
-    PASSWORD 'ci_ephemeral_runner_only';
+  CREATE ROLE saas_ci_runner LOGIN NOINHERIT NOBYPASSRLS;
 END
 $role$;
+-- psql quotes this value as a SQL literal. CI generates random hex and
+-- passes it only to this disposable database/bootstrap process.
+ALTER ROLE saas_ci_runner PASSWORD :'ephemeral_password';
 GRANT saas_rls_reader TO saas_ci_runner;
 ALTER ROLE saas_ci_runner SET statement_timeout = '3000ms';
 
@@ -26,6 +29,7 @@ SELECT saas_rls_test.assert_true(
   AND NOT has_table_privilege('saas_ci_runner', 'saas_rls_private.scope_signers', 'SELECT'),
   'runner must be least-privileged and have no signing secrets'
 );
+COMMIT;
 
 BEGIN;
 INSERT INTO saas_rls.tenants(id, name, status) VALUES
