@@ -1,0 +1,53 @@
+name: API Gateway security review
+
+on:
+  push:
+    branches:
+      - api-gateway-security-review-20261010
+  pull_request:
+    branches:
+      - api-gateway
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Test standalone CPA credential policy
+        run: GO111MODULE=off go test -race ./integrations/api-gateway/guard/policy
+      - name: Build isolated gateway with pinned rate-limit module
+        run: docker build -f integrations/api-gateway/Dockerfile -t gateway-security-review .
+      - name: Validate Caddy modules and Caddyfile
+        run: |
+          set -eu
+          docker run --rm --entrypoint caddy gateway-security-review list-modules | grep -Fx http.handlers.rate_limit
+          docker run --rm --entrypoint caddy gateway-security-review list-modules | grep -Fx http.handlers.cpa_key_guard
+          docker run --rm --entrypoint caddy gateway-security-review adapt --config /etc/caddy/Caddyfile --adapter caddyfile --validate >/dev/null
+      - name: Black-box tests against isolated synthetic Core
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 integrations/api-gateway/review-tests/mock_core.py &
+          MOCK_PID=$!
+          trap 'docker rm -f gateway-review-running >/dev/null 2>&1 || true; kill "$MOCK_PID" 2>/dev/null || true' EXIT
+          for i in {1..20}; do
+            if curl -fsS http://127.0.0.1:8317/__stats >/dev/null; then break; fi
+            sleep 1
+          done
+          docker run -d --name gateway-review-running --network host --add-host cliproxyapi-core.railway.internal:127.0.0.1 -e EDGE_IP_RPM=2 gateway-security-review
+          for i in {1..20}; do
+            if curl -fsS http://127.0.0.1:8080/healthz >/dev/null; then break; fi
+            sleep 1
+          done
+          python3 integrations/api-gateway/review-tests/verify_gateway.py
+      - name: Check the review config contains no actual credentials or shared limit
+        run: |
+          set -eu
+          ! grep -Eq 'cpa_[A-Za-z0-9_-]{43}' integrations/api-gateway/Caddyfile
+          ! grep -Eq '^[[:space:]]*log_key[[:space:]]*$' integrations/api-gateway/Caddyfile
+          ! grep -Fq 'gateway_global' integrations/api-gateway/Caddyfile

@@ -1,5 +1,5 @@
 {
-    # Railway handles public HTTPS. Private Railway traffic uses WireGuard.
+    # Railway terminates public HTTPS; private Core traffic uses Railway networking.
     admin off
     auto_https off
     persist_config off
@@ -16,7 +16,7 @@
 }
 
 :8080 {
-    # No request-body or credential logging is configured.
+    # Never write request bodies or credential headers to an access log.
     header {
         -Server
         X-Content-Type-Options nosniff
@@ -31,49 +31,54 @@
         respond "ok" 200
     }
 
-    # Explicitly allowed OpenAI-compatible API endpoints, no prefix wildcards.
-    @api_post {
-        method POST
-        path /v1/chat/completions /v1/responses
-    }
-    handle @api_post {
-        # Covers regular chatbot traffic and many image-based requests.
-        # Increase deliberately for larger media workloads.
-        request_body {
-            max_size 16MiB
-        }
-        reverse_proxy http://cliproxyapi-core.railway.internal:8317 {
-            # Do not propagate potentially spoofed routing/method overrides.
-            header_up -Forwarded
-            header_up -X-Original-URL
-            header_up -X-Rewrite-URL
-            header_up -X-HTTP-Method-Override
-            transport http {
-                dial_timeout 5s
-                response_header_timeout 5m
+    # Only POST chat/responses and GET models are exposed.
+    @public_api `(method('POST') && path('/v1/chat/completions', '/v1/responses')) || (method('GET') && path('/v1/models'))`
+
+    # Authentication syntax is handled by compiled cpa_key_guard.
+    # Core still verifies key validity, model policy and per-key RPM.
+
+    handle @public_api {
+        # 'route' fixes handler ordering: rate limit -> reject malformed
+        # credentials -> size cap -> private reverse proxy. A rejected request
+        # cannot reach Core. The synthetic key used in CI is NEVER valid in Core.
+        route {
+            rate_limit {
+                zone gateway_per_ip {
+                    # Railway overwrites X-Real-IP at its public edge.
+                    # On PRIVATE ingress, this header is not trustworthy.
+                    key {http.request.header.X-Real-IP}
+                    window 1m
+                    events {$EDGE_IP_RPM:180}
+                    ipv6_prefix 64
+                }
+                # Avoid per-IP label cardinality in Prometheus.
+                disable_metrics
             }
-            # Caddy flushes SSE automatically; no buffering or POST retries.
+
+            cpa_key_guard
+
+            request_body {
+                max_size 16MiB
+            }
+            reverse_proxy http://cliproxyapi-core.railway.internal:8317 {
+                header_up -Forwarded
+                header_up -X-Api-Key
+                header_up -Api-Key
+                header_up -X-Goog-Api-Key
+                header_up -X-Openai-Api-Key
+                header_up -Proxy-Authorization
+                header_up -X-Original-URL
+                header_up -X-Rewrite-URL
+                header_up -X-HTTP-Method-Override
+                transport http {
+                    dial_timeout 5s
+                    response_header_timeout 5m
+                }
+                # SSE must be streamed; no buffering, no POST retries.
+            }
         }
     }
 
-    @api_models {
-        method GET
-        path /v1/models
-    }
-    handle @api_models {
-        reverse_proxy http://cliproxyapi-core.railway.internal:8317 {
-            header_up -Forwarded
-            header_up -X-Original-URL
-            header_up -X-Rewrite-URL
-            header_up -X-HTTP-Method-Override
-            transport http {
-                dial_timeout 5s
-                response_header_timeout 5m
-            }
-        }
-    }
-
-    # Everything else, especially management and plugin endpoints, is denied.
     handle {
         respond "Not Found" 404
     }
