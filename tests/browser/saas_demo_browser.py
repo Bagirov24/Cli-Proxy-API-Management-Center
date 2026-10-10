@@ -151,6 +151,10 @@ def check_tenants_search_wizard(page: Page, language: str, case_name: str) -> No
     ensure("1/4" in visible_text(page), "Wizard did not restart")
     screenshot(page, case_name + "-accounts.png")
     audit_accessibility(page, case_name, "accounts")
+    # Explicit hover check: a previous dark-theme regression reached only
+    # 2.58:1 text contrast while the button was hovered.
+    page.get_by_role("button", name=("Далее" if ru else "Next"), exact=True).hover()
+    audit_accessibility(page, case_name, "accounts-hover")
 
     # A tenant change must reset the tab/search and not display foreign metadata.
     search.fill("account-north")
@@ -296,7 +300,7 @@ def run_case(browser, case: tuple[str, int, int, str, str, str]) -> dict:
 
         ensure(not js_errors, f"{name}: browser JS errors: {js_errors}")
         ensure(not outbound, f"{name}: synthetic preview made external HTTP requests: {outbound}")
-        return {"name": name, "status": "passed", "axe_wcag_views": 5,
+        return {"name": name, "status": "passed", "axe_wcag_views": 6,
                 "locale": language,
                 "theme": scheme, "width": width, "reduced_motion": motion}
     except Exception:

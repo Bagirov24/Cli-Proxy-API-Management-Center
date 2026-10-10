@@ -612,8 +612,11 @@
   border: 1px solid transparent;
 
   &:hover {
-    background: var(--primary-active);
-    color: var(--primary-contrast);
+    // Use the same contrast-safe foreground/background pairing as the normal
+    // state. --primary-active + --primary-contrast failed 4.5:1 in dark mode.
+    background: var(--text-primary);
+    color: var(--bg-secondary);
+    border-color: var(--border-hover);
   }
 }
 
