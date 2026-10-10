@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - api-gateway-security-review-20261010
+  pull_request:
+    branches:
+      - api-gateway
   workflow_dispatch:
 
 permissions:
@@ -15,11 +18,14 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Test standalone credential policy
+        run: GO111MODULE=off go test -race ./integrations/api-gateway/guard/policy
       - name: Build isolated gateway with pinned rate-limit module
         run: docker build -f integrations/api-gateway/Dockerfile -t gateway-security-review .
       - name: Validate module and Caddyfile
         run: |
           docker run --rm --entrypoint caddy gateway-security-review list-modules | grep -Fx http.handlers.rate_limit
+          docker run --rm --entrypoint caddy gateway-security-review list-modules | grep -Fx http.handlers.cpa_key_guard
           docker run --rm --entrypoint caddy gateway-security-review adapt --config /etc/caddy/Caddyfile --adapter caddyfile --validate
       - name: Black-box tests against synthetic Core only
         shell: bash
@@ -36,4 +42,6 @@ jobs:
       - name: Check no credentials are embedded in review config
         run: |
           ! grep -Eq 'cpa_[A-Za-z0-9_-]{43}' integrations/api-gateway/Caddyfile
-          ! grep -Eq '^[[:space:]]*log_key[[:space:]]*$' integrations/api-gateway/Caddyfile
+          ! grep -Eq '^[[:space:]]*log_key[[:space:]]*
+ integrations/api-gateway/Caddyfile
+          ! grep -Fq 'gateway_global' integrations/api-gateway/Caddyfile
