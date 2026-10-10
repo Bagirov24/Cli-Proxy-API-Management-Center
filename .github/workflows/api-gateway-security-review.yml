@@ -12,16 +12,28 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Build isolated gateway with pinned rate limit module
+      - name: Build isolated gateway with pinned rate-limit module
         run: docker build -f integrations/api-gateway/Dockerfile -t gateway-security-review .
-      - name: Validate Caddyfile and module in built image
+      - name: Validate module and Caddyfile
         run: |
           docker run --rm --entrypoint caddy gateway-security-review list-modules | grep -Fx http.handlers.rate_limit
           docker run --rm --entrypoint caddy gateway-security-review adapt --config /etc/caddy/Caddyfile --adapter caddyfile --validate
-      - name: Ensure review does not ship native credentials
+      - name: Black-box tests against synthetic Core only
+        shell: bash
         run: |
-          ! grep -qi 'cpa_[A-Za-z0-9_-]\{43\}' integrations/api-gateway/Caddyfile
-          ! grep -Eq '^\s*log_key\s*$' integrations/api-gateway/Caddyfile
+          set -eu
+          python3 integrations/api-gateway/review-tests/mock_core.py &
+          MOCK_PID=$!
+          trap 'docker rm -f gateway-review-running >/dev/null 2>&1 || true; kill "$MOCK_PID" 2>/dev/null || true' EXIT
+          sleep 2
+          docker run -d --name gateway-review-running --network host --add-host cliproxyapi-core.railway.internal:127.0.0.1 \
+            -e EDGE_IP_RPM=2 -e EDGE_GLOBAL_RPM=100 gateway-security-review
+          sleep 3
+          python3 integrations/api-gateway/review-tests/verify_gateway.py
+      - name: Check no credentials are embedded in review config
+        run: |
+          ! grep -Eq 'cpa_[A-Za-z0-9_-]{43}' integrations/api-gateway/Caddyfile
+          ! grep -Eq '^[[:space:]]*log_key[[:space:]]*$' integrations/api-gateway/Caddyfile
