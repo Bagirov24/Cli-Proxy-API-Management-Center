@@ -28,6 +28,7 @@
 | [CORE_METADATA_ADAPTER_V1.ru.md](CORE_METADATA_ADAPTER_V1.ru.md) | Интерфейс staging-only read metadata без раскрытия Core Management API |
 | [LOCAL_CONTROL_HTTP_V1.ru.md](LOCAL_CONTROL_HTTP_V1.ru.md) | Local-only HTTP слой и проверка короткоживущих синтетических сессий |
 | [STAGING_POSTGRES_RLS_V1.ru.md](STAGING_POSTGRES_RLS_V1.ru.md) | PostgreSQL 16 RLS pilot, временная база CI и доказательства изоляции |
+| [SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md) | Временный HMAC-контекст транзакции и adversarial SQL-тесты |
 
 ## Что добавлено в код
 
@@ -237,4 +238,25 @@ Session GUC `saas.actor_id` / `saas.tenant_id` — исключительно
 backend нужны OIDC, защищённый scope, параметризованные SQL, изоляция
 соединений в пуле, полный threat model и staging acceptance.
 Подробнее: [STAGING_POSTGRES_RLS_V1.ru.md](STAGING_POSTGRES_RLS_V1.ru.md).
+
+## Этап 2D — signed scope и единая политика routing (staging CI)
+
+Новая миграция `staging/saas-rls/002_signed_scope_pilot.sql`
+дополняет 001: для запросов к синтетической PostgreSQL базе требуется
+HMAC-подпись пары actor/tenant, срока действия и идентификатора
+**текущей транзакции**. Закрытый ключ создаётся случайно только в
+ephemeral CI, read-only роль не может получить его или вызвать
+привилегированную тестовую функцию выдачи подписи.
+
+Дополнительно тестируется подмена GUC, actor и tenant, изменение срока,
+повтор подписи в новой транзакции и отзыв grants. На уровне
+Control API read-only DTO маршруты с недоступным Pool
+**исключаются полностью** — так же, как их скрывает PostgreSQL RLS.
+`Account.egressProfileId` может оставаться `null`, если Egress скрыт.
+
+Это **не настоящий SaaS SSO**: подпись выдаётся только привилегированной
+тестовой функцией; авторизация пользователя, защищённый backend
+transaction scope, SQL injection review и интеграция Core ещё
+не реализованы. Ни React, ни Gateway/production не обращаются к базе.
+Подробности: [SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md).
 

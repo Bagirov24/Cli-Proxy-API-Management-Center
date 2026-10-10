@@ -179,3 +179,28 @@ RLS policy требует активного tenant-scoped actor membership, RBA
 Полные acceptance условия:
 [STAGING_POSTGRES_RLS_V1.ru.md](STAGING_POSTGRES_RLS_V1.ru.md).
 
+## D-027 — HMAC scope привязан к транзакции (CI ONLY, не OIDC)
+
+Первоначальные PostgreSQL GUC с actor/tenant легко подменяются.
+С миграцией 002 каждое RLS чтение требует валидную HMAC-SHA256
+подпись actor/tenant/expiry/transaction ID. Подпись не переносится
+в новую транзакцию. Случайный ключ и привилегированная тестовая
+функция подписания доступны **только в временной PostgreSQL CI**.
+Это техническая проверка defence in depth, но не готовая
+аутентификация: OIDC, safe signing, connection pool и SQL injection
+gates остаются PROPOSED. Не подключать production и не выдавать
+читателю произвольный SQL. См.
+[SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md).
+
+## D-028 — скрытие всего route при недоступном Pool
+
+Для read-only Control API принят fail-closed контракт:
+если Pool недоступен без отдельного grant, `RoutingBinding`
+**не возвращается**. Нельзя выдавать ни чужой `poolId`, ни
+частичную route-строку с `poolId: null`. SQL RLS и чистый
+TypeScript projector теперь совпадают по этому правилу,
+а runtime DTO sanitizer отвергает некорректный ответ адаптера.
+Демо-схема продолжает показывать нейтральный DENY с рекомендацией,
+но не идентификатор чужого ресурса. Статус — SIMULATED,
+реальный enforcement / data-plane — PROPOSED.
+

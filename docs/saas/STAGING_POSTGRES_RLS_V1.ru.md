@@ -78,16 +78,14 @@ connection hygiene (`SET LOCAL` в транзакции и сброс на relea
 приложениям, подключать браузер непосредственно к БД или размещать
 pilot в production.
 
-## Отличие от Control API DTO
+## Согласованный read-only RoutingBinding (этап 2D)
 
-Контракт read-only `readSyntheticTenantCollection` маскирует
-`RoutingBinding.poolId` как `null`, если pool невидим.
-На SQL pilot уровне роут с недоступным pool **скрывается целиком**,
-чтобы даже сырой SELECT не выдал чужой pool ID.
-Будущие SQL views/adapter должны выровнять поведение, а также строго
-контролировать значения `Account.egressProfileId` и `Pool.accountIds`;
-база этого этапа не хранит credential-related поля и не является
-полной доменной схемой.
+SQL RLS скрывает всю строку маршрута, если pool недоступен.
+С этапа 2D `readSyntheticTenantCollection` тоже **полностью исключает**
+этот route вместо `poolId: null`. HTTP transport отвергает
+некорректный частичный route. При этом Account.egressProfileId
+может быть null и Pool.accountIds фильтруются независимо;
+база не хранит секреты и не является полной доменной схемой.
 
 Не реализованы: реальный API adapter, SSO, secrets/Vault, tenant-aware
 cache, полноценные миграции и backup/restore, audit trail, pagination,
@@ -97,3 +95,18 @@ CPA scheduler и VPN. Всё это остаётся **PROPOSED/STAGING**.
 См. [CONTROL_API_V1.ru.md](CONTROL_API_V1.ru.md),
 [AUTHZ_RBAC_V1.ru.md](AUTHZ_RBAC_V1.ru.md),
 [LOCAL_CONTROL_HTTP_V1.ru.md](LOCAL_CONTROL_HTTP_V1.ru.md).
+
+## Миграция 002 (подписанный тестовый контекст)
+
+Описание выше относится к исходной миграции **001**. GitHub Actions
+дополнительно последовательно применяет `002_signed_scope_pilot.sql`,
+затем проверяет подмену произвольных session GUC, срока жизни,
+actor/tenant и повтор подписи за пределами транзакции.
+В 002 чтение прежних `saas.actor_id`/`saas.tenant_id`
+больше не предоставляет права без HMAC подлинного scope.
+Привилегированный тестовый issuer не подключён к production.
+
+Важно: защита только в глубину. OIDC, параметризованные запросы,
+connection pool и запрет произвольного SQL обязательны до staging.
+См. [SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md).
+

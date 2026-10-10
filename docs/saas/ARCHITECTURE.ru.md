@@ -362,9 +362,9 @@ PostgreSQL/RLS, mTLS, ограничение по сети и аудит. Сло
 каждый независимый grant и срок истечения по часам PostgreSQL.
 Связи Pool→Account / Account→Egress видны только после разрешения
 **обоих** объектов. Native Core key bindings скрыты; route с недоступным
-пулом в пилотной базе скрывается целиком (в отличие от `null` pool ID
-в чистом `readSyntheticTenantCollection`). API adapter пока не
-унифицирует эти два представления.
+пулом целиком отсутствует и в SQL, и в чистом
+`readSyntheticTenantCollection`. Не выдаётся даже `poolId: null`
+в routing DTO.
 
 **Критичная граница:** session-specific PostgreSQL custom GUC могут
 быть установлены SQL-клиентом. RLS с такими параметрами — только
@@ -374,4 +374,22 @@ PostgreSQL/RLS, mTLS, ограничение по сети и аудит. Сло
 SQL миграцию запрещено применять на production. Тесты доступны
 только в временном PostgreSQL GitHub Actions.
 См. [STAGING_POSTGRES_RLS_V1.ru.md](STAGING_POSTGRES_RLS_V1.ru.md).
+
+## 15. Этап 2D — signed transaction scope и fail-closed Routing DTO
+
+`002_signed_scope_pilot.sql` после миграции 001 делает SQL-политики
+зависимыми от HMAC-SHA256, связывающего actor/tenant, expiry и
+PostgreSQL transaction ID. Ключ создаётся только в ephemeral CI,
+privileged signer не исполняется reader-ролью. Поэтому простое
+`SET saas.scope_actor` либо изменение старых
+`saas.actor_id` / `saas.tenant_id` не расширяет read-scope.
+Скопированный MAC от другой транзакции отклоняется.
+
+Настоящая SaaS authentication и защищённое назначение scope не
+разработаны, и произвольный SQL по-прежнему запрещён.
+Pilot **не интегрирован** ни с локальным HTTP handler, ни с Core.
+Control API синтетический read-only projector теперь **исключает
+целиком RoutingBinding**, если pool без grant. `safeTransport`
+отвергает route с `poolId: null`.
+[SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md).
 

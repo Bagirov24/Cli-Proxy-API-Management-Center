@@ -290,3 +290,25 @@ RBAC+RLS double enforcement, backup+restore dry run.
 **Не путать пилот с реализацией SaaS БД:** реальная база/RLS, OIDC,
 cache invalidation и серверная интеграция остаются **PROPOSED**.
 
+## Этап 2D — подписанный scoped SQL + контракты (CI VERIFIED)
+
+- [x] Ephemeral PG16: миграция `002_signed_scope_pilot.sql` поверх 001,
+      HMAC-SHA256 для actor/tenant/transaction ID/expiry, приватный
+      случайный ключ и запрет его чтения read ролью.
+- [x] Adversarial SQL: попытки подмены старых/новых GUC, чужого actor,
+      tenant, expiry и replay подписи из другой транзакции — DENY.
+- [x] Проверки RBAC, revoked membership, suspended tenant, grants
+      account/pool/egress и hiding of forbidden routing references.
+- [x] Pure `readSyntheticTenantCollection`, API DTO и runtime transport:
+      полностью скрывают route при отсутствии отдельного pool grant.
+- [x] Read-only backend остаётся изолированным от Core,
+      Railway production и настоящих credentials.
+- [ ] Настоящий issuer-verified OIDC, backend-owned transaction scope,
+      protection from arbitrary SQL, тесты SQL injection и очистка
+      connection pool после каждого запроса.
+- [ ] Вынесенная staging БД/миграции, полный аудит RLS,
+      key rotation, query performance и отдельная проверка security.
+- [ ] Реальный разрешённый Core read-only metadata adapter,
+      contract mapping, UX states/telemetry и неизменное fail-closed
+      для AI/egress data-plane.
+

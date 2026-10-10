@@ -73,9 +73,9 @@ Account **не** открывает Pool и Egress. Grant на Egress **не** �
   egressProfileId = null (не выдавать ID запрещённого профиля).
 - При доступном Pool с невидимыми Accounts:
   accountIds содержит только индивидуально разрешённые аккаунты.
-- При своём RoutingBinding на недоступный Pool:
-  poolId = null; статус и egressPolicy остаются синтетическими метаданными,
-  не разрешением выполнить реальный запрос.
+- При своём RoutingBinding на недоступный Pool: правило исключается
+  из tenant-scoped результата целиком. Это не разрешение выполнить
+  реальный запрос, а защита от раскрытия ссылки на чужой Pool.
 - Core-native access keys, OAuth tokens, Vault handles, session cookies,
   proxy userinfo/password, VPN private config, raw prompts и payload никогда
   не экспортируются.
@@ -141,4 +141,19 @@ grants, auditor, tenant switch и отказ на suspended tenant.
 `SET` может изменить их. Настоящая защита требует backend OIDC,
 защищённых prepared queries, transaction pool isolation и threat review.
 Описание: [STAGING_POSTGRES_RLS_V1.ru.md](STAGING_POSTGRES_RLS_V1.ru.md).
+
+## Итерация 2D — криптографически связанный SQL scope, только CI
+
+`saas_rls_private.scope_verified()` проверяет HMAC-SHA256 над
+actor, tenant, сроком действия и PostgreSQL transaction ID.
+Неподписанные или подменённые GUC больше не являются допустимым
+контекстом SQL RLS. Ключ хранится только в приватной тестовой таблице
+в ephemeral CI и никогда не выдаётся `saas_rls_reader`.
+
+Этот эксперимент **не** удостоверяет личность пользователя: подпись
+в тесте создаётся привилегированным тестовым issuer, а настоящего
+OIDC issuer verification и защищённого backend issuance ещё нет.
+Произвольный SQL внутри **уже доверенно подписанного** scope также
+не становится безопасным. Полное описание угроз:
+[SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md).
 

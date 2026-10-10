@@ -125,3 +125,12 @@ staging source и проверенного server-side tenant scope внедря
 Core metadata adapter нельзя.
 [STAGING_POSTGRES_RLS_V1.ru.md](STAGING_POSTGRES_RLS_V1.ru.md).
 
+## Согласование прав и SQL-scope (этап 2D)
+
+Будущий read-only adapter не должен отдавать `RoutingBinding`,
+если Pool отдельно не разрешён. HTTP sanitizer отвергает
+route c `poolId: null`. Подписанный SQL scope уже тестируется
+в ephemeral PG16, но **нет** настоящего OIDC/auth connector,
+миграций SaaS DB и metadata source Core. Adapter остается SPEC.
+[SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md).
+

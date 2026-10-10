@@ -30,7 +30,7 @@ Railway, OAuth или UI-маршрутизации. Применение пол
 | GET /control-api/v1/tenants/{tenantId}/metadata/accounts | Собственные/явно разрешённые аккаунты, метод авторизации и состояния | SPEC |
 | GET /control-api/v1/tenants/{tenantId}/metadata/pools | Собственные/разрешённые пулы, только отдельно доступные account IDs | SPEC |
 | GET /control-api/v1/tenants/{tenantId}/metadata/egress | Собственные/разрешённые egress, только валидированные публичные host:port labels | SPEC |
-| GET /control-api/v1/tenants/{tenantId}/metadata/routing | Правила своего приложения; непрозрачные или недоступные pool IDs = null | SPEC |
+| GET /control-api/v1/tenants/{tenantId}/metadata/routing | Правила собственного приложения только с отдельно доступным pool; чужие/недоступные правила исключены целиком | SPEC |
 
 Никаких POST/PATCH/PUT/DELETE, preview живых запросов, health probes,
 OAuth callbacks, raw Core credentials или реального enforcement на этом этапе.
@@ -85,7 +85,7 @@ OAuth callbacks, raw Core credentials или реального enforcement на
   server-verified grants. Grant на пул не открывает аккаунты внутри.
 - Account.egressProfileId становится null, если egress невидим клиенту.
   Pool.accountIds фильтруются по отдельным правам на каждый аккаунт.
-  Routing.poolId скрывается, если пул недоступен.
+  RoutingBinding целиком исключается, если отдельного права на pool нет; `Routing.poolId` в возвращаемой строке всегда string.
 - Не копировать неизвестные поля из исходных объектов через object spread.
   Все DTO собирать через список разрешённых свойств.
 - source = synthetic-simulation для pure fixture. Значение
@@ -146,11 +146,18 @@ credentials, сети Core, OAuth, VPN или production management API.
 
 Пилот PostgreSQL RLS существует лишь как ephemeral SQL integration
 test и **не** обрабатывает реальные HTTP-запросы SaaS Control.
-Для недоступного пула он скрывает всю сырую routing-строку,
-тогда как TypeScript DTO пока маскирует pool ID значением null.
-Это сознательное более строгое поведение RLS прототипа.
-Перед интеграцией следует выбрать и зафиксировать единый API
-contract без утечки чужих refs. Никакой migration к Railway
+Для недоступного пула SQL скрывает всю сырую routing-строку.
+С итерации 2D TypeScript DTO делает то же самое, а HTTP runtime
+allowlist отвергает частичную route-строку с `poolId: null`.
+Контракт выровнен на fail-closed поведении без выдачи чужих refs. Никакой migration к Railway
 или Core storage не предусмотрено.
 [STAGING_POSTGRES_RLS_V1.ru.md](STAGING_POSTGRES_RLS_V1.ru.md).
+
+## Signed transaction-scope pilot (этап 2D)
+
+Вторая SQL миграция 002 экспериментально проверяет HMAC над
+actor/tenant/expiry/PostgreSQL transaction ID внутри ephemeral PG16.
+Она является дополнительным RLS acceptance gate, но **не**
+создаёт production authentication или Core metadata API.
+См. [SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md).
 
