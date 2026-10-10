@@ -350,3 +350,28 @@ PostgreSQL/RLS, mTLS, ограничение по сети и аудит. Сло
 синтетическим allow/deny. См.
 [LOCAL_CONTROL_HTTP_V1.ru.md](LOCAL_CONTROL_HTTP_V1.ru.md).
 
+## 14. Этап 2C — PostgreSQL RLS pilot только в CI (VERIFIED на фикстурах)
+
+Модульная архитектура B сохраняется. В экспериментальной схеме
+`saas_rls` SQL роли `saas_rls_reader` (NOLOGIN, NOBYPASSRLS,
+только SELECT) и `saas_rls_owner` (NOLOGIN, NOBYPASSRLS)
+отделяют read-only доступ от private `memberships` и `resource_grants`.
+
+Семь exposed таблиц включают `ENABLE/FORCE ROW LEVEL SECURITY`.
+Проверяются tenant-state, actor membership/RBAC, владелец ресурса,
+каждый независимый grant и срок истечения по часам PostgreSQL.
+Связи Pool→Account / Account→Egress видны только после разрешения
+**обоих** объектов. Native Core key bindings скрыты; route с недоступным
+пулом в пилотной базе скрывается целиком (в отличие от `null` pool ID
+в чистом `readSyntheticTenantCollection`). API adapter пока не
+унифицирует эти два представления.
+
+**Критичная граница:** session-specific PostgreSQL custom GUC могут
+быть установлены SQL-клиентом. RLS с такими параметрами — только
+защита в глубину после **верифицированного backend actor и безопасного
+назначения scope**, не защита от прямого произвольного SQL/инъекции.
+Серверный connection pool должен очищать scope между запросами.
+SQL миграцию запрещено применять на production. Тесты доступны
+только в временном PostgreSQL GitHub Actions.
+См. [STAGING_POSTGRES_RLS_V1.ru.md](STAGING_POSTGRES_RLS_V1.ru.md).
+

@@ -160,3 +160,22 @@ OIDC, RLS, audit, Core metadata adapter и runtime enforcement
 Документация:
 [LOCAL_CONTROL_HTTP_V1.ru.md](LOCAL_CONTROL_HTTP_V1.ru.md).
 
+## D-026 — PostgreSQL tenant RLS как дополнительная граница (staging-only)
+
+**Статус: VERIFIED только на синтетических SQL фикстурах / реальный
+backend PROPOSED.** Для архитектуры B принят принцип отдельной
+read-only роли без LOGIN/BYPASSRLS и строго разрешённого набора
+SELECT-таблиц. Приватные membership/grants недоступны напрямую;
+RLS policy требует активного tenant-scoped actor membership, RBAC,
+активный tenant и отдельные grants на `pool/account/egress`.
+Связи раскрываются только при двух самостоятельных разрешениях.
+
+В `saas_rls` использованы transaction-local session GUC, но они
+**не являются аутентифицированными claims** и могут быть подменены
+пользователем SQL-соединения. Использовать только после настоящей
+проверки актёра и строгой серверной привязки контекста; никогда не
+публиковать reader SQL endpoint. Поэтому SQL пилот не подключается
+к локальному HTTP handler и не выдаётся за production enforcement.
+Полные acceptance условия:
+[STAGING_POSTGRES_RLS_V1.ru.md](STAGING_POSTGRES_RLS_V1.ru.md).
+

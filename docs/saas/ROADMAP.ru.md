@@ -264,3 +264,29 @@ RBAC+RLS double enforcement, backup+restore dry run.
 - [ ] Подключение React UI к server data после отдельной security/UX
       приёмки. Не менять Core production и не объединять Draft PR.
 
+## Этап 2C — PostgreSQL/RLS staging-only pilot (SQL VERIFIED)
+
+- [x] `staging/saas-rls/001_readonly_pilot.sql`: идемпотентный
+      SQL-пилот, NOLOGIN/NOBYPASSRLS роли, FORCE RLS на семи таблицах.
+- [x] Закрытые `memberships/resource_grants`: read роль не может
+      читать их напрямую или менять metadata, только SELECT через RLS.
+- [x] Точные scope/RBAC/owner/grant/expiry проверки, отсутствие
+      неявного наследования pool→account и account→egress.
+- [x] SQL тесты: North/Orbit isolation, auditor, revoked/suspended,
+      wrong-owner/expired/disabled grants, native Core-key deny,
+      tenant switch без membership, migration replay.
+- [x] GitHub Actions изолированно поднимает временный PostgreSQL 16;
+      никаких Railway/production database connections.
+- [ ] **Staging backend integration:** реальный PostgreSQL datastore,
+      issuer-verified actor, защищённый transaction scope, transaction pool
+      reset, параметризованные запросы и SQL injection threat tests.
+- [ ] Полный доменный DDL, реальные grants migration/rollback,
+      RLS with policy fuzzing, audit, indexes, performance и backup/restore.
+- [ ] Разрешённый Core/CPA read-only metadata adapter, нормализация
+      неразрешённых routing pool references и UI integration.
+- [ ] Перепроверить все security/UX gates перед переносом на staging;
+      production и `custom-no-apikey-fun` не менять.
+
+**Не путать пилот с реализацией SaaS БД:** реальная база/RLS, OIDC,
+cache invalidation и серверная интеграция остаются **PROPOSED**.
+

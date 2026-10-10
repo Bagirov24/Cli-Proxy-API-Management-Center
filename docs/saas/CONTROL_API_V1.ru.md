@@ -142,3 +142,15 @@ credentials, сети Core, OAuth, VPN или production management API.
 новые значения `ControlReadError` pure projection.
 Подробнее: [LOCAL_CONTROL_HTTP_V1.ru.md](LOCAL_CONTROL_HTTP_V1.ru.md).
 
+## Примечание об экспериментальной базе (этап 2C)
+
+Пилот PostgreSQL RLS существует лишь как ephemeral SQL integration
+test и **не** обрабатывает реальные HTTP-запросы SaaS Control.
+Для недоступного пула он скрывает всю сырую routing-строку,
+тогда как TypeScript DTO пока маскирует pool ID значением null.
+Это сознательное более строгое поведение RLS прототипа.
+Перед интеграцией следует выбрать и зафиксировать единый API
+contract без утечки чужих refs. Никакой migration к Railway
+или Core storage не предусмотрено.
+[STAGING_POSTGRES_RLS_V1.ru.md](STAGING_POSTGRES_RLS_V1.ru.md).
+

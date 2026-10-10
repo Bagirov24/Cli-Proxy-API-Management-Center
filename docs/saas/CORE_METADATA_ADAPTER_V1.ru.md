@@ -115,3 +115,13 @@ read-only API methods, SQL tenant scoping и контрактные тесты
 на закреплённых версиях Core/CPA. Синтетический reader нельзя
 подменять реальным Core Management API или открывать наружу.
 
+## Этап 2C: RLS ещё не является Core adapter
+
+SQL схема `saas_rls` не подключена к SaaS HTTP handler,
+не считывает CLIProxyAPI/CPA metadata и не содержит OAuth или
+API credentials. Она используется только в SQL integration CI для
+проверки принципов tenant isolation. Без отдельно разрешённого
+staging source и проверенного server-side tenant scope внедрять
+Core metadata adapter нельзя.
+[STAGING_POSTGRES_RLS_V1.ru.md](STAGING_POSTGRES_RLS_V1.ru.md).
+

@@ -126,3 +126,19 @@ actor membership повторно проверяются до выдачи да�
 но не заменяет production OIDC и revoke/audit в БД.
 См. [LOCAL_CONTROL_HTTP_V1.ru.md](LOCAL_CONTROL_HTTP_V1.ru.md).
 
+## SQL acceptance pilot (итерация 2C, только CI)
+
+Модель ролей дополнительно проверена в PostgreSQL 16 с FORCE RLS
+на открытых read-only таблицах. Служебная роль не имеет LOGIN,
+BYPASSRLS, доступа к приватным memberships/grants и прав записи.
+Утечка чужих ресурсов по cross-tenant ссылке или по гранту
+неверного владельца блокируется. SQL тесты покрывают expired/revoked
+grants, auditor, tenant switch и отказ на suspended tenant.
+
+Тестовый tenant/actor scope задаётся через session GUC после
+условно подтверждённой сессии. **Нельзя принимать эти GUC как
+доказательство actor identity:** любое SQL-соединение с полномочием
+`SET` может изменить их. Настоящая защита требует backend OIDC,
+защищённых prepared queries, transaction pool isolation и threat review.
+Описание: [STAGING_POSTGRES_RLS_V1.ru.md](STAGING_POSTGRES_RLS_V1.ru.md).
+

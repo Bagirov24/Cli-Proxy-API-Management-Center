@@ -27,6 +27,7 @@
 | [AUTHZ_RBAC_V1.ru.md](AUTHZ_RBAC_V1.ru.md) | Роли, membership и независимые grants для pool/account/egress |
 | [CORE_METADATA_ADAPTER_V1.ru.md](CORE_METADATA_ADAPTER_V1.ru.md) | Интерфейс staging-only read metadata без раскрытия Core Management API |
 | [LOCAL_CONTROL_HTTP_V1.ru.md](LOCAL_CONTROL_HTTP_V1.ru.md) | Local-only HTTP слой и проверка короткоживущих синтетических сессий |
+| [STAGING_POSTGRES_RLS_V1.ru.md](STAGING_POSTGRES_RLS_V1.ru.md) | PostgreSQL 16 RLS pilot, временная база CI и доказательства изоляции |
 
 ## Что добавлено в код
 
@@ -217,4 +218,23 @@ PostgreSQL AuthZ. Документация запуска:
 feature flag остаётся прежним. Следующие серверные шаги требуют
 изолированного staging, OIDC provider, tenant RLS, audit и read-only Core
 metadata source contract.
+
+## Этап 2C — staging-only PostgreSQL RLS pilot (VERIFIED в ephemeral CI)
+
+Создана автономная SQL-миграция
+`staging/saas-rls/001_readonly_pilot.sql`, тест
+`tests/sql/saas_rls_v1.test.sql` и отдельный workflow с временным
+PostgreSQL 16. Реально проверяются tenant-scoping, активное membership
+и RBAC, независимые grants на пул/аккаунт/egress, RLS на семи таблицах,
+отзыв прав, невозможность читать приватные grants/actor memberships из
+read role, скрытие Core-native bindings и отсутствующих pool links.
+
+**Это не развернутый SaaS backend:** только фиктивная база CI, без
+Core/CPA, Docker/Railway deployment, реального SSO и secrets.
+Session GUC `saas.actor_id` / `saas.tenant_id` — исключительно
+контекст, заданный доверенным тестом. Он **может быть подменён SQL
+клиентом** и не должен рассматриваться как аутентификация. Для реального
+backend нужны OIDC, защищённый scope, параметризованные SQL, изоляция
+соединений в пуле, полный threat model и staging acceptance.
+Подробнее: [STAGING_POSTGRES_RLS_V1.ru.md](STAGING_POSTGRES_RLS_V1.ru.md).
 

@@ -328,3 +328,15 @@ SaaS UX/UI экран остаётся на `DEMO_SNAPSHOT`; изолирова�
 
 См. [LOCAL_CONTROL_HTTP_V1.ru.md](LOCAL_CONTROL_HTTP_V1.ru.md).
 
+## 13. RLS pilot не означает изменение UX/UI
+
+SQL слой этапа 2C работает **только в ephemeral PostgreSQL CI**
+и не меняет демо UI, feature flag, Router или `management.html`.
+Видимые данные остаются синтетическими, а схемы запросов не являются
+наблюдаемым live trace. Когда будет реализован настоящий безопасный
+SQL/metadata adapter, необходимо согласовать реакцию интерфейса
+на отзыв membership/grant, скрытый pool-route (в SQL pilot строка
+целиком не видна), `loading/stale/403/404/503` и отмену
+in-flight запроса при tenant switch. Сохраняются раздельные
+owner, access и network route с нейтральными отказами.
+
