@@ -15,7 +15,7 @@
 
 [English](README.md) · [简体中文](README_CN.md) · **Русский**
 
-[Быстрый старт](#быстрый-старт) · [Возможности](#возможности) · [Разработка](#разработка) · [Релизы](https://github.com/router-for-me/Cli-Proxy-API-Management-Center/releases)
+[Быстрый старт](#быстрый-старт) · [Возможности](#возможности) · [Системная архитектура](docs/SYSTEM_DESIGN_RU.md) · [Разработка](#разработка) · [Релизы](https://github.com/router-for-me/Cli-Proxy-API-Management-Center/releases)
 
 </div>
 
