@@ -1,21 +1,59 @@
 {
+    # Railway handles public HTTPS. Private Railway traffic uses WireGuard.
     admin off
     auto_https off
+    persist_config off
+
+    servers :8080 {
+        max_header_size 16KiB
+        timeouts {
+            read_header 10s
+            read_body_idle 30s
+            write_idle 10m
+            idle 2m
+        }
+    }
 }
 
 :8080 {
-    # Health check for Railway. This endpoint never reaches CLIProxyAPI.
-    handle /healthz {
+    # No request-body or credential logging is configured.
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        Cache-Control "no-store"
+    }
+
+    @health {
+        method GET
+        path /healthz
+    }
+    handle @health {
         respond "ok" 200
     }
 
-    # Minimal OpenAI-compatible API allowlist.
+    # Explicitly allowed OpenAI-compatible API endpoints, no prefix wildcards.
     @api_post {
         method POST
         path /v1/chat/completions /v1/responses
     }
     handle @api_post {
-        reverse_proxy http://cliproxyapi-core.railway.internal:8317
+        # Covers regular chatbot traffic and many image-based requests.
+        # Increase deliberately for larger media workloads.
+        request_body {
+            max_size 16MiB
+        }
+        reverse_proxy http://cliproxyapi-core.railway.internal:8317 {
+            # Do not propagate potentially spoofed routing/method overrides.
+            header_up -Forwarded
+            header_up -X-Original-URL
+            header_up -X-Rewrite-URL
+            header_up -X-HTTP-Method-Override
+            transport http {
+                dial_timeout 5s
+                response_header_timeout 5m
+            }
+            # Caddy flushes SSE automatically; no buffering or POST retries.
+        }
     }
 
     @api_models {
@@ -23,10 +61,19 @@
         path /v1/models
     }
     handle @api_models {
-        reverse_proxy http://cliproxyapi-core.railway.internal:8317
+        reverse_proxy http://cliproxyapi-core.railway.internal:8317 {
+            header_up -Forwarded
+            header_up -X-Original-URL
+            header_up -X-Rewrite-URL
+            header_up -X-HTTP-Method-Override
+            transport http {
+                dial_timeout 5s
+                response_header_timeout 5m
+            }
+        }
     }
 
-    # No management UI, plugin API, OAuth endpoints, or catch-all proxy.
+    # Everything else, especially management and plugin endpoints, is denied.
     handle {
         respond "Not Found" 404
     }
