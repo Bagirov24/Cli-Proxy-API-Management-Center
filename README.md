@@ -13,7 +13,7 @@ Manage providers, credentials, quotas, and logs — from a single HTML file.
 [![Single-file build](https://img.shields.io/badge/Build-single_HTML-0F766E?style=flat-square)](#deployment)
 [![License: MIT](https://img.shields.io/badge/License-MIT-64748B?style=flat-square)](LICENSE)
 
-**English** · [简体中文](README_CN.md)
+**English** · [简体中文](README_CN.md) · [Русский](README_RU.md)
 
 [Get started](#quick-start) · [Features](#features) · [Development](#development) · [Releases](https://github.com/router-for-me/Cli-Proxy-API-Management-Center/releases)
 
