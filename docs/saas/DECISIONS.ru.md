@@ -228,3 +228,19 @@ SQL test подтверждает, что SQL-подобное значение 
 не заменяет защищённого OIDC issuer и не даёт доступ к Core.
 [IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md).
 
+## D-031 — Сначала native Bun.SQL, строго в CI (staging-only)
+
+Не добавляем второй npm Postgres driver в обычный Management
+Center: Bun.SQL уже входит в закреплённый Bun 1.3.14. Изолированный
+тестовый adapter реализует `ScopedSqlPool`, привязывает все команды
+к одному reserved connection, допускает только точные SQL шаблоны
+и **передаёт значения через параметры**. При отмене, неудачной
+транзакции либо повреждённом соединении требуется close/discard,
+а не reuse в другом tenant. Используются ephemeral non-superuser
+role и HMAC key из временной DB; запрет запуска в Railway/production.
+
+Пилот не объявляет выбранный Bun.SQL готовым production pool:
+наблюдаемое поведение ошибок, query cancellation, max=2
+конкуренции и connection cleanup должно пройти CI и review.
+См. [BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md).
+

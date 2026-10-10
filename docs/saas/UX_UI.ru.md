@@ -366,3 +366,14 @@ cache, отмену stale запросов и различие `SIMULATED`/live 
 Нельзя показывать роли из неподтверждённых JWT claim.
 [IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md).
 
+## 16. Этап 2F — SQL driver не меняет demo-экран
+
+PostgreSQL-подключение доступно только на ephemeral GitHub Actions
+runner, React не импортирует Bun.SQL и не обращается к SQL script.
+Нет живых аккаунтов, трафика, VPN или счётчика стоимости.
+В будущей staging UI-интеграции при отмене tenant-switch результат
+должен быть отвергнут до повторного отображения, а ошибки SQL
+сопоставляться только с безопасным `503`, не с текстом driver
+exception. API provenance сохраняет `SIMULATED` до реального
+разрешённого backend source.
+

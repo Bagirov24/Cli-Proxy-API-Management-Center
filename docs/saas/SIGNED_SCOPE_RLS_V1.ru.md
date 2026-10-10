@@ -128,3 +128,13 @@ No driver, no real OIDC, no production DB. SQL CI отдельно
 проверяет hostile `PREPARE` параметр и cleanup того же соединения.
 [IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md).
 
+## Этап 2F — синтетический HMAC передаётся реальному DB-драйверу в CI
+
+Временный CI superuser отдельно извлекает ephemeral HMAC fixture
+из закрытой PostgreSQL таблицы, кратковременно передаёт test driver
+процессу и не публикует значение в логах. Сам read-only
+`saas_ci_runner` **не может** читать эту таблицу.
+`readSignedScopedMetadata` подписывает txid, RLS перепроверяет
+MAC в DB. Для production такой механизм передачи секрета неприемлем
+без отдельного signer service, key rotation и security review.
+

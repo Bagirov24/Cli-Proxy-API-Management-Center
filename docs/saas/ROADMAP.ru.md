@@ -337,3 +337,24 @@ cache invalidation и серверная интеграция остаются *
 - [ ] UX интеграция со staging с явным read provenance и
       ошибками/ожиданием, после security review и отдельных согласований.
 
+## Этап 2F — ephemeral PostgreSQL driver acceptance
+
+- [x] **Код:** Bun.SQL wrapper, `reserve`/bound parameters/COMMIT/
+      ROLLBACK, exact SELECT templates, cancellation/discard, без
+      изменений production dependency graph.
+- [x] **Код:** одноразовые SQL fixtures и отдельная NOINHERIT/
+      NOBYPASSRLS login роль `saas_ci_runner` вместо superuser.
+- [x] **Тест-план:** параллельные North/Orbit reads, отдельные
+      platform grants, CPA-only bindings, роль auditor, deny при
+      отсутствии membership, GUC reset на повторном соединении.
+- [x] **VERIFIED в ephemeral CI:** настоящий Bun.SQL успешно
+      выполнил 12 параллельных tenant reads, RLS grants, cleanup
+      GUC/role между транзакциями и fail-closed pool shutdown.
+      [Workflow #38086896433](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38086896433).
+      Это не production драйвер и не доступ к Core.
+- [ ] **PROPOSED:** реальный SSO/OIDC, DB driver service, production
+      TLS/pool, signer key rotation/revocation, audit и нагрузочные
+      проверки до staging deployment.
+- [ ] **PROPOSED:** официальный Core/CPA metadata adapter,
+      backpressure, trace, egress enforcement, billing.
+

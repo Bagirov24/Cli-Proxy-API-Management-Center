@@ -121,3 +121,13 @@ ROLLBACK не видит signed-scope claims предыдущей транзак
 защиты от всех классов SQL injection и concurrency в будущем драйвере.
 [IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md).
 
+## Этап 2F — драйверный smoke на реальных SQL-соединениях CI
+
+После миграций 001/002 и SQL acceptance CI создаёт ещё один
+**синтетический** набор North/Orbit, ограниченную login-роль
+`saas_ci_runner` и короткоживущий HMAC context для native Bun.SQL.
+Проверяет read-only RLS **через реальный PostgreSQL wire connection**,
+конкурентные tenant-scoped запросы и отсутствие переноса GUC между
+транзакциями. Фактическое прохождение фиксируется отдельным workflow
+при финальном SHA. Защищённая staging DB/SSO и Core API не задействованы.
+

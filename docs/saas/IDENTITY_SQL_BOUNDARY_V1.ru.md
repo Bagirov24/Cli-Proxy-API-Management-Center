@@ -122,3 +122,16 @@ SQL script запускается после SQL-тестов миграций 0
 [CONTROL_API_V1.ru.md](CONTROL_API_V1.ru.md),
 [SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md) и
 [CORE_METADATA_ADAPTER_V1.ru.md](CORE_METADATA_ADAPTER_V1.ru.md).
+
+## Дополнение 2F — actual Bun SQL transport в временном CI
+
+`ScopedSqlPool.connect(signal)` теперь передаёт abort во время
+ожидания соединения. Экспортированный `CONTROL_READ_SELECT_SQL`
+позволяет тестовому adapter сравнивать SQL с точными
+server-owned шаблонами, а не с произвольными строками пользователя.
+Функция повторно проверяет cancellation после COMMIT, перед выдачей
+данных. Новый скрипт выполняет этот интерфейс на реальном PostgreSQL
+через native Bun.SQL в одноразовом GitHub Actions job; продакшн
+драйвер, TLS, OIDC и Core metadata adapter не появились.
+См. [BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md).
+

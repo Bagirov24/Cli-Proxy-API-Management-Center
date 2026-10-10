@@ -30,6 +30,7 @@
 | [STAGING_POSTGRES_RLS_V1.ru.md](STAGING_POSTGRES_RLS_V1.ru.md) | PostgreSQL 16 RLS pilot, временная база CI и доказательства изоляции |
 | [SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md) | Временный HMAC-контекст транзакции и adversarial SQL-тесты |
 | [IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md) | Этап 2E: закреплённые JWT access-token ключи, SQL read boundary и проверки SQL injection |
+| [BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md) | Этап 2F: Bun PostgreSQL native SQL на временной базе, конкуренция и повторное использование соединений |
 
 ## Что добавлено в код
 
@@ -284,4 +285,25 @@ SQL-подобные параметры, RLS и отсутствие перен�
 полноценный tenant DB, connection-pool driver, access audit,
 разрешённый metadata adapter Core и все live traffic функции.
 См. [IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md).
+
+## Этап 2F — native PostgreSQL driver integration (EPHEMERAL CI)
+
+Без изменения архитектуры B добавлен отдельный **staging-only**
+`scripts/saas-staging/verify-bun-postgres.mjs`. Он вызывает уже
+изолированный `readSignedScopedMetadata` через настоящий Bun.SQL
+(`reserve`, фиксированный SELECT, bound values, transaction-local
+scope, commit/rollback и release/discard). Скрипт не импортируется
+в React и запускается только внутри GitHub Actions с явным CI guard.
+
+Временная база имеет login-роль `saas_ci_runner` без SUPERUSER,
+BYPASSRLS, прямого доступа к memberships/grants/private HMAC key
+и без write привилегий. Используются только вымышленные North/Orbit.
+Обычная сборка без SaaS флага не увеличивается.
+
+**Не развёрнут реальный SaaS database backend.** OIDC/login,
+независимая выдача signing scope, production DB pool/TLS,
+audit ledger, реальный Core metadata adapter и enforcement —
+`SPEC/PROPOSED`. До успешного финального GitHub Actions нельзя
+помечать интеграционный driver acceptance как VERIFIED.
+См. [BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md).
 

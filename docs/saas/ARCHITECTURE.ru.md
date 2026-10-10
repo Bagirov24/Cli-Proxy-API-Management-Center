@@ -416,3 +416,22 @@ backend должен отдельно проверять trust assumptions,
 настроить pool reset и провести staging pentest.
 [IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md).
 
+## 17. Этап 2F — реальный SQL transport на изолированном PG16
+
+Исполняемый Bun.SQL adapter находится только в
+`scripts/saas-staging/verify-bun-postgres.mjs`. Он реализует
+`ScopedSqlPool` через зарезервированное соединение, а
+`signedSqlBoundary.ts` передаёт `AbortSignal` в ожидание pool
+и проверяет отмену после COMMIT перед отправкой результата.
+Точные допустимые SQL-строки экспортированы как
+`CONTROL_READ_SELECT_SQL` и перепроверяются тестовым адаптером.
+
+Схема остаётся server-owned: trusted identity (будущий SSO) →
+tenant membership/RBAC → signed scope → SQL RLS → whitelist DTO.
+В pilot нет настоящего SSO, а ephemeral HMAC key доступен только
+доверенному CI процессу. Нет публичного интерфейса или доступа
+к Railway/Core. В production необходим driver с доказанным
+destruction path для повреждённой connection, тесты pool starvation,
+cancellation, TLS/mTLS и key rotation. См.
+[BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md).
+
