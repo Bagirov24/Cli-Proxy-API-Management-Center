@@ -110,3 +110,14 @@ actor/tenant и повтор подписи за пределами транза
 connection pool и запрет произвольного SQL обязательны до staging.
 См. [SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md).
 
+## Этап 2E — дополнительный SQL-injection и pool-reuse smoke
+
+`tests/sql/saas_scoped_queries.test.sql` запускается на **том же**
+ephemeral GitHub Actions PostgreSQL 16 после миграций 001 и 002.
+`PREPARE/EXECUTE` получает SQL-подобный tenant ID как
+параметр и возвращает ноль записей, а отдельный BEGIN после
+ROLLBACK не видит signed-scope claims предыдущей транзакции.
+Это smoke для статических prepared SQL, не доказательство
+защиты от всех классов SQL injection и concurrency в будущем драйвере.
+[IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md).
+

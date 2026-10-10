@@ -134,3 +134,13 @@ route c `poolId: null`. Подписанный SQL scope уже тестируе
 миграций SaaS DB и metadata source Core. Adapter остается SPEC.
 [SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md).
 
+## Этап 2E — нет фактического Core metadata источника
+
+Типизированный SQL read boundary разрешает только минимальные поля
+временных тестовых таблиц `saas_rls`. Он не подключает настоящий
+Core Management API и не возвращает authMode, OAuth status, billing,
+quota либо Network verification; эти поля остаются SPEC/UNKNOWN.
+Использовать синтетическую роль DB для доступа к /data, Core credentials
+или реальному inference Gateway запрещено.
+[IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md).
+

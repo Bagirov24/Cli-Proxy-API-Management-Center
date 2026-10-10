@@ -114,3 +114,17 @@ tenant-scoped metadata API.
 защищённого backend-owned transaction scope, connection-pool lifecycle
 и SQL-injection тестов только на staging, с отдельным согласованием
 до любой production интеграции.
+
+## Этап 2E — новый signer/query port, без боевых ключей
+
+`createPinnedHmacScopeIssuer` в TypeScript формирует MAC
+в том же формате (разделитель ASCII 31), что и SQL 002.
+`readSignedScopedMetadata` получает transaction ID от БД,
+назначает подписанные transaction-local GUC и снижает роль до
+`saas_rls_reader` перед строго параметризованным SELECT.
+Это **только тестируемый порт**: ключ берётся из injected
+fixture, реальной его ротации/синхронизации с БД не существует.
+No driver, no real OIDC, no production DB. SQL CI отдельно
+проверяет hostile `PREPARE` параметр и cleanup того же соединения.
+[IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md).
+

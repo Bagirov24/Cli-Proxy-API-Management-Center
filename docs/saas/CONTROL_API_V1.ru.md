@@ -161,3 +161,13 @@ actor/tenant/expiry/PostgreSQL transaction ID внутри ephemeral PG16.
 создаёт production authentication или Core metadata API.
 См. [SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md).
 
+## Этап 2E — отдельный verifier и SQL query boundary
+
+Синтетический read-only HTTP handler по-прежнему не связан с
+публичным OIDC или БД. Добавлены проверяемый pinned RS256 access-token
+verifier и порт server-side mapping issuer+subject → actorId, а также
+`signedSqlBoundary.ts` с фиксированными SELECT, параметрами,
+HMAC транзакции и локальным снижением DB роли. Порты не подключены
+к этому HTTP handler в production и не создают реальную SaaS session.
+[IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md).
+

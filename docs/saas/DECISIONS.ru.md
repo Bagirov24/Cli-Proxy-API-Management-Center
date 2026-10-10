@@ -204,3 +204,27 @@ TypeScript projector теперь совпадают по этому прави�
 но не идентификатор чужого ресурса. Статус — SIMULATED,
 реальный enforcement / data-plane — PROPOSED.
 
+## D-029 — pinned API access-token, не клиентская JWT-роль
+
+**Статус: контракт реализован, security unit tests; OIDC provider SPEC.**
+API принимает только криптографически подтверждённый RS256
+`at+jwt` с pinned ключом, issuer, audience и коротким TTL.
+От ID-token, незнакомых `kid`, динамических `jku/jwk`
+и role/tenant из JWT как основания для прав отказано.
+issuer+subject связывается с actorId **только через серверный directory**;
+membership и RBAC всё равно проверяются отдельно.
+Реальный issuer/rotation/authorization code flow/SSO не реализованы.
+
+## D-030 — SQL: фиксированный template, параметр и scoped transaction
+
+**Статус: TS mock tests + ephemeral PostgreSQL SQL CI; driver SPEC.**
+Единственный SQL-port допускает whitelist коллекций и
+фиксированный SELECT (tenant/limit — параметры), HMAC на
+actor/tenant/expiry/txid, `SET LOCAL ROLE` и гарантию
+COMMIT или ROLLBACK + discard соединения при failure.
+SQL test подтверждает, что SQL-подобное значение в prepared
+параметре не выполняется и GUC сбрасываются после rollback.
+Это не даёт клиентам возможность передавать сырой SQL,
+не заменяет защищённого OIDC issuer и не даёт доступ к Core.
+[IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md).
+

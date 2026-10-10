@@ -393,3 +393,26 @@ Control API синтетический read-only projector теперь **иск
 отвергает route с `poolId: null`.
 [SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md).
 
+## 16. Этап 2E — порт Identity → SQL boundary (SIMULATED)
+
+В рамках Blueprint B проектно разделены два доверительных порта:
+
+- `trustedAccessToken.ts`: проверяемый **access-token**, pinned
+  RSA/SHA-256 ключи, issuer/audience/exp и обязательный `typ=at+jwt`.
+  Утверждения `actorId/tenantId/role` из JWT не используются;
+  внутренний actorId возвращает только server-held issuer+subject mapping,
+  после чего действуют прежние membership/RBAC проверки.
+- `signedSqlBoundary.ts`: строгие SQL шаблоны, `$1/$2` параметры,
+  отдельный `BEGIN`/signed txid, пять transaction-local GUC,
+  `SET LOCAL ROLE saas_rls_reader`, whitelist projection и
+  COMMIT/ROLLBACK/release. Подпись HMAC совместима по формату
+  с `002_signed_scope_pilot.sql`, без SQL endpoint для выдачи ключа.
+
+Нет реальной проверки OIDC issuer по сети и настоящего token refresh,
+DB connection string или драйвера; оба порта существуют только как
+TypeScript security contracts с синтетическими тестами. Настоящий
+backend должен отдельно проверять trust assumptions,
+параметризованные запросы и закрытость signing key,
+настроить pool reset и провести staging pentest.
+[IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md).
+

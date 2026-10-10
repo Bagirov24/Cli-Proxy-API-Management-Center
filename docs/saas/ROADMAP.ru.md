@@ -312,3 +312,28 @@ cache invalidation и серверная интеграция остаются *
       contract mapping, UX states/telemetry и неизменное fail-closed
       для AI/egress data-plane.
 
+## Этап 2E — identity + SQL read boundary (test-only)
+
+- [x] `trustedAccessToken.ts`: pinned RS256 access-token verify,
+      обязательные issuer/audience/sub/exp/iat, `typ=at+jwt`,
+      deny для неподходящих `alg/kid/jku/typ` и подозрительного срока.
+- [x] server-held mapping issuer+subject → actorId; tenant/role из
+      JWT и client headers не могут стать источником авторизации.
+- [x] `signedSqlBoundary.ts`: фиксированные SQL SELECT по
+      `ControlCollection`, значения tenant/limit только как параметры,
+      HMAC scope по transaction ID и `SET LOCAL ROLE`.
+- [x] Abort/rollback, discard на failure, runtime whitelist
+      полученных metadata columns и generic failure без DB секретов.
+- [x] Unit-тесты RS256 с синтетическими ephemeral keys и
+      SQL boundary на fake pool; PostgreSQL CI тест
+      `PREPARE/EXECUTE`, опасных значений-параметров и
+      rollback/SET LOCAL сброса на одном соединении.
+- [ ] Реальный OIDC/SSO/JWKS lifecycle и безопасный session/revocation
+      store; production токены в этом этапе не создаются.
+- [ ] Реальный PostgreSQL driver, non-superuser pool, query cancellation,
+      concurrency/reuse, key rotation, audit, SQL fuzz/pentest.
+- [ ] Серверный staged integration тест OIDC → AuthZ → SQL/RLS
+      → DTO; Core/CPA read-only adapter и traffic enforcement отдельно.
+- [ ] UX интеграция со staging с явным read provenance и
+      ошибками/ожиданием, после security review и отдельных согласований.
+

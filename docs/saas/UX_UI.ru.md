@@ -354,3 +354,15 @@ AccountPool. API не выдаёт ни foreign pool ID, ни частичный
 в React UX; browser QA и RU/EN остаются изолированными.
 [SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md).
 
+## 15. Этап 2E — UI пока полностью изолирован от Identity/SQL
+
+Порты JWT-verifier и signed scoped SQL не создают login-модалку,
+OAuth-сессию, новую вкладку или запрос из React.
+Синтетические North Studio / Orbit Lab остаются текущими источниками
+demo. Перед будущим переходом на staging API добавить безопасный
+`401` (сессия недействительна), `403` (нет роли), `404`
+(другой tenant), `503` (недоступен источник), очистку tenant-aware
+cache, отмену stale запросов и различие `SIMULATED`/live provenance.
+Нельзя показывать роли из неподтверждённых JWT claim.
+[IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md).
+

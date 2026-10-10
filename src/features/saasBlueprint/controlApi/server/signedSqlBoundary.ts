@@ -112,7 +112,7 @@ export async function readSignedScopedMetadata(
   let started = false;
   let committed = false;
   let discard = false;
-  let output: readonly SqlRow[] | null = null;
+  let output: readonly SqlRow[];
   let releaseFailed = false;
   try {
     if (signal?.aborted) throw new Error('Request cancelled');
@@ -190,6 +190,6 @@ export async function readSignedScopedMetadata(
       releaseFailed = true;
     }
   }
-  if (releaseFailed || output === null) throw new Error('Scoped metadata unavailable');
+  if (releaseFailed) throw new Error('Scoped metadata unavailable');
   return output;
 }

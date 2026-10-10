@@ -29,6 +29,7 @@
 | [LOCAL_CONTROL_HTTP_V1.ru.md](LOCAL_CONTROL_HTTP_V1.ru.md) | Local-only HTTP слой и проверка короткоживущих синтетических сессий |
 | [STAGING_POSTGRES_RLS_V1.ru.md](STAGING_POSTGRES_RLS_V1.ru.md) | PostgreSQL 16 RLS pilot, временная база CI и доказательства изоляции |
 | [SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md) | Временный HMAC-контекст транзакции и adversarial SQL-тесты |
+| [IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md) | Этап 2E: закреплённые JWT access-token ключи, SQL read boundary и проверки SQL injection |
 
 ## Что добавлено в код
 
@@ -259,4 +260,28 @@ Control API read-only DTO маршруты с недоступным Pool
 transaction scope, SQL injection review и интеграция Core ещё
 не реализованы. Ни React, ни Gateway/production не обращаются к базе.
 Подробности: [SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md).
+
+## Этап 2E — identity verification + SQL read boundary (SIMULATED/STAGING)
+
+Новые `controlApi/server/trustedAccessToken.ts` и
+`signedSqlBoundary.ts` — изолированные backend-порты, не подключённые
+к React, Core, Gateway или Railway. Первый проверяет pinned RS256
+`at+jwt` (issuer/audience/kid/signature/expiry), а затем через
+server-held mapping связывает issuer+subject с внутренним actorId.
+Ни JWT-роль, ни tenant из токена не дают права сами по себе.
+Второй выполняет **фиксированные параметризованные SELECT** внутри
+отдельной транзакции, подписывает SQL scope, назначает `SET LOCAL ROLE`,
+завершает COMMIT либо ROLLBACK с discard повреждённого соединения.
+Без PostgreSQL драйвера и реальной DB-интеграции.
+
+Добавлены unit/security tests с эфемерными RSA/HMAC ключами и
+`tests/sql/saas_scoped_queries.test.sql` с реальным PostgreSQL 16
+только в GitHub Actions. Проверяются spoofed claims, подписи,
+SQL-подобные параметры, RLS и отсутствие переноса signed-scope
+на следующий запрос по тому же соединению.
+
+**PROPOSED:** реальный OIDC issuer, JWKS rotation/revocation,
+полноценный tenant DB, connection-pool driver, access audit,
+разрешённый metadata adapter Core и все live traffic функции.
+См. [IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md).
 

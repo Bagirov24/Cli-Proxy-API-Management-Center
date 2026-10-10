@@ -157,3 +157,14 @@ OIDC issuer verification и защищённого backend issuance ещё не�
 не становится безопасным. Полное описание угроз:
 [SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md).
 
+## Этап 2E — проверенный token ≠ готовые tenant права
+
+RS256 access-token доказывает issuer+subject только при корректных
+подписи/audience/TTL; role и tenantId из claims игнорируются.
+Серверный actor lookup и tenant membership/RBAC остаются отдельными
+проверками. В SQL-port signed scope передаётся через доверенную
+dependency и заново проверяется RLS. Сам SQL port не удостоверяет
+actor identity без защищённого вызывающего backend.
+Полный порядок проверки и ограничения:
+[IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md).
+
