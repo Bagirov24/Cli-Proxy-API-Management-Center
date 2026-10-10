@@ -72,6 +72,7 @@ function createBoundedDriver(sql) {
   let poisoned = false;
   return {
     stats: () => ({ discarded, completed, poisoned }),
+    quarantine() { poisoned = true; },
     async connect(signal) {
       if (poisoned) throw new Error('Ephemeral pool already destroyed');
       const reserved = await sql.reserve(signal ? { signal } : undefined);
@@ -81,10 +82,10 @@ function createBoundedDriver(sql) {
       }
       let released = false;
       return {
-        async query(statement, params) {
+        async query(statement, params, querySignal = signal) {
           if (released) throw new Error('Connection already released');
           if (!canExecuteSql(statement, params)) throw new Error('Non-allowlisted SQL');
-          if (signal?.aborted && statement !== 'ROLLBACK') {
+          if (querySignal?.aborted && statement !== 'ROLLBACK') {
             throw new Error('Request cancelled');
           }
           // SQL.unsafe receives ONLY server-defined statements above;
@@ -93,11 +94,11 @@ function createBoundedDriver(sql) {
           const cancel = () => {
             if (statement !== 'ROLLBACK') query.cancel();
           };
-          signal?.addEventListener('abort', cancel, { once: true });
+          querySignal?.addEventListener('abort', cancel, { once: true });
           try {
             return { rows: await query };
           } finally {
-            signal?.removeEventListener('abort', cancel);
+            querySignal?.removeEventListener('abort', cancel);
           }
         },
         async release(discard) {

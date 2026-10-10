@@ -307,3 +307,15 @@ audit ledger, реальный Core metadata adapter и enforcement —
 помечать интеграционный driver acceptance как VERIFIED.
 См. [BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md).
 
+
+## Этап 2G.1 — SQL cancellation / pool quarantine (контракт)
+
+В `signedSqlBoundary.ts` введены backend-owned wall-clock deadline,
+AbortSignal на каждый SQL-вызов и ограниченное ожидание ROLLBACK/release.
+При недостоверном исходе вызова pool синхронно переводится в карантин
+перед cleanup: соединение нельзя снова отдавать другому tenant.
+Тесты с зависающими SQL, rollback/release и поздним acquire используют
+только синтетический driver. Это **контракт/CI acceptance**, НЕ готовый
+production-pool: встроенный Bun.SQL 1.3.14 пока не доказал независимый
+atomic physical discard, bounded network disconnect и корректность
+повторного использования после отмены. См. [BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md).

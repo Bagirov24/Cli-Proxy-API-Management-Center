@@ -111,3 +111,24 @@ production без отдельного согласия.
 [IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md),
 [STAGING_POSTGRES_RLS_V1.ru.md](STAGING_POSTGRES_RLS_V1.ru.md),
 [SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md).
+
+## Этап 2G.1 — ограниченная отмена (CONTRACT, не production driver)
+
+SQL boundary больше не полагается на бесконечное ожидание cleanup:
+срок выполнения запроса по умолчанию 15 секунд, срок одного cleanup
+по умолчанию 1 секунда; оба значения задаёт только backend.
+AbortSignal прокидывается в SQL-port на каждый запрос. По таймауту
+выполняющегося statement результат отбрасывается, пул синхронно
+карантинируется до cleanup. **Promise timeout не останавливает
+физический SQL:** если драйвер игнорирует cancel, нельзя отправлять
+ROLLBACK параллельно незавершённому statement. Поэтому в этой ситуации
+ROLLBACK пропускается, соединение отбрасывается, весь CI-pool
+блокируется для новых резервирований. Поздно выданное соединение
+также подлежит discard.
+
+Bun native SQL 1.3.14 не предоставляет подтверждённый в этом пилоте
+atomic `discard(connection)`; сценарии реальных сетевых потерь,
+зависаний socket shutdown, recovery и reuse после cancel остаются
+**PROPOSED**, несмотря на synthetic adversarial regression tests.
+Production адаптер обязан подтвердить quarantine и своевременное
+физическое закрытие транспортного соединения отдельно.

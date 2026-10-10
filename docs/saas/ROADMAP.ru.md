@@ -358,3 +358,17 @@ cache invalidation и серверная интеграция остаются *
 - [ ] **PROPOSED:** официальный Core/CPA metadata adapter,
       backpressure, trace, egress enforcement, billing.
 
+
+## Этап 2G.1 — SQL pool lifecycle hardening
+
+- [x] В изолированном SQL boundary введён синхронный quarantine-hook,
+  ограниченные deadlines acquire/query/sign, отдельный cleanup timeout
+  и отбрасывание поздно полученного соединения.
+- [x] Synthetic adversarial tests: бесконечный SELECT, зависшие
+  ROLLBACK/release, поздний reserve, success/reuse без карантина.
+- [ ] Подтверждённый в CI SHA 2G.1 и Bun PostgreSQL integration.
+- [ ] Production-grade atomic connection discard, independent cancel,
+  tested pool retry/recovery after network split: **PROPOSED**.
+
+Важно: quarantine-hook закрывает *весь* одноразовый тестовый pool,
+но не доказывает готовность SQL transport к production.
