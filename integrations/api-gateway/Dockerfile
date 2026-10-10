@@ -6,7 +6,8 @@ COPY integrations/api-gateway/guard /src/guard
 RUN cd /src/guard/policy && GO111MODULE=off go test ./...
 RUN xcaddy build v2.11.7 \
     --with github.com/mholt/caddy-ratelimit@5625512f24f6f59d6f64fb3aafe5eecff0b286db \
-    --with github.com/Bagirov24/Cli-Proxy-API-Management-Center/integrations/api-gateway/guard=./guard
+    --with github.com/Bagirov24/Cli-Proxy-API-Management-Center/integrations/api-gateway/guard=./guard \
+    --output /usr/bin/caddy
 
 FROM caddy:2.11.7-alpine
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
