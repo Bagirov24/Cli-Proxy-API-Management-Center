@@ -320,6 +320,30 @@ describe('SaaS Control synthetic HTTP boundary (not production)', () => {
     }
   });
 
+  test('routing metadata with a null or foreign pool is not partially returned', async () => {
+    const f = fixture();
+    const token = await f.sessions.issue(NORTH.id);
+    const path = PREFIX + '/demo-north/metadata/routing';
+    const original = await f.backend.reader.readCollection({
+      actorId: NORTH.id, tenantId: 'demo-north', role: 'tenant-admin',
+      correlationId: 'server-generated',
+    }, 'routing', { signal: new AbortController().signal });
+    expect(original.ok).toBe(true);
+    if (!original.ok || original.data.length === 0) throw new Error('Expected synthetic route');
+
+    const source = {
+      ...original,
+      data: [{ ...original.data[0], poolId: null }],
+    } as unknown as ControlReadResult;
+    const handler = createControlHttpHandler({
+      ...f.deps,
+      reader: { ...f.backend.reader, async readCollection() { return source; } },
+    });
+    const response = await send(handler, path, { token });
+    expect(response.status).toBe(503);
+    expect(JSON.stringify(await body(response))).not.toContain('account-orbit');
+  });
+
   test('unexpected upstream exceptions map to generic 503 and never expose secrets', async () => {
     const f = fixture();
     const handler = createControlHttpHandler({

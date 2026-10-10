@@ -189,16 +189,17 @@ describe('SaaS Control API v1 — contracts ONLY (no backend or network)', () =>
     expect(JSON.stringify(data('pools', north, snapshot))).not.toContain('pool-platform');
   });
 
-  test('routing must redact a pool without a distinct grant', () => {
+  test('routing with an ungranted pool is omitted, matching raw PostgreSQL RLS', () => {
     const snapshot: BlueprintSnapshot = {
       ...grantedExcept('pool'),
       routingBindings: DEMO_SNAPSHOT.routingBindings.map((item) =>
         item.tenantId === 'demo-north' ? { ...item, poolId: 'pool-platform' } : item),
     };
-    expect(data('routing', north, snapshot)).toMatchObject([{
-      kind: 'routing', poolId: null, applicationId: 'app-north', keyBindingId: 'key-north',
-    }]);
+    expect(data('routing', north, snapshot)).toEqual([]);
     expect(JSON.stringify(data('routing', north, snapshot))).not.toContain('pool-platform');
+    // Ordinary owned routes remain visible when the separate pool grant exists.
+    expect(data('routing', north).every((item) =>
+      item.kind === 'routing' && typeof item.poolId === 'string')).toBe(true);
   });
 
   test('foreign ownership does not become visible through a same-name or misattributed grant', () => {

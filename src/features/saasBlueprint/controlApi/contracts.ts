@@ -110,8 +110,8 @@ export type ControlResource =
     readonly id: string;
     readonly applicationId: string;
     readonly keyBindingId: string;
-    /** Null if the tenant lacks a separate grant on this pool. */
-    readonly poolId: string | null;
+    /** Rule is omitted if this pool is not independently visible. */
+    readonly poolId: string;
     readonly providerId: string;
     readonly requestedModelId: string;
     readonly status: 'active' | 'disabled';

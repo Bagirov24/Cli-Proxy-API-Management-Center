@@ -141,14 +141,15 @@ function resource(raw: unknown, collection: ControlCollection): ControlResource 
     case 'routing': {
       const applicationId = id(value.applicationId);
       const keyBindingId = id(value.keyBindingId);
-      const poolId = value.poolId === null ? null : id(value.poolId);
+      // An inaccessible pool must not survive as a partially visible route.
+      const poolId = id(value.poolId);
       const providerId = id(value.providerId);
       const requestedModelId = id(value.requestedModelId);
       const status = variant(value.status, ['active', 'disabled'] as const);
       const egressPolicy = variant(value.egressPolicy,
         ['required', 'direct-explicit'] as const);
       if (!applicationId || !keyBindingId || !providerId || !requestedModelId ||
-          !status || !egressPolicy || (value.poolId !== null && !poolId)) return null;
+          !status || !egressPolicy || !poolId) return null;
       return { kind: 'routing', id: ref, applicationId, keyBindingId,
         poolId, providerId, requestedModelId, status, egressPolicy };
     }

@@ -165,12 +165,15 @@ export function readSyntheticTenantCollection(
       break;
     case 'routing':
       data = snapshot.routingBindings
+        // Align with PostgreSQL RLS: an ungranted pool makes the entire
+        // routing rule invisible rather than exposing a partial rule.
         .filter((item) => item.tenantId === tenantId &&
-          applicationIds.has(item.applicationId) && keyIds.has(item.keyBindingId))
+          applicationIds.has(item.applicationId) &&
+          keyIds.has(item.keyBindingId) && poolIds.has(item.poolId))
         .map((item) => ({
           kind: 'routing', id: item.id, applicationId: item.applicationId,
           keyBindingId: item.keyBindingId,
-          poolId: poolIds.has(item.poolId) ? item.poolId : null,
+          poolId: item.poolId,
           providerId: item.providerId, requestedModelId: item.requestedModelId,
           status: item.status, egressPolicy: item.egressPolicy,
         }));
