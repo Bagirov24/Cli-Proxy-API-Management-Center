@@ -149,6 +149,7 @@ describe('SaaS opt-in UI and no-live-API safeguards', () => {
     const app = read('../src/App.tsx');
     const vite = read('../vite.config.ts');
     expect(vite).toContain("process.env.VITE_ENABLE_SAAS_BLUEPRINT_DEMO === 'true'");
+    expect(vite).toContain('SaasDemoRouteDisabled.tsx');
     expect(flag).toContain('__SAAS_BLUEPRINT_DEMO_ENABLED__');
     expect(routes).toContain('...(SAAS_BLUEPRINT_DEMO_ENABLED');
     expect(routes).toContain("path: '/saas-demo'");
