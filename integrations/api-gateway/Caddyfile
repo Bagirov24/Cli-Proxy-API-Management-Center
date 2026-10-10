@@ -34,11 +34,8 @@
     # Only POST chat/responses and GET models are exposed.
     @public_api `(method('POST') && path('/v1/chat/completions', '/v1/responses')) || (method('GET') && path('/v1/models'))`
 
-    # Header shape screening, NOT authentication. Real CPA key verification,
-    # model allowlisting and per-key RPM remain exclusively in the private Core.
-    # Query-string keys and native API keys are intentionally not allowed publicly.
-    # Retain header variants supported by CPA's key-policy plugin.
-    @bad_credential `!(header_regexp('auth_bearer', 'Authorization', '(?i)^Bearer cpa_[A-Za-z0-9_-]{43}$') || header_regexp('auth_x_api_key', 'X-API-Key', '^cpa_[A-Za-z0-9_-]{43}$') || header_regexp('auth_api_key', 'api-key', '^cpa_[A-Za-z0-9_-]{43}$') || header_regexp('auth_google', 'x-goog-api-key', '^cpa_[A-Za-z0-9_-]{43}$'))`
+    # Authentication syntax is handled by compiled cpa_key_guard.
+    # Core still verifies key validity, model policy and per-key RPM.
 
     handle @public_api {
         # 'route' fixes handler ordering: rate limit -> reject malformed
@@ -54,22 +51,22 @@
                     events {$EDGE_IP_RPM:180}
                     ipv6_prefix 64
                 }
-                zone gateway_global {
-                    key all_public_api
-                    window 1m
-                    events {$EDGE_GLOBAL_RPM:600}
-                }
                 # Avoid per-IP label cardinality in Prometheus.
                 disable_metrics
             }
 
-            respond @bad_credential "Unauthorized" 401
+            cpa_key_guard
 
             request_body {
                 max_size 16MiB
             }
             reverse_proxy http://cliproxyapi-core.railway.internal:8317 {
                 header_up -Forwarded
+                header_up -X-Api-Key
+                header_up -Api-Key
+                header_up -X-Goog-Api-Key
+                header_up -X-Openai-Api-Key
+                header_up -Proxy-Authorization
                 header_up -X-Original-URL
                 header_up -X-Rewrite-URL
                 header_up -X-HTTP-Method-Override
