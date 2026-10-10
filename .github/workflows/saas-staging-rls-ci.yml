@@ -1,0 +1,71 @@
+name: SaaS Staging RLS Contract (ephemeral PostgreSQL)
+
+on:
+  pull_request:
+    paths:
+      - 'staging/saas-rls/**'
+      - 'tests/sql/saas_rls_v1.test.sql'
+      - 'docs/saas/**'
+      - '.github/workflows/saas-staging-rls-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tenant-rls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16.6
+        env:
+          POSTGRES_DB: saas_ephemeral_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_ephemeral_test_only
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d saas_ephemeral_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGDATABASE: saas_ephemeral_test
+      PGPASSWORD: ci_ephemeral_test_only
+      PGCONNECT_TIMEOUT: '5'
+
+    steps:
+      - name: Checkout isolated feature branch
+        uses: actions/checkout@v4
+
+      - name: Ensure PostgreSQL client is installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq postgresql-client
+          fi
+          psql --version
+
+      - name: Apply staging-only schema twice, then test tenant isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e .env.production
+          test ! -e /data/auths
+          # This accesses only the GitHub Actions ephemeral PostgreSQL service.
+          # No Railway integration, CPA keys, OAuth, Core or network egress.
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/saas_rls_v1.test.sql \
+            > /tmp/saas-rls-acceptance.log 2>&1 || {
+              tail -n 120 /tmp/saas-rls-acceptance.log
+              exit 1
+            }
+          tail -n 15 /tmp/saas-rls-acceptance.log
+
+      # No deploy, secrets from repository, or remote database connections.
