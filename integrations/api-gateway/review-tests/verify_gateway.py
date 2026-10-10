@@ -60,10 +60,14 @@ def main():
     must("/v1/embeddings", payload, good, 404, "not_forwarded")
     must("/v1/chat/completions", payload, {}, 401, "not_forwarded")
     must("/v1/chat/completions", payload, bad, 401, "not_forwarded")
+    must("/v1/chat/completions", payload, {"X-API-Key": KEY}, 401, "not_forwarded")
+    must("/v1/chat/completions", payload, {**good, "X-API-Key": "native"}, 401, "not_forwarded")
+    must("/v1/chat/completions?api_key=wrong", payload, good, 401, "not_forwarded")
     must("/v1/chat/completions", payload, good, 200, "forwarded")
     must("/v1/responses", {"model":"gpt-6-luna","input":"ok"}, good, 200, "forwarded")
     must("/v1/models", None, good, 200, "forwarded")
     must("/v1/models", None, {}, 401, "not_forwarded")
+    must("/v1/models", payload, good, 404, "not_forwarded")
     must("/v1/chat/completions/", payload, good, 404, "not_forwarded")
 
     # Ensure a genuine streaming response is forwarded.
@@ -85,6 +89,7 @@ def main():
         must("/v1/chat/completions", payload, isolated, 200, "forwarded")
     must("/v1/chat/completions", payload, isolated, 429, "not_forwarded")
     assert hits() == before + 2
+    must("/v1/chat/completions", payload, {**good, "X-Real-IP": "192.0.2.235"}, 200, "forwarded")
 
     print("ALL GATEWAY REVIEW TESTS PASSED")
 
