@@ -57,7 +57,8 @@ export function validateProxyEndpoint(endpoint: ProxyEndpoint): EndpointProblem 
     hostname.length > 253 ||
     !hostname ||
     hostname !== endpoint.hostname.trim().toLowerCase().replace(/\.$/, '') ||
-    /[\/:@\s\\?#\[\]%]/.test(hostname)
+    ['/', ':', '@', '?', '#', '[', ']', '%', '\\'].some((symbol) => hostname.includes(symbol)) ||
+    /\s/.test(hostname)
   ) {
     return 'hostname-invalid';
   }
