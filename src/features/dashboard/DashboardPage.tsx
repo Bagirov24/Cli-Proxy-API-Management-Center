@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -13,6 +13,7 @@ import { useAuthStore } from '@/stores';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { formatCompactNumber, formatDateValue, formatPercent } from '@/utils/format';
 import { useDashboardOverview } from './hooks/useDashboardOverview';
+import { useCpaPolicyStatus } from './hooks/useCpaPolicyStatus';
 import { LiveWire } from './components/LiveWire';
 import { Meter } from './components/Meter';
 import { Sparkline } from './components/Sparkline';
@@ -43,7 +44,13 @@ export function DashboardPage() {
   const { connectionStatus, connected, config, counts, traffic, providers, credentials, refresh } =
     useDashboardOverview();
 
-  useHeaderRefresh(refresh, connected);
+  const { snapshot: cpaPolicy, refresh: refreshCpaPolicy, supportsPlugin } = useCpaPolicyStatus();
+
+  const refreshDashboard = useCallback(async () => {
+    refreshCpaPolicy();
+    await refresh();
+  }, [refresh, refreshCpaPolicy]);
+  useHeaderRefresh(refreshDashboard, connected);
 
   /* Hero 与静态网格走分组级联；异步内容区（图表/供应商）保持整块 reveal */
   const heroRef = useRevealGroup<HTMLElement>();
@@ -111,6 +118,16 @@ export function DashboardPage() {
         ? 'common.connecting'
         : 'common.disconnected'
   );
+  const coreTone = connected
+    ? styles.opsGood
+    : connectionStatus === 'connecting'
+      ? styles.opsWarn
+      : styles.opsNeutral;
+  const cpaTone = cpaPolicy.state === 'enabled'
+    ? styles.opsGood
+    : cpaPolicy.state === 'disabled'
+      ? styles.opsWarn
+      : styles.opsNeutral;
   const versionLabel = serverVersion ? `v${serverVersion.trim().replace(/^[vV]+/, '')}` : null;
   const heroMetaLine = [versionLabel, connectionLabel].filter(Boolean).join(' · ');
 
@@ -336,6 +353,85 @@ export function DashboardPage() {
             <span className={styles.statHint}>{tile.hint}</span>
           </article>
         ))}
+      </section>
+
+
+      {/* ---------- Core / CPA Key Policy / auth-files overview ---------- */}
+      <section className={styles.section} aria-labelledby="dashboard-ops-title">
+        <header className={styles.sectionHead}>
+          <span className={styles.eyebrow}>{t('dashboard.ops_eyebrow')}</span>
+          <h2 id="dashboard-ops-title" className={styles.sectionTitle}>
+            {t('dashboard.ops_title')}
+          </h2>
+          <p className={styles.sectionDescription}>{t('dashboard.ops_description')}</p>
+        </header>
+        <div className={styles.opsGrid}>
+          <article className={styles.opsCard}>
+            <div className={styles.opsTop}>
+              <h3 className={styles.opsCardTitle}>{t('dashboard.ops_core_title')}</h3>
+              <span className={[styles.opsStatus, coreTone].join(' ')} role="status">
+                <i className={styles.opsDot} aria-hidden="true" />
+                {connectionLabel}
+              </span>
+            </div>
+            <p className={styles.opsDescription}>{t('dashboard.ops_core_note')}</p>
+            <div className={styles.opsLinks}>
+              <Link to="/system" className={styles.panelLink}>
+                {t('nav.system_info')} <span aria-hidden="true">→</span>
+              </Link>
+            </div>
+          </article>
+
+          <article className={styles.opsCard}>
+            <div className={styles.opsTop}>
+              <h3 className={styles.opsCardTitle}>{t('dashboard.ops_cpa_title')}</h3>
+              <span className={[styles.opsStatus, cpaTone].join(' ')} role="status" aria-live="polite">
+                <i className={styles.opsDot} aria-hidden="true" />
+                {t('dashboard.ops_cpa_' + cpaPolicy.state)}
+              </span>
+            </div>
+            <p className={styles.opsDescription}>
+              {cpaPolicy.version
+                ? t('dashboard.ops_cpa_version', { version: cpaPolicy.version })
+                : t('dashboard.ops_cpa_note')}
+            </p>
+            <div className={styles.opsLinks}>
+              {connected && supportsPlugin && (
+                <Link to={cpaPolicy.route || '/plugins'} className={styles.panelLink}>
+                  {cpaPolicy.route
+                    ? t('dashboard.ops_open_policy')
+                    : t('dashboard.ops_manage_plugins')}{' '}
+                  <span aria-hidden="true">→</span>
+                </Link>
+              )}
+            </div>
+          </article>
+
+          <article className={styles.opsCard}>
+            <div className={styles.opsTop}>
+              <h3 className={styles.opsCardTitle}>{t('dashboard.ops_auth_title')}</h3>
+              <span className={[styles.opsStatus, styles.opsNeutral].join(' ')} role="status">
+                <i className={styles.opsDot} aria-hidden="true" />
+                {credentials
+                  ? t('dashboard.ops_auth_count', {
+                      active: credentials.active,
+                      total: credentials.total,
+                    })
+                  : t('dashboard.ops_auth_unavailable')}
+              </span>
+            </div>
+            <p className={styles.opsDescription}>{t('dashboard.ops_auth_note')}</p>
+            <div className={styles.opsLinks}>
+              <Link to="/auth-files" className={styles.panelLink}>
+                {t('nav.auth_files')} <span aria-hidden="true">→</span>
+              </Link>
+              <Link to="/oauth" className={styles.panelLink}>
+                {t('nav.oauth')} <span aria-hidden="true">→</span>
+              </Link>
+            </div>
+          </article>
+        </div>
+        <p className={styles.opsScope}>{t('dashboard.ops_scope_note')}</p>
       </section>
 
       {/* ---------- Traffic ---------- */}

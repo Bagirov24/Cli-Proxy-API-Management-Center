@@ -338,6 +338,7 @@ export function MainLayout() {
     () => new Set()
   );
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const pluginResourcesRequestRef = useRef(0);
   const authFilesCountRequestRef = useRef(0);
   const railTooltipRef = useRef<HTMLDivElement | null>(null);
   const focusedRailItemRef = useRef<HTMLElement | null>(null);
@@ -481,6 +482,7 @@ export function MainLayout() {
   }, [fetchConfig]);
 
   const loadPluginResources = useCallback(async () => {
+    const requestID = ++pluginResourcesRequestRef.current;
     if (connectionStatus !== 'connected' || !supportsPlugin) {
       setPluginResources([]);
       return;
@@ -488,8 +490,10 @@ export function MainLayout() {
 
     try {
       const plugins = await pluginsApi.list();
+      if (requestID !== pluginResourcesRequestRef.current) return;
       setPluginResources(collectPluginResourceEntries(plugins.plugins));
     } catch {
+      if (requestID !== pluginResourcesRequestRef.current) return;
       setPluginResources([]);
     }
   }, [connectionStatus, supportsPlugin]);
@@ -521,6 +525,7 @@ export function MainLayout() {
     window.addEventListener(AUTH_FILES_CHANGED_EVENT, loadAuthFilesCount);
 
     return () => {
+      pluginResourcesRequestRef.current += 1;
       authFilesCountRequestRef.current += 1;
       window.clearTimeout(timer);
       window.removeEventListener(PLUGIN_RESOURCES_REFRESH_EVENT, loadPluginResources);

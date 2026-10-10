@@ -2,27 +2,28 @@
 
 Этот каталог добавлен в личный репозиторий Management Center как **воспроизводимая упаковка** стороннего плагина [CPA Key Policy](https://github.com/origin652/cpa-plugin-key-policy). Он **не изменяет код авторизации CLIProxyAPI** и не хранит секреты.
 
-**Статус:** репозиторий подготовлен для сборки образа с плагином. Одно добавление файлов в GitHub **не включает плагин на Railway**. До отдельного развёртывания продолжает работать существующий `eceasy/cli-proxy-api:v8.0.23`.
+**Статус production на 10.10.2026:** сервис Railway `cliproxyapi-core` работает на CLIProxyAPI v8.0.23 с локализованным CPA Key Policy v0.5.1. Используется `integrations/cpa-key-policy/Dockerfile.ru`, а состояние хранится в постоянном `/data`. Текущий проверенный коммит сборки Core — `b1434a514608446e5965d6a93325e3dd620c6028`. Образ Core и релиз веб-интерфейса Management Center обновляются **независимо**.
 
 ## Что добавлено
 
-- `Dockerfile`: собирает образ на базе того же `eceasy/cli-proxy-api:v8.0.23`, добавляя только Linux x86_64 библиотеку CPA Key Policy из GitHub Releases.
+- `Dockerfile`: альтернативная сборка поверх `eceasy/cli-proxy-api:v8.0.23`, добавляющая Linux x86_64 библиотеку CPA Key Policy из GitHub Releases.
+- `Dockerfile.ru`: **текущий production-вариант**. Собирает плагин из закреплённого исходного коммита с русско-английским интерфейсом, выполняет тесты и добавляет библиотеку в CLIProxyAPI v8.0.23.
 - `config.example.yaml`: пример включения плагина в уже существующий `/data/config.yaml` без изменения OAuth, SSH-доступа, панели и обычных API-ключей.
 - `THIRD_PARTY_LICENSE.txt`: уведомление об MIT-лицензии автора плагина.
 - `.github/workflows/verify-cpa-key-policy.yml`: отдельно проверяет сборку Docker-образа и наличие `.so`; **не публикует релизы** и не затрагивает живой Railway-сервис.
 
-Версия стороннего плагина: **v0.5.1** (`cpa-key-policy_0.5.1_linux_amd64.zip`). SHA-256 архива: `bae8d56b57ffa8b3e9c7373750881d496c87309dd739e225a75a9dd3b3bc5a8d`. Docker-сборка прервётся, если контрольная сумма не совпадёт. Обновлять версию и SHA-256 нужно совместно, проверив изменения upstream.
+Альтернативный `Dockerfile` использует релиз плагина **v0.5.1** (`cpa-key-policy_0.5.1_linux_amd64.zip`) с SHA-256 `bae8d56b57ffa8b3e9c7373750881d496c87309dd739e225a75a9dd3b3bc5a8d`; обновлять версию и контрольную сумму нужно вместе. **Production `Dockerfile.ru`** вместо архива собирает локализованный плагин из закреплённого коммита upstream `c041a48bb5e3c3ab44b24d05fa2a27c77c55caf5`.
 
 ## Как развёртывать на Railway
 
 1. Дождитесь зелёного запуска GitHub Actions **Verify CPA Key Policy integration** в ветке `custom-no-apikey-fun`.
 2. Перед заменой образа убедитесь, что существующий Railway service `cliproxyapi-core` и его том `/data` исправны. Сохраните резервную копию конфигурации и OAuth-данных в безопасное место, **не в публичный репозиторий**.
-3. В Railway переключите **источник сборки Core** на репозиторий `Bagirov24/Cli-Proxy-API-Management-Center`, ветка `custom-no-apikey-fun`, Dockerfile `integrations/cpa-key-policy/Dockerfile`, контекст сборки — корень репозитория. Не меняйте имя/ID сервиса, том `/data`, порт `8317`, стартовую команду и правила SSH.
+3. Для существующей production-сборки Core уже используется репозиторий `Bagirov24/Cli-Proxy-API-Management-Center`, ветка `custom-no-apikey-fun`, **Dockerfile `integrations/cpa-key-policy/Dockerfile.ru`** и зафиксированный проверенный SHA. При следующем выпуске не меняйте имя/ID сервиса, том `/data`, порт `8317`, стартовую команду и правила SSH; согласуйте отдельное развёртывание Core.
 4. После успешного развёртывания в существующем `/data/config.yaml` добавьте блок из `config.example.yaml` (только верхнеуровневый раздел `plugins`). **Не заменяйте файл целиком**: там уже находятся данные управления и настройки авторизации.
 5. Убедитесь, что в логах Core зарегистрирован плагин `cpa-key-policy`, а маршруты управления доступны через прежний SSH-туннель.
-6. Откройте **http://127.0.0.1:8317/v0/resource/plugins/cpa-key-policy/index.html**. Для входа нужен существующий Management Key. Не публикуйте его в GitHub.
+6. При локальном туннеле Electerm `127.0.0.1:18317 → Core:8317` откройте **http://127.0.0.1:18317/v0/resource/plugins/cpa-key-policy/index.html**. Для входа нужен существующий Management Key. Не публикуйте его в GitHub.
 
-Панель управления без `APIKEY.FUN` продолжает загружаться из существующего отдельного GitHub Release с файлом `management.html`. Этот каталог **не создаёт новых GitHub Releases**: так мы не ломаем механизм обновления Management Center.
+Панель управления без `APIKEY.FUN` собирается независимым [workflow Management Center](../../.github/workflows/custom-management-panel.yml) и публикуется как артефакт `management.html` в GitHub Release `v8-custom-no-apikey-fun`. Источник текущего **образа Core** по-прежнему закреплён за конкретным проверенным SHA: новый UI-коммит или обновление релиза панели **не означает** новую сборку Core. Коммит опубликованного UI указывается в описании релиза.
 
 ## Как создавать клиентские ключи
 
