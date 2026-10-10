@@ -245,7 +245,7 @@ function RoutePanel({ tenantId, copy }: {
     tenantId === 'demo-north' ? 'north-owned' : 'orbit-owned');
   const currentId = candidates.some((candidate) => candidate.id === requestedScenario)
     ? requestedScenario : candidates[0].id;
-  const { decision, preview } = useMemo(() => runDemoScenario(currentId), [currentId]);
+  const { decision, preview } = runDemoScenario(currentId);
   const reason = decision.allowed ? null : copy.reasons[decision.reason];
 
   return (
@@ -333,7 +333,7 @@ export function SaasBlueprintDemoPage() {
 
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, tab: DemoTab) => {
     const position = TABS.indexOf(tab);
-    let next = position;
+    let next: number;
     if (event.key === 'ArrowRight') next = (position + 1) % TABS.length;
     else if (event.key === 'ArrowLeft') next = (position + TABS.length - 1) % TABS.length;
     else if (event.key === 'Home') next = 0;
