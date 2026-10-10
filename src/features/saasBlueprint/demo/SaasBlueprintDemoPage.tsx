@@ -236,9 +236,10 @@ function EgressPanel({ view, copy, query }: {
   );
 }
 
-function RoutePanel({ tenantId, copy }: {
+function RoutePanel({ tenantId, copy, language }: {
   tenantId: string;
   copy: DemoCopy;
+  language: string;
 }) {
   const candidates = getTenantScenarios(tenantId);
   const [requestedScenario, setRequestedScenario] = useState<DemoScenarioId>(
@@ -282,6 +283,46 @@ function RoutePanel({ tenantId, copy }: {
           </dl>
         )}
       </div>
+      <section className={styles.timeline} aria-label={language.startsWith('ru') ? 'Логический маршрут (симуляция)' : 'Logical request path (simulation)'}>
+        <h3>{language.startsWith('ru') ? 'Схема запроса · только симуляция' : 'Request path · simulation only'}</h3>
+        <p className={styles.microNote}>
+          {language.startsWith('ru')
+            ? 'Gateway и AI-провайдер показаны схематично: сетевые запросы не выполняются. Результат отражает только проверку правил.'
+            : 'Gateway and AI provider are schematic only: no network requests occur. Results show policy checks, not live traffic.'}
+        </p>
+        <ol className={styles.timelineList}>
+          {([
+            ['client', language.startsWith('ru') ? 'Клиент / приложение' : 'Client / application', 'application'],
+            ['gateway', 'API Gateway', 'illustrative'],
+            ['policy', 'CPA Key Policy', 'routing'],
+            ['pool', language.startsWith('ru') ? 'Пул аккаунтов' : 'Account pool', 'account-pool'],
+            ['account', language.startsWith('ru') ? 'Аккаунт' : 'Account', 'provider-account'],
+            ['egress', 'Proxy / VPN', 'egress'],
+            ['provider', 'AI Provider', 'illustrative'],
+          ] as const).map(([id, label, stage], index) => {
+            const step = preview.steps.find((item) => item.stage === stage);
+            const state = stage === 'illustrative'
+              ? (id === 'provider' && !decision.allowed ? 'not-reached' : 'illustrative')
+              : step?.state ?? 'not-reached';
+            return (
+              <li key={id} className={styles.timelineRow}>
+                <span className={[
+                  styles.timelineBullet,
+                  state === 'passed' ? styles.timelinePassed :
+                    state === 'blocked' ? styles.timelineBlocked : styles.timelinePending,
+                ].join(' ')} aria-hidden="true">{index + 1}</span>
+                <span className={styles.timelineName}>{label}</span>
+                <span className={styles.timelineState}>
+                  {state === 'illustrative'
+                    ? (language.startsWith('ru') ? 'Только схема' : 'Schematic only')
+                    : state === 'passed' ? copy.stagePassed :
+                      state === 'blocked' ? copy.stageBlocked : copy.stagePending}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      </section>
       <div className={styles.timeline}>
         <h3>{copy.timelineTitle}</h3>
         <ol className={styles.timelineList}>
@@ -430,7 +471,7 @@ export function SaasBlueprintDemoPage() {
             {activeTab === 'clients' && <ClientPanel copy={copy} view={view} query={normalizedSearch} />}
             {activeTab === 'accounts' && <AccountsPanel copy={copy} view={view} query={normalizedSearch} />}
             {activeTab === 'egress' && <EgressPanel copy={copy} view={view} query={normalizedSearch} />}
-            {activeTab === 'routing' && <RoutePanel key={tenantId} tenantId={tenantId} copy={copy} />}
+            {activeTab === 'routing' && <RoutePanel key={tenantId} tenantId={tenantId} copy={copy} language={i18n.language} />}
           </div>
         </div>
       </div>
