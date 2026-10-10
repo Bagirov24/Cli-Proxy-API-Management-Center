@@ -1,0 +1,33 @@
+{
+    admin off
+    auto_https off
+}
+
+:8080 {
+    # Health check for Railway. This endpoint never reaches CLIProxyAPI.
+    handle /healthz {
+        respond "ok" 200
+    }
+
+    # Minimal OpenAI-compatible API allowlist.
+    @api_post {
+        method POST
+        path /v1/chat/completions /v1/responses
+    }
+    handle @api_post {
+        reverse_proxy http://cliproxyapi-core.railway.internal:8317
+    }
+
+    @api_models {
+        method GET
+        path /v1/models
+    }
+    handle @api_models {
+        reverse_proxy http://cliproxyapi-core.railway.internal:8317
+    }
+
+    # No management UI, plugin API, OAuth endpoints, or catch-all proxy.
+    handle {
+        respond "Not Found" 404
+    }
+}
