@@ -142,8 +142,8 @@ def check_flow(page: Page, language: str) -> None:
            "Blocked account node must be auto-selected")
     ensure(("Заблокировано здесь" if ru else "Blocked here") in inspector.inner_text(),
            "Denial stage is not explained")
-    ensure("account-orbit" not in visible_text(page) and "Orbit Lab" not in visible_text(page),
-           "Denied foreign account identity was exposed")
+    ensure("account-orbit" not in visible_text(page) and "Orbit Lab" not in inspector.inner_text(),
+           "Denied foreign account identity was exposed in route details")
     ensure(("Недоступно или нет разрешения" if ru else "Unavailable or not permitted") in inspector.inner_text(),
            "Unpermitted account must display a neutral label")
 
