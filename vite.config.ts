@@ -36,6 +36,8 @@ function getVersion(): string {
 }
 
 // https://vitejs.dev/config/
+const saasDemoEnabled = process.env.VITE_ENABLE_SAAS_BLUEPRINT_DEMO === 'true';
+
 export default defineConfig({
   plugins: [
     react(),
@@ -45,10 +47,18 @@ export default defineConfig({
   ],
   define: {
     __APP_VERSION__: JSON.stringify(getVersion()),
-    __SAAS_BLUEPRINT_DEMO_ENABLED__: JSON.stringify(process.env.VITE_ENABLE_SAAS_BLUEPRINT_DEMO === 'true')
+    __SAAS_BLUEPRINT_DEMO_ENABLED__: JSON.stringify(saasDemoEnabled)
   },
   resolve: {
     alias: {
+      // The production bundle resolves this import to a zero-cost stub.
+      // Vite singlefile would otherwise inline lazy demo code, even when route is hidden.
+      '@/features/saasBlueprint/demo/SaasDemoRoute': path.resolve(
+        __dirname,
+        saasDemoEnabled
+          ? './src/features/saasBlueprint/demo/SaasDemoRoute.tsx'
+          : './src/features/saasBlueprint/demo/SaasDemoRouteDisabled.tsx'
+      ),
       '@': path.resolve(__dirname, './src')
     }
   },
