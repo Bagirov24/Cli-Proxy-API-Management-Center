@@ -139,11 +139,14 @@ describe('SaaS opt-in UI and no-live-API safeguards', () => {
     const flag = read('../src/features/saasBlueprint/demo/featureFlag.ts');
     const routes = read('../src/router/MainRoutes.tsx');
     const layout = read('../src/components/layout/MainLayout.tsx');
+    const app = read('../src/App.tsx');
     expect(flag).toContain("VITE_ENABLE_SAAS_BLUEPRINT_DEMO === 'true'");
     expect(routes).toContain('...(SAAS_BLUEPRINT_DEMO_ENABLED');
     expect(routes).toContain("path: '/saas-demo'");
     expect(layout).toContain('...(SAAS_BLUEPRINT_DEMO_ENABLED');
     expect(layout).toContain("path: '/saas-demo'");
+    expect(app).toContain('import.meta.env.DEV && SAAS_BLUEPRINT_DEMO_ENABLED');
+    expect(app).toContain("path: '/saas-demo-preview'");
   });
 
   test('demo page never imports operational API clients or sends network requests', () => {
