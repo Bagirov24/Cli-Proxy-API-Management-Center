@@ -70,15 +70,34 @@ def main():
     must("/v1/models", payload, good, 404, "not_forwarded")
     must("/v1/chat/completions/", payload, good, 404, "not_forwarded")
 
-    # Ensure a genuine streaming response is forwarded.
+    # Assert actual streaming arrival times, not just a completed SSE body.
+    # The synthetic Core flushes A, sleeps 1s, then flushes B and [DONE].
     before = hits()
-    t0 = time.monotonic()
-    body, h = must("/v1/chat/completions", {**payload, "stream": True}, good, 200, "forwarded")
-    assert b"data: [DONE]" in body, body[:500]
-    assert b"data: " in body, body[:500]
-    assert "text/event-stream" in h.get("Content-Type", ""), h
-    assert time.monotonic() - t0 >= 0.25, "synthetic streamed wait was lost"
+    stream_req = request.Request(
+        BASE + "/v1/chat/completions",
+        data=json.dumps({**payload, "stream": True}).encode(),
+        headers={**good, "Accept": "text/event-stream", "X-Real-IP": "198.51.100.200"},
+        method="POST",
+    )
+    stream_started = time.monotonic()
+    first_at = second_at = done_at = None
+    with request.urlopen(stream_req, timeout=15) as rsp:
+        assert rsp.status == 200, rsp.status
+        assert "text/event-stream" in rsp.headers.get("Content-Type", "")
+        for line in rsp:
+            now = time.monotonic() - stream_started
+            if b'"content":"A"' in line and first_at is None:
+                first_at = now
+            elif b'"content":"B"' in line and second_at is None:
+                second_at = now
+            elif line.startswith(b"data: [DONE]"):
+                done_at = now
+                break
+    assert first_at is not None and second_at is not None and done_at is not None, (first_at, second_at, done_at)
+    assert second_at - first_at >= 0.75, ("SSE buffering suspected", first_at, second_at)
+    assert done_at >= second_at
     assert hits() == before + 1
+    print(f"PASS streaming SSE arrival gap: {second_at - first_at:.3f}s")
 
     # Separate gateway rate limiting from Core; synthetic key is NOT secret.
     # Two successive requests are allowed in the test configuration, third
