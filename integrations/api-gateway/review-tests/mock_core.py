@@ -63,7 +63,8 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b'data: {"choices":[{"delta":{"content":"A"}}]}\n\n')
             self.wfile.flush()
-            time.sleep(0.30)
+            # Deliberate gap: the client must receive the first event before this ends.
+            time.sleep(1.0)
             self.wfile.write(b'data: {"choices":[{"delta":{"content":"B"}}]}\n\n')
             self.wfile.write(b"data: [DONE]\n\n")
             self.wfile.flush()
