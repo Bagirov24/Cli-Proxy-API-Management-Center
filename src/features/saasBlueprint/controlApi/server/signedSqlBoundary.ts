@@ -112,6 +112,8 @@ export async function readSignedScopedMetadata(
   let started = false;
   let committed = false;
   let discard = false;
+  let output: readonly SqlRow[] | null = null;
+  let releaseFailed = false;
   try {
     if (signal?.aborted) throw new Error('Request cancelled');
     await connection.query('BEGIN', []);
@@ -170,7 +172,7 @@ export async function readSignedScopedMetadata(
     if (signal?.aborted) throw new Error('Request cancelled');
     await connection.query('COMMIT', []);
     committed = true;
-    return safe;
+    output = safe;
   } catch {
     discard = true;
     if (started && !committed) {
@@ -185,7 +187,9 @@ export async function readSignedScopedMetadata(
     try {
       await connection.release(discard);
     } catch {
-      throw new Error('Scoped metadata unavailable');
+      releaseFailed = true;
     }
   }
+  if (releaseFailed || output === null) throw new Error('Scoped metadata unavailable');
+  return output;
 }

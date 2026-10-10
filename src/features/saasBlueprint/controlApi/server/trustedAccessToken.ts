@@ -100,10 +100,10 @@ export function createPinnedAccessTokenVerifier(
       if (!claims || !signature || signature.byteLength < 128 ||
           signature.byteLength > 512) return null;
       const key = keys.get(header.kid)!;
-      let verified = false;
+      let verified: boolean;
       try {
         verified = await crypto.subtle.verify(
-          'RSASSA-PKCS1-v1_5', key, signature,
+          'RSASSA-PKCS1-v1_5', key, Uint8Array.from(signature),
           new TextEncoder().encode(encodedHeader + '.' + encodedClaims)
         );
       } catch {
