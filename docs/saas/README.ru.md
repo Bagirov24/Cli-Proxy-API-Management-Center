@@ -2,8 +2,10 @@
 
 > **Статус: ПРОЕКТ / НЕ ПОДКЛЮЧЁН К PRODUCTION.** Здесь нет работающей
 > многоклиентности, VPN, BYOA или дополнительного механизма доступа.
-> Файлы в `src/features/saasBlueprint/` — чистые TS-контракты и симулятор
-> решений на синтетических данных; в Router, Core и Gateway они не импортируются.
+> Файлы в `src/features/saasBlueprint/` содержат TS-контракты и симулятор
+> на синтетических данных. Демонстрационная страница подключается в Router
+> **только по явному feature flag**. Core, Gateway, ключи и реальная сеть
+> ей недоступны.
 
 ## Зачем существует этот каталог
 
@@ -32,10 +34,41 @@
 | `src/features/saasBlueprint/safeDecisionPreview.ts` | Безопасные этапы UX-пояснения без паролей и OAuth-токенов |
 | `tests/saasBlueprintRouting.test.ts` | Клиентская изоляция, grants, CPA-only, deny-by-default, direct/VPN |
 | `tests/saasBlueprintEgress.test.ts` | Приватные/служебные адреса, URL credentials, схемы и статусы |
+| `src/features/saasBlueprint/demo/` | Read-only интерфейс, вымышленные tenants, RU/EN тексты, feature flag |
+| `tests/saasBlueprintDemo.test.ts` | Проверки разграничения demo-ресурсов, сценариев и UI-безопасности |
 
 Локально: `bun test tests/saasBlueprintRouting.test.ts tests/saasBlueprintEgress.test.ts`,
 или полный `bun run verify`. При изменениях нужен PR CI и актуализация документов.
 
+## Как посмотреть UX/UI-прототип
+
+**По умолчанию макет скрыт**: обычные `bun run build` и GitHub
+release pipeline НЕ включают его в навигацию. Не требуется Core или
+действительный OAuth-аккаунт, если открыть специальный локальный маршрут.
+
+В копии **этой feature-ветки**:
+
+```bash
+bun install --frozen-lockfile
+VITE_ENABLE_SAAS_BLUEPRINT_DEMO=true bun run dev
+```
+
+Открыть: **http://localhost:5173/#/saas-demo-preview** (если Vite выбрал
+другой порт, использовать его адрес). Эта страница доступна только при
+`import.meta.env.DEV` и флаге; работает вне login shell, только на синтетике.
+Под PowerShell: `$env:VITE_ENABLE_SAAS_BLUEPRINT_DEMO='true'; bun run dev`.
+
+Внутри уже авторизованного Management Center при том же флаге виден пункт
+`SaaS · прототип → Клиенты и подключения` и путь `/#/saas-demo`.
+
+В прототипе: переключение tenant, изолированные списки проектов, аккаунтов
+и прокси, обзор поддерживаемых BYOK/BYOA статусов, 4 шага будущего мастера,
+симуляции allow/deny и наглядный маршрут. Кнопок отправки секретов,
+подключения VPN или сохранения настроек **нет**.
+
+Языки RU/EN; остальные локали временно получают English вместо отсутствующих
+переводов. Настоящий клиентский SaaS API/SSO понадобится отдельным этапом.
+Никакие demo-статусы нельзя использовать как мониторинг production.
 ## Факт vs проект
 
 **Сейчас в CLIProxyAPI Core v8.0.23:**
