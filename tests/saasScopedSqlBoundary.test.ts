@@ -140,7 +140,9 @@ describe('Stage 2E — signed SQL scoped query boundary (fake pool, no network)'
       scope, collection: 'projects', signal: ctrl.signal,
     }, () => now)).rejects.toThrow('Scoped metadata unavailable');
     expect(h.calls.some((item) => item.sql === 'COMMIT')).toBe(false);
-    expect(h.calls.at(-1)?.sql).toBe('ROLLBACK');
+    // Cancellation may race an in-flight SELECT: never issue ROLLBACK on
+    // the same socket until the driver confirms that query has stopped.
+    expect(h.quarantines).toEqual(['read-failed']);
     expect(h.releases).toEqual([true]);
   });
 
@@ -157,7 +159,8 @@ describe('Stage 2E — signed SQL scoped query boundary (fake pool, no network)'
     await expect(readSignedScopedMetadata(pool, signer, {
       scope, collection: 'projects', signal: controller.signal,
     }, () => now)).rejects.toThrow('Scoped metadata unavailable');
-    expect(forwarded).toBe(controller.signal);
+    expect(forwarded).toBeDefined();
+    expect(forwarded).not.toBe(controller.signal);
   });
 
   test('cancellation during COMMIT discards connection and cannot return stale rows', async () => {
@@ -241,8 +244,7 @@ describe('Stage 2E — signed SQL scoped query boundary (fake pool, no network)'
       async query() { throw new Error('LATE RESERVATION MUST NOT QUERY'); },
       release(discard) { events.push('late-release:' + discard); },
     });
-    await Promise.resolve();
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 5));
     expect(events).toContain('acquire-uncertain');
     expect(events).toContain('late-release:true');
   });
