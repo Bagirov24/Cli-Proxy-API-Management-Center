@@ -6,6 +6,7 @@ on:
       - 'staging/saas-rls/**'
       - 'tests/sql/saas_rls_v1.test.sql'
       - 'tests/sql/saas_rls_signed_scope.test.sql'
+      - 'tests/sql/saas_scoped_queries.test.sql'
       - 'docs/saas/**'
       - '.github/workflows/saas-staging-rls-ci.yml'
   workflow_dispatch:
@@ -74,5 +75,11 @@ jobs:
               exit 1
             }
           tail -n 15 /tmp/saas-rls-signed-scope.log
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/saas_scoped_queries.test.sql \
+            > /tmp/saas-sql-boundary.log 2>&1 || {
+              tail -n 120 /tmp/saas-sql-boundary.log
+              exit 1
+            }
+          tail -n 15 /tmp/saas-sql-boundary.log
 
       # No deploy, secrets from repository, or remote database connections.
