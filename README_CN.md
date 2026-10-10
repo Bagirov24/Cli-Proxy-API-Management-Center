@@ -15,7 +15,7 @@
 
 [English](README.md) · **简体中文** · [Русский](README_RU.md)
 
-[快速开始](#快速开始) · [功能一览](#功能一览) · [本地开发](#本地开发) · [下载发布版本](https://github.com/router-for-me/Cli-Proxy-API-Management-Center/releases)
+[快速开始](#快速开始) · [功能一览](#功能一览) · [系统架构（俄文）](docs/SYSTEM_DESIGN_RU.md) · [本地开发](#本地开发) · [下载发布版本](https://github.com/router-for-me/Cli-Proxy-API-Management-Center/releases)
 
 </div>
 
