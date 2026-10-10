@@ -140,3 +140,23 @@ implicit direct egress. Для реального backend требуется ses
 verification, scoped DB, RLS, audit и staging security tests.
 См. [AUTHZ_RBAC_V1.ru.md](AUTHZ_RBAC_V1.ru.md).
 
+## D-025 — local-only HTTP Control handler с синтетическими сессиями
+
+**Статус: SIMULATED (локальный preview) / backend deployment PROPOSED.**
+Функциональный `GET` обработчик построен как Fetch Request/Response
+порт внутри модульного монолита; он не монтируется в production.
+Actor определяется только по случайному opaque Bearer из короткоживущего
+локального реестра, а membership загружается на серверной стороне
+независимо от user headers. Проверка повторяется после async read,
+чтобы отзыв сессии/роли не завершился выдачей устаревших metadata.
+
+Server transport повторно собирает DTO по runtime allowlist, не
+пропускает произвольные поля upstream. Только static error codes,
+no-store, без CORS/cookies/write методов. Скрипт запуска требует
+ручного флага и всегда слушает `127.0.0.1:18551`, отказывается
+работать в production/Railway. Это **не production auth**: настоящие
+OIDC, RLS, audit, Core metadata adapter и runtime enforcement
+пока SPEC/PROPOSED. Никаких credentials и реального трафика.
+Документация:
+[LOCAL_CONTROL_HTTP_V1.ru.md](LOCAL_CONTROL_HTTP_V1.ru.md).
+

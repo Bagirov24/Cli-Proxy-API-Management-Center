@@ -102,3 +102,16 @@ fallback на прямой сетевой запрос. Никакой read-only
 и обязателен badge «SIMULATED». См.
 [CONTROL_API_V1.ru.md](CONTROL_API_V1.ru.md),
 [AUTHZ_RBAC_V1.ru.md](AUTHZ_RBAC_V1.ru.md).
+
+## Отдельный synthetic adapter (итерация 2B)
+
+`controlApi/server/syntheticBackend.ts` реализует **только**
+`synthetic-simulation` reader поверх локального
+`BlueprintSnapshot`, без сети и Core. HTTP handler принимает
+адаптер через порт, но не предоставляет фактический
+`core-metadata-readonly` implementation. На staging только после
+отдельного security review потребуются реальные разрешённые
+read-only API methods, SQL tenant scoping и контрактные тесты
+на закреплённых версиях Core/CPA. Синтетический reader нельзя
+подменять реальным Core Management API или открывать наружу.
+

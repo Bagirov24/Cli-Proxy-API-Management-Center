@@ -325,3 +325,28 @@ runtime enforcement.
 Backend implementation, SSO, Vault, PostgreSQL, RLS, audit ledger и
 instrumentation остаются `PROPOSED`.
 
+## 13. Этап 2B — локальная Fetch API граница, без Core (SIMULATED)
+
+Новые модули `controlApi/server/` создают read-only Request/Response
+обработчик с явной зависимостью от `sessions`, `actors` и `reader`.
+Никакой singleton Bun-server или импорта этого кода в production Router
+нет. Сервер поднимается лишь при ручном `SAAS_CONTROL_SYNTHETIC_SERVER=true`
+в `scripts/saas-control-local.mjs` и привязан к IPv4 loopback.
+
+Только короткоживущая синтетическая сессия + серверный actor store
+могут сформировать identity context. Клиентские
+`X-Actor-ID`, `X-Tenant-ID`, `X-Role` не учитываются.
+Сервер проверяет membership и RBAC **до** чтения metadata, а после
+асинхронного чтения повторно проверяет session/revocation/membership
+(включая in-place изменения actor store), затем формирует новый DTO
+по runtime allowlist. Запрос с неизвестной коллекцией или чужим
+tenant отвергается, ошибочные upstream payload/source не копируются
+в ответ. CORS/cookies/write routes отсутствуют, `Cache-Control:no-store`.
+
+Этот локальный сервис **не** заменяет настоящие OIDC, session store,
+PostgreSQL/RLS, mTLS, ограничение по сети и аудит. Слой
+`core-metadata-readonly` остаётся SPEC: ни один запрос к Core/CPA
+в этом этапе не выполняется. Нет подмены реального route enforcement
+синтетическим allow/deny. См.
+[LOCAL_CONTROL_HTTP_V1.ru.md](LOCAL_CONTROL_HTTP_V1.ru.md).
+

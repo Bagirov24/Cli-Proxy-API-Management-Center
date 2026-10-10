@@ -1,8 +1,10 @@
 /**
  * SaaS Control API v1 — SPEC / SYNTHETIC CONTRACT ONLY.
  *
- * No HTTP listener, sessions, databases, credential handling or Core adapter
- * are implemented. Real actors MUST be derived from a server-verified session.
+ * No PRODUCTION HTTP listener, SSO, databases, provider credentials or Core
+ * adapter exist. A separate explicitly opt-in loopback-only synthetic handler
+ * is used solely for test/preview; it is NOT an identity provider.
+ * Real actors MUST be derived from a trusted verified server-side session.
  */
 export const SAAS_CONTROL_API_VERSION = 1 as const;
 

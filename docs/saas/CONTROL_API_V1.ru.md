@@ -1,7 +1,8 @@
 # SaaS Control API v1 — контракт read-only (RU)
 
-**Статус: SPEC + SIMULATED.** Это договорённость о будущем серверном API и
-тестируемая чистая TypeScript-проекция данных, **не работающий HTTP endpoint**.
+**Статус: SPEC + SIMULATED.** Будущий публичный сервер остаётся SPEC;
+к контрактам добавлен отдельный **local-only** HTTP preview на синтетике,
+который не связан с production и НЕ является production API.
 Ни одна функция из этого модуля не подключена к production, Core, Gateway,
 Railway, OAuth или UI-маршрутизации. Применение политики к живому трафику
 по-прежнему отсутствует.
@@ -125,3 +126,19 @@ OAuth callbacks, raw Core credentials или реального enforcement на
 Это только **проектная основа**, НЕ серверный security perimeter.
 См. [AUTHZ_RBAC_V1.ru.md](AUTHZ_RBAC_V1.ru.md) и
 [CORE_METADATA_ADAPTER_V1.ru.md](CORE_METADATA_ADAPTER_V1.ru.md).
+
+## Дополнение: локальный HTTP transport (не Core adapter)
+
+`controlApi/server/httpHandler.ts` реализует только `GET` чтение
+с уже проверенным синтетическим actor, tenant RBAC и строгим DTO
+whitelist. `syntheticSessions.ts` — 256-битные ephemeral test tokens,
+НЕ полноценный OIDC issuer. `scripts/saas-control-local.mjs`
+допускает запуск только на loopback после opt-in. Никаких реальных
+credentials, сети Core, OAuth, VPN или production management API.
+
+Внешний HTTP transport дополнительно возвращает
+`401 UNAUTHENTICATED` при отсутствии/истечении session и
+`405 METHOD_NOT_ALLOWED` при не-GET. Это transport errors, не
+новые значения `ControlReadError` pure projection.
+Подробнее: [LOCAL_CONTROL_HTTP_V1.ru.md](LOCAL_CONTROL_HTTP_V1.ru.md).
+

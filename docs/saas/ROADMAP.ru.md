@@ -240,3 +240,27 @@ RBAC+RLS double enforcement, backup+restore dry run.
 - [ ] Manual security review и интеграционные проверки с Core/CPA на
       отдельном staging, без любых реальных production credentials.
 
+## Этап 2B — изолированная HTTP граница (SIMULATED / LOCAL-ONLY)
+
+- [x] `createControlHttpHandler`: только GET tenant index и
+      tenant-scoped metadata коллекции; никакие write routes не созданы.
+- [x] Opaque 256-битные **синтетические** сессии, TTL/revoke/hash-at-rest;
+      нет endpoints создания токенов или реального SSO.
+- [x] Серверный actor directory, RBAC до metadata reader и повторная
+      проверка membership/session после async fetch.
+- [x] Strict runtime DTO allowlist, static 401/403/404/405/503,
+      отсутствие CORS, no-store и серверный correlation ID.
+- [x] `syntheticBackend` и `scripts/saas-control-local.mjs`:
+      ручной opt-in, 127.0.0.1:18551, отказ запуска в production/Railway.
+- [x] HTTP/security tests: spoofed headers, revoked/expired token,
+      duplicate membership, independent grants, invalid upstream
+      source/schema, aborted/stale responses и синтетический loopback TCP.
+- [ ] Настоящие OIDC/SSO и server-side session store с rotation,
+      CSRF policy (если cookie auth), revocation across replicas.
+- [ ] PostgreSQL + RLS, audit ledger, idempotent migrations,
+      resource pagination/rate limits и tenant-aware cache.
+- [ ] Проверенный Core/CPA read-only metadata adapter на изолированном
+      staging; contract tests с официальным API и fail-closed errors.
+- [ ] Подключение React UI к server data после отдельной security/UX
+      приёмки. Не менять Core production и не объединять Draft PR.
+

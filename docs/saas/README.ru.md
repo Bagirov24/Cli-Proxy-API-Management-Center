@@ -26,6 +26,7 @@
 | [CONTROL_API_V1.ru.md](CONTROL_API_V1.ru.md) | Read-only HTTP SPEC, DTO, ошибки и модель происхождения |
 | [AUTHZ_RBAC_V1.ru.md](AUTHZ_RBAC_V1.ru.md) | Роли, membership и независимые grants для pool/account/egress |
 | [CORE_METADATA_ADAPTER_V1.ru.md](CORE_METADATA_ADAPTER_V1.ru.md) | Интерфейс staging-only read metadata без раскрытия Core Management API |
+| [LOCAL_CONTROL_HTTP_V1.ru.md](LOCAL_CONTROL_HTTP_V1.ru.md) | Local-only HTTP слой и проверка короткоживущих синтетических сессий |
 
 ## Что добавлено в код
 
@@ -193,4 +194,27 @@ contrast audit, скринридеры, реальное 200/400% увеличе
 Нет сервера, SaaS login, write endpoints, базы данных, сетевых вызовов и
 реального data-plane enforcement. UI пока не подключён к Control API.
 Никакой новый endpoint не опубликован.
+
+## Этап 2B — локальный read-only HTTP Control API (SIMULATED)
+
+После контракта Control API v1 реализована **отдельная серверная
+граница для тестов**, не подключённая к UI или production:
+`server/syntheticSessions.ts`, `httpHandler.ts`, `syntheticBackend.ts`,
+`safeTransport.ts`. Локальный bootstrap `scripts/saas-control-local.mjs`
+начинает слушать только `127.0.0.1:18551` при явном флаге
+`SAAS_CONTROL_SYNTHETIC_SERVER=true`; запуск запрещён в Railway/
+production. Реальные API ключи не нужны и не создаются.
+
+Реализованы проверяемые краткоживущие **синтетические** opaque sessions,
+server-held actor/membership, RBAC before/after reader, проверка grants,
+generic deny/no-CORS/no-cache, строгий whitelist DTO и loopback
+интеграционные тесты. Никаких Core Management endpoint, Gateway,
+OAuth, VPN, /data или credentials. Это **не** готовый SSO или серверная
+PostgreSQL AuthZ. Документация запуска:
+[LOCAL_CONTROL_HTTP_V1.ru.md](LOCAL_CONTROL_HTTP_V1.ru.md).
+
+Обычный `management.html` не импортирует этот код; default-off
+feature flag остаётся прежним. Следующие серверные шаги требуют
+изолированного staging, OIDC provider, tenant RLS, audit и read-only Core
+metadata source contract.
 

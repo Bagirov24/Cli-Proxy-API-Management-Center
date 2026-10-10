@@ -1,7 +1,8 @@
 # SaaS Control v1 — модель AuthZ/RBAC (RU)
 
-**Статус: SPEC; чистые функции SIMULATED.** Никакой аутентификации,
-пользовательских сессий, сервера, БД или runtime enforcement пока нет.
+**Статус: SPEC для настоящего SaaS; чистые функции и local HTTP handler SIMULATED.**
+Есть только краткоживущая локальная синтетическая проверка session;
+реальных OIDC/SSO, БД, PostgreSQL RLS и runtime enforcement нет.
 TypeScript-модели **нельзя** считать механизмом безопасности существующего
 Core или Gateway.
 
@@ -113,3 +114,15 @@ contract tests с PostgreSQL/RLS, tenancy breakout tests и migration replay
 
 Тесты: tests/saasControlApiV1.test.ts. Никаких HTTP routes или реальных
 подключений к CLIProxyAPI нет. См. [CONTROL_API_V1.ru.md](CONTROL_API_V1.ru.md).
+
+## Local-only synthetic session verification (итерация 2B)
+
+Тестовый HTTP boundary принимает только короткоживущую 256-битную
+opaque session, созданную на доверенном bootstrap без HTTP login.
+Далее actor и membership проверяются в серверном каталоге,
+не из заголовков/тела. После асинхронного read bearer/token и
+actor membership повторно проверяются до выдачи данных.
+Это устраняет ложную трактовку demo actor как настоящей SaaS роли,
+но не заменяет production OIDC и revoke/audit в БД.
+См. [LOCAL_CONTROL_HTTP_V1.ru.md](LOCAL_CONTROL_HTTP_V1.ru.md).
+

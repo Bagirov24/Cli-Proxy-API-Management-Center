@@ -310,3 +310,21 @@ scope. Loading/stale/403/404/503 и retry — будущий UX acceptance.
 Read-only DTO и таблица прав: [CONTROL_API_V1.ru.md](CONTROL_API_V1.ru.md),
 [AUTHZ_RBAC_V1.ru.md](AUTHZ_RBAC_V1.ru.md).
 
+## 12. Future UI data source — переход НЕ выполнен
+
+Добавлен opt-in **отдельный local-only HTTP Control API v1** с
+синтетическим актором, tenant RBAC и whitelist DTO. Важно: основной
+SaaS UX/UI экран остаётся на `DEMO_SNAPSHOT`; изолированный HTTP
+слой не импортирован React и не имеет управления OAuth/VPN/CPA.
+
+Будущий UI API client должен поддерживать loading/stale/401/403/404/503,
+не отображать 200 синтетического metadata read как успешный AI запрос
+и явно различать `source=synthetic-simulation` и
+`source=core-metadata-readonly`. На смене tenant требуется abort
+старого запроса, реавторизация и отсутствие старых данных в DOM/cache.
+Клавиатура/mobile/RU+EN и текущая 7-узловая визуализация сохраняются.
+Без browser UX acceptance с реальными staging error states интеграцию
+не считать законченной.
+
+См. [LOCAL_CONTROL_HTTP_V1.ru.md](LOCAL_CONTROL_HTTP_V1.ru.md).
+
