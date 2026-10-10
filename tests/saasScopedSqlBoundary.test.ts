@@ -207,7 +207,7 @@ describe('Stage 2E — signed SQL scoped query boundary (fake pool, no network)'
     const h = harness();
     h.failWhen('SELECT id, ');
     const conn: ScopedSqlConnection = {
-      async query(sql, params) {
+      async query(sql) {
         if (sql === 'ROLLBACK') return new Promise(() => {});
         if (sql === 'BEGIN') return { rows: [] };
         if (sql.includes('txid_current')) return { rows: [{ transaction_id: '123456789' }] };

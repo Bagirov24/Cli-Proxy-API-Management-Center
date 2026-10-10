@@ -225,6 +225,7 @@ export async function readSignedScopedMetadata(
     };
 
     let output: readonly SqlRow[] = [];
+    let releaseFailed = false;
     try {
       if (controller.signal.aborted) throw new Error('Scoped SQL cancelled');
       await query('BEGIN', []);
@@ -295,9 +296,10 @@ export async function readSignedScopedMetadata(
       const released = await boundedCleanup(() => reserved.release(discard), cleanupMs);
       if (!released) {
         quarantine('release-uncertain');
-        throw new Error('Scoped metadata unavailable');
+        releaseFailed = true;
       }
     }
+    if (releaseFailed) throw new Error('Scoped metadata unavailable');
     return output;
   } catch {
     throw new Error('Scoped metadata unavailable');
