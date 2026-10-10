@@ -14,6 +14,9 @@ on:
       - 'vite.config.ts'
       - '.github/workflows/custom-management-panel.yml'
   workflow_dispatch:
+concurrency:
+  group: custom-management-panel-release
+  cancel-in-progress: false
 permissions:
   contents: write
 jobs:
@@ -26,13 +29,23 @@ jobs:
           bun-version: '1.3.14'
       - name: Install dependencies
         run: bun install --frozen-lockfile
-      - name: Build panel
-        run: bun run build
-      - name: Publish independent release
+      - name: Test and build panel
+        run: bun run verify
+      - name: Publish independent release without deleting the stable tag
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           mv dist/index.html dist/management.html
+          test -s dist/management.html
           TAG="v8-custom-no-apikey-fun"
-          gh release delete "$TAG" --yes --cleanup-tag || true
-          gh release create "$TAG" dist/management.html --title "Management Center without APIKEY.FUN" --notes "Custom UI build. Only the APIKEY.FUN navigation is removed; API endpoints, OAuth, and other providers remain unchanged." --latest
+          DIGEST="$(sha256sum dist/management.html | cut -d' ' -f1)"
+          NOTES="Custom Management Center build (APIKEY.FUN navigation hidden). Source commit: ${GITHUB_SHA}. management.html SHA256: ${DIGEST}. Backend API and OAuth behavior are unchanged by this UI artifact."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/management.html --clobber
+            gh release edit "$TAG" --title "Custom Management Center" --notes "$NOTES" --latest
+          else
+            gh release create "$TAG" dist/management.html --target "$GITHUB_SHA" --title "Custom Management Center" --notes "$NOTES" --latest
+          fi
+          gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq management.html
+          echo "Published ${GITHUB_SHA} (${DIGEST})"
