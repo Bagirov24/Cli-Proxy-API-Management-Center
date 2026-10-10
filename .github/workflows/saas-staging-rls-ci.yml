@@ -5,6 +5,7 @@ on:
     paths:
       - 'staging/saas-rls/**'
       - 'tests/sql/saas_rls_v1.test.sql'
+      - 'tests/sql/saas_rls_signed_scope.test.sql'
       - 'docs/saas/**'
       - '.github/workflows/saas-staging-rls-ci.yml'
   workflow_dispatch:
@@ -53,7 +54,7 @@ jobs:
           fi
           psql --version
 
-      - name: Apply staging-only schema twice, then test tenant isolation
+      - name: Verify legacy tenant RLS and signed transaction-scope hardening
         shell: bash
         run: |
           set -euo pipefail
@@ -67,5 +68,11 @@ jobs:
               exit 1
             }
           tail -n 15 /tmp/saas-rls-acceptance.log
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/saas_rls_signed_scope.test.sql \
+            > /tmp/saas-rls-signed-scope.log 2>&1 || {
+              tail -n 120 /tmp/saas-rls-signed-scope.log
+              exit 1
+            }
+          tail -n 15 /tmp/saas-rls-signed-scope.log
 
       # No deploy, secrets from repository, or remote database connections.
