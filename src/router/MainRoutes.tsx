@@ -1,4 +1,3 @@
-import { lazy, Suspense } from 'react';
 import { Navigate, useRoutes, type Location } from 'react-router-dom';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { ProvidersWorkbenchPage } from '@/features/providers/ProvidersWorkbenchPage';
@@ -15,13 +14,7 @@ import { LogsPage } from '@/features/logs/LogsPage';
 import { SystemPage } from '@/pages/SystemPage';
 import { useAuthStore } from '@/stores';
 import { SAAS_BLUEPRINT_DEMO_ENABLED } from '@/features/saasBlueprint/demo/featureFlag';
-import { SaasDemoErrorBoundary } from '@/features/saasBlueprint/demo/SaasDemoErrorBoundary';
-
-const SaasBlueprintDemoPage = lazy(() =>
-  import('@/features/saasBlueprint/demo/SaasBlueprintDemoPage').then((module) => ({
-    default: module.SaasBlueprintDemoPage,
-  }))
-);
+import { SaasDemoRoute } from '@/features/saasBlueprint/demo/SaasDemoRoute';
 
 const createMainRoutes = (supportsPlugin: boolean) => [
   { path: '/', element: <DashboardPage /> },
@@ -40,13 +33,7 @@ const createMainRoutes = (supportsPlugin: boolean) => [
   ...(SAAS_BLUEPRINT_DEMO_ENABLED
     ? [{
         path: '/saas-demo',
-        element: (
-          <SaasDemoErrorBoundary>
-            <Suspense fallback={<p role="status">Loading SaaS demo / Загрузка макета SaaS...</p>}>
-              <SaasBlueprintDemoPage />
-            </Suspense>
-          </SaasDemoErrorBoundary>
-        ),
+        element: <SaasDemoRoute />,
       }]
     : []),
   ...(supportsPlugin
