@@ -9,6 +9,7 @@ import {
   type DemoScenarioId,
 } from '../src/features/saasBlueprint/demo/demoData';
 import { getSaasDemoCopy } from '../src/features/saasBlueprint/demo/demoCopy';
+import { buildDemoFlow } from '../src/features/saasBlueprint/demo/demoFlow';
 import { getSaasDemoNavigation } from '../src/features/saasBlueprint/demo/demoNavigation';
 
 const fixtureIds = DEMO_SNAPSHOT.tenants.map((tenant) => tenant.id);
@@ -98,6 +99,61 @@ describe('SaaS Blueprint UI fixture isolation', () => {
     }
   });
 
+  test('seven-stage flow is policy-driven while network stages are always schematic', () => {
+    const allowed = buildDemoFlow(runDemoScenario('north-owned').preview);
+    expect(allowed.map((node) => node.id)).toEqual([
+      'client', 'gateway', 'policy', 'pool', 'account', 'egress', 'provider',
+    ]);
+    expect(allowed.map((node) => node.state)).toEqual([
+      'passed', 'illustrative', 'passed', 'passed', 'passed', 'passed', 'illustrative',
+    ]);
+
+    for (const scenario of DEMO_SCENARIOS) {
+      const run = runDemoScenario(scenario.id);
+      const flow = buildDemoFlow(run.preview);
+      expect(flow).toHaveLength(7);
+      expect(flow.find((node) => node.id === 'gateway')?.state).toBe('illustrative');
+      expect(flow.find((node) => node.id === 'provider')?.state)
+        .toBe(run.decision.allowed ? 'illustrative' : 'not-reached');
+      expect(flow.filter((node) => node.state === 'blocked')).toHaveLength(
+        run.decision.allowed ? 0 : 1);
+    }
+    expect(buildDemoFlow(runDemoScenario('north-offline').preview)
+      .find((node) => node.id === 'egress')?.state).toBe('blocked');
+    expect(buildDemoFlow(runDemoScenario('north-foreign-account').preview)
+      .find((node) => node.id === 'account')?.state).toBe('blocked');
+  });
+
+  test('flow context redacts foreign account and egress even for denied scenarios', () => {
+    const shared = runDemoScenario('north-shared').context;
+    expect(shared.accountReference).toBe('account-platform');
+    expect(shared.accountOwnerKind).toBe('platform');
+    expect(shared.accountAccess).toBe('shared');
+    expect(shared.egressAccess).toBe('shared');
+    expect(shared.poolReference).toBe('pool-platform');
+
+    const foreignAccount = runDemoScenario('north-foreign-account').context;
+    expect(foreignAccount.accountReference).toBeNull();
+    expect(foreignAccount.accountOwnerKind).toBeNull();
+    expect(foreignAccount.egressName).toBeNull();
+
+    const foreignEgress = runDemoScenario('north-foreign-egress').context;
+    expect(foreignEgress.accountReference).toBe('account-north');
+    expect(foreignEgress.egressName).toBeNull();
+    expect(foreignEgress.egressOwnerKind).toBeNull();
+
+    const north = DEMO_SCENARIOS.filter((scenario) => scenario.tenantId === 'demo-north');
+    for (const scenario of north) {
+      const context = runDemoScenario(scenario.id).context;
+      expect(JSON.stringify(context)).not.toMatch(/account-orbit|proxy-orbit|Orbit Lab/);
+    }
+    const orbit = DEMO_SCENARIOS.filter((scenario) => scenario.tenantId === 'demo-orbit');
+    for (const scenario of orbit) {
+      const context = runDemoScenario(scenario.id).context;
+      expect(JSON.stringify(context)).not.toMatch(/account-north|proxy-north|North Studio/);
+    }
+  });
+
   test('every scenario has RU/EN human-readable labels and future next actions', () => {
     const ru = getSaasDemoCopy('ru');
     const en = getSaasDemoCopy('en');
@@ -121,6 +177,9 @@ describe('SaaS Blueprint UI fixture isolation', () => {
     }
     for (const copy of [ru, en]) {
       expect(Object.keys(copy.stages)).toHaveLength(8);
+      expect(Object.keys(copy.flowNodes)).toHaveLength(7);
+      expect(Object.keys(copy.flowStates)).toHaveLength(4);
+      expect(copy.flowSource.length).toBeGreaterThan(30);
       expect(Object.keys(copy.reasons)).toHaveLength(22);
       expect(copy.wizardSteps).toHaveLength(4);
       expect(copy.demoWarning.toLowerCase()).toMatch(/макет|mockup/);
@@ -130,7 +189,10 @@ describe('SaaS Blueprint UI fixture isolation', () => {
   test('fixture and safe preview contain no raw tokens, authorization headers, or passwords', () => {
     const serialized = JSON.stringify({
       fixtures: DEMO_SNAPSHOT,
-      simulations: DEMO_SCENARIOS.map((scenario) => runDemoScenario(scenario.id).preview),
+      simulations: DEMO_SCENARIOS.map((scenario) => {
+        const run = runDemoScenario(scenario.id);
+        return { preview: run.preview, context: run.context, flow: buildDemoFlow(run.preview) };
+      }),
     });
     expect(serialized).not.toMatch(/sk-ant-|sk-proj-|cpa_[a-z0-9]+|Bearer\s/i);
     expect(serialized).not.toMatch(/access_token|refresh_token|proxyPassword|authorization_header/i);
@@ -173,12 +235,13 @@ describe('SaaS opt-in UI and no-live-API safeguards', () => {
     expect(page).toContain("event.key === 'ArrowRight'");
     expect(page).toContain('aria-live="polite"');
     expect(page).toContain('role="note"');
-    expect(page).toContain('Request path · simulation only');
-    expect(page).toContain('Логический маршрут (симуляция)');
-    expect(page).toContain("['gateway', 'API Gateway', 'illustrative']");
-    expect(page).toContain("['provider', 'AI Provider', 'illustrative']");
-    expect(page).toContain('stage === \'illustrative\'');
-    expect(page).toContain("id === 'provider' && !decision.allowed");
+    expect(page).toContain('buildDemoFlow(preview)');
+    expect(page).toContain('aria-pressed={inspected.id === node.id}');
+    expect(page).toContain('setSelectedNode(null)');
+    expect(page).toContain('flowDetails[inspected.id]');
+    expect(page).toContain('ownerLabel(account.owner, copy)');
+    expect(page).toContain('ownerLabel(profile.owner, copy)');
+    expect(page).toContain('role="region"');
 
     expect(page).not.toMatch(/onClick=\{.*create(Real|Account|Key|Proxy)/i);
   });
@@ -189,5 +252,8 @@ describe('SaaS opt-in UI and no-live-API safeguards', () => {
     expect(scss).toContain('max-width: 740px');
     expect(scss).toContain('max-width: 410px');
     expect(scss).toContain('prefers-reduced-motion: reduce');
+    expect(scss).toContain('.flowList');
+    expect(scss).toContain('.flowNodeSelected');
+    expect(scss).toContain('.flowNodeBlocked');
   });
 });

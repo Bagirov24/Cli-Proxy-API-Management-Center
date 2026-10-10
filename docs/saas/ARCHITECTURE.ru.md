@@ -272,3 +272,9 @@ idempotency key. Аналитика не должна блокировать о�
 ## Демонстрационное представление request path (SIMULATED)
 
 В SaaS UI рисуется семиузловая **логическая** цепочка Client → Gateway → CPA Policy → Pool → Account → Egress → Provider. Показанные этапы политики берутся исключительно из чистого `safeDecisionPreview`; Gateway/Provider явно имеют обозначение `illustrative` и не являются ни тестами сети, ни фактом отправки запроса. Настоящее runtime enforcement и серверная изоляция ресурсов относятся к будущему SaaS Control API/adapter; включать Core или публиковать Gateway для просмотра этой схемы нельзя.
+
+## UX-итерация 2: безопасная проекция контекста запроса
+
+Функция `projectScenarioContext` возвращает только разрешённые демонстрационные ссылки: проект/приложение, CPA binding, пул, аккаунт, сетевой профиль, владелец и доступ. **Имена и ID недоступного tenant resource исключаются до передачи в UI**. Контекст не содержит URL с секретами, API-ключей, OAuth-токенов, VPN-конфигураций и raw request/response. `buildDemoFlow` проецирует результаты чистого resolver на семь этапов без network I/O.
+
+Эта frontend-изоляция — только **SIMULATED**, не enforcement. Для настоящего SaaS Control API следует реализовать серверную проверку AuthZ/RBAC + grants на каждой выдаче read-only metadata, а не передавать весь snapshot клиенту. Gateway и AI Provider всегда обозначаются `illustrative`, не `passed`, даже если решение resolver — allow.

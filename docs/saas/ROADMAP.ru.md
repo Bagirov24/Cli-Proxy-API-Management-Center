@@ -180,3 +180,12 @@ RBAC+RLS double enforcement, backup+restore dry run.
 - [x] Добавлен статический regression test на обязательные подписи симуляции.
 - [ ] Довести browser/a11y и mobile screenshot acceptance, показать конкретные ресурсы безопасным tenant-scoped способом, добавить анимацию только с `prefers-reduced-motion`.
 - [ ] Следующий ограниченный этап (`SPEC`): SaaS Control API v1, actor/tenant/role/resource/action AuthZ матрица, read-only adapter к Core metadata, типовые error/denial contracts и контрактные тесты. Без изменения production.
+
+## Итерация 2 — результат и оставшийся гейт
+
+- [x] `SIMULATED`: интерактивные 7 узлов request flow с понятными RU/EN статусами, состояниями, инспектором и точкой отказа.
+- [x] `SIMULATED`: инспектор строится из tenant-visible проекции контекста. Чужие account/egress references не раскрываются, в том числе при DENY.
+- [x] `SIMULATED`: владелец и право `owned/shared` отдельно в account и network cards, модель и провайдер в доступных метаданных.
+- [x] CSS focus-visible, keyboard button activation, responsive 7/4/2/1, reduced-motion без сетевой «анимации».
+- [ ] Browser / a11y / screenshot acceptance (desktop, tablet, mobile, light/dark) и согласование UX человеком.
+- [ ] SaaS Control API, RBAC/AuthZ, read-only adapter, реальный trace и enforcement: строго `SPEC/PROPOSED`, не реализованы.

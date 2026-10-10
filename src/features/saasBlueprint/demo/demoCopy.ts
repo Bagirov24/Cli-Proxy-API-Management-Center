@@ -1,6 +1,7 @@
 import type { AccountAuthMode, Health, ProviderAccount } from '../domain';
 import type { DenialReason, PolicyStage } from '../resolveRoute';
 import type { DemoScenarioId } from './demoData';
+import type { DemoFlowNode, DemoFlowState } from './demoFlow';
 
 interface ReasonCopy {
   readonly title: string;
@@ -42,6 +43,8 @@ export interface DemoCopy {
   readonly owner: string;
   readonly selfOwned: string;
   readonly shared: string;
+  readonly platformOwner: string;
+  readonly accessScope: string;
   readonly accountLabel: string;
   readonly authLabel: string;
   readonly authorization: string;
@@ -70,6 +73,14 @@ export interface DemoCopy {
   readonly denialWhy: string;
   readonly nextAction: string;
   readonly timelineTitle: string;
+  readonly flowTitle: string;
+  readonly flowHint: string;
+  readonly flowInspector: string;
+  readonly flowUnknown: string;
+  readonly flowSchematic: string;
+  readonly flowSource: string;
+  readonly flowNodes: Readonly<Record<DemoFlowNode, string>>;
+  readonly flowStates: Readonly<Record<DemoFlowState, string>>;
   readonly stagePassed: string;
   readonly stageBlocked: string;
   readonly stagePending: string;
@@ -121,6 +132,8 @@ const ru: DemoCopy = {
   owner: 'Владелец',
   selfOwned: 'Собственный ресурс',
   shared: 'Доступ по отдельному разрешению',
+  platformOwner: 'Платформа',
+  accessScope: 'Права доступа',
   accountLabel: 'Аккаунт провайдера',
   authLabel: 'Авторизация',
   authorization: 'Разрешение на использование',
@@ -154,6 +167,27 @@ const ru: DemoCopy = {
   denialWhy: 'Почему получено это решение',
   nextAction: 'Что делать',
   timelineTitle: 'Этапы проверки',
+  flowTitle: 'Интерактивная схема запроса',
+  flowHint: 'Выберите узел, чтобы увидеть безопасные сведения. Это симуляция правил, а не реальные сетевые запросы.',
+  flowInspector: 'Выбранный этап',
+  flowUnknown: 'Недоступно или нет разрешения',
+  flowSchematic: 'Узел показан для объяснения архитектуры. Нет реального сетевого соединения.',
+  flowSource: 'Источник: синтетическая фикстура от 10.10.2026. Gateway и AI-провайдер не вызываются.',
+  flowNodes: {
+    client: 'Клиент / приложение',
+    gateway: 'API Gateway',
+    policy: 'CPA Key Policy',
+    pool: 'Пул аккаунтов',
+    account: 'AI-аккаунт',
+    egress: 'Прокси / VPN',
+    provider: 'AI-провайдер',
+  },
+  flowStates: {
+    passed: 'Правило пройдено',
+    blocked: 'Заблокировано здесь',
+    'not-reached': 'Не достигнуто',
+    illustrative: 'Только схема',
+  },
   stagePassed: 'Пройдено',
   stageBlocked: 'Заблокировано',
   stagePending: 'Не выполнялось',
@@ -237,6 +271,8 @@ const en: DemoCopy = {
   owner: 'Owner',
   selfOwned: 'Owned resource',
   shared: 'Explicitly shared',
+  platformOwner: 'Platform',
+  accessScope: 'Access',
   accountLabel: 'Provider account',
   authLabel: 'Authentication',
   authorization: 'Authorization status',
@@ -270,6 +306,27 @@ const en: DemoCopy = {
   denialWhy: 'Why this decision was made',
   nextAction: 'Next step',
   timelineTitle: 'Validation stages',
+  flowTitle: 'Interactive request path',
+  flowHint: 'Select a stage to inspect non-secret references. This models policy decisions, not real network traffic.',
+  flowInspector: 'Selected stage',
+  flowUnknown: 'Unavailable or not permitted',
+  flowSchematic: 'This node explains the architecture. No live network connection is made.',
+  flowSource: 'Source: synthetic fixture dated 2026-10-10. No Gateway or AI provider requests are sent.',
+  flowNodes: {
+    client: 'Client / application',
+    gateway: 'API Gateway',
+    policy: 'CPA Key Policy',
+    pool: 'Account pool',
+    account: 'AI account',
+    egress: 'Proxy / VPN',
+    provider: 'AI provider',
+  },
+  flowStates: {
+    passed: 'Rule passed',
+    blocked: 'Blocked here',
+    'not-reached': 'Not reached',
+    illustrative: 'Schematic only',
+  },
   stagePassed: 'Passed',
   stageBlocked: 'Blocked',
   stagePending: 'Not reached',

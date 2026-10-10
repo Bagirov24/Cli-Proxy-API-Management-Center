@@ -10,6 +10,7 @@ import {
   type TenantDemoView,
 } from './demoData';
 import { publicEgressLabel } from '../egressValidation';
+import { buildDemoFlow, type DemoFlowNode } from './demoFlow';
 import type { EgressProfile, ProviderAccount } from '../domain';
 import styles from './SaasBlueprintDemoPage.module.scss';
 
@@ -46,6 +47,11 @@ function ResourceCard({
 
 function Detail({ label, value }: { label: string; value: string }) {
   return <div className={styles.detail}><dt>{label}</dt><dd>{value}</dd></div>;
+}
+
+function ownerLabel(owner: ProviderAccount['owner'], copy: DemoCopy): string {
+  if (owner.kind === 'platform') return copy.platformOwner;
+  return DEMO_SNAPSHOT.tenants.find((tenant) => tenant.id === owner.tenantId)?.name ?? copy.flowUnknown;
 }
 
 function EmptyState({ copy }: { copy: DemoCopy }) {
@@ -89,6 +95,7 @@ function ClientPanel({ view, copy, query }: {
           {apps.map((app) => (
             <ResourceCard key={app.id} eyebrow={copy.application} title={app.name}>
               <dl className={styles.details}>
+                <Detail label={copy.owner} value={view.tenant.name} />
                 <Detail label={copy.project} value={view.projects.find((p) => p.id === app.projectId)?.name || '—'} />
                 <Detail label={copy.accessKind} value={view.keys.find((key) => key.applicationId === app.id)?.id || '—'} />
               </dl>
@@ -118,7 +125,9 @@ function AccountCard({ account, view, copy }: {
         account.authorizationStatus === 'approved' ? styles.statusNeutral : styles.statusWarn,
       ].join(' ')}>{label}</span>}>
       <dl className={styles.details}>
-        <Detail label={copy.owner} value={granted ? copy.shared : copy.selfOwned} />
+        <Detail label={copy.owner} value={ownerLabel(account.owner, copy)} />
+        <Detail label={copy.accessScope} value={granted ? copy.shared : copy.selfOwned} />
+        <Detail label={copy.providerLabel} value={account.providerId} />
         <Detail label={copy.authLabel} value={copy.authMode[account.authMode]} />
         <Detail label={copy.authorization} value={copy.approval[account.authorizationStatus]} />
         <Detail label={copy.modelLabel} value={account.allowedModelIds.join(', ')} />
@@ -205,7 +214,8 @@ function EgressCard({ profile, view, copy }: {
     <ResourceCard title={profile.name} eyebrow={copy.egressLabel}
       trailing={<span className={[styles.statusPill, stateClass].join(' ')}>{copy.health[profile.health]}</span>}>
       <dl className={styles.details}>
-        <Detail label={copy.owner} value={granted ? copy.shared : copy.selfOwned} />
+        <Detail label={copy.owner} value={ownerLabel(profile.owner, copy)} />
+        <Detail label={copy.accessScope} value={granted ? copy.shared : copy.selfOwned} />
         <Detail label={copy.profileLabel} value={profile.kind.toUpperCase()} />
         <Detail label={copy.endpointLabel} value={profile.kind === 'vpn-connector'
           ? copy.noConnection : publicEgressLabel(profile)} />
@@ -236,18 +246,50 @@ function EgressPanel({ view, copy, query }: {
   );
 }
 
-function RoutePanel({ tenantId, copy, language }: {
-  tenantId: string;
+function RoutePanel({ view, copy }: {
+  view: TenantDemoView;
   copy: DemoCopy;
-  language: string;
 }) {
-  const candidates = getTenantScenarios(tenantId);
+  const candidates = getTenantScenarios(view.tenant.id);
   const [requestedScenario, setRequestedScenario] = useState<DemoScenarioId>(
-    tenantId === 'demo-north' ? 'north-owned' : 'orbit-owned');
+    view.tenant.id === 'demo-north' ? 'north-owned' : 'orbit-owned');
+  const [selectedNode, setSelectedNode] = useState<DemoFlowNode | null>(null);
   const currentId = candidates.some((candidate) => candidate.id === requestedScenario)
     ? requestedScenario : candidates[0].id;
-  const { decision, preview } = runDemoScenario(currentId);
+  const { decision, preview, context } = runDemoScenario(currentId);
   const reason = decision.allowed ? null : copy.reasons[decision.reason];
+  const flow = buildDemoFlow(preview);
+  const inspectedId = selectedNode ?? flow.find((node) => node.state === 'blocked')?.id ?? 'client';
+  const inspected = flow.find((node) => node.id === inspectedId) ?? flow[0];
+  const flowTitleId = useId();
+
+  const accessibleResource = (
+    reference: string | null,
+    kind: 'tenant' | 'platform' | null,
+    name: string | null,
+    access: 'owned' | 'shared' | null
+  ) => {
+    if (!reference) return copy.flowUnknown;
+    const owner = kind === 'platform' ? copy.platformOwner : (name ?? copy.flowUnknown);
+    return `${reference} · ${copy.owner}: ${owner} · ${copy.accessScope}: ${access === 'shared' ? copy.shared : copy.selfOwned}`;
+  };
+  const flowDetails: Record<DemoFlowNode, string> = {
+    client: [view.tenant.name, context.applicationName].filter(Boolean).join(' · '),
+    gateway: copy.flowSchematic,
+    policy: `${copy.accessKind}: ${context.keyReference ?? copy.flowUnknown}`,
+    pool: context.poolReference ?? copy.flowUnknown,
+    account: accessibleResource(
+      context.accountReference, context.accountOwnerKind,
+      context.accountOwnerName, context.accountAccess
+    ),
+    egress: accessibleResource(
+      context.egressName, context.egressOwnerKind,
+      context.egressOwnerName, context.egressAccess
+    ),
+    provider: context.providerReference
+      ? `${context.providerReference} · ${copy.modelLabel}: ${context.modelReference ?? copy.flowUnknown}`
+      : copy.flowUnknown,
+  };
 
   return (
     <section className={styles.panelContent}>
@@ -255,7 +297,10 @@ function RoutePanel({ tenantId, copy, language }: {
       <div className={styles.scenarioForm}>
         <label htmlFor="saas-demo-scenario">{copy.scenarioLabel}</label>
         <select id="saas-demo-scenario" value={currentId}
-          onChange={(event) => setRequestedScenario(event.target.value as DemoScenarioId)}>
+          onChange={(event) => {
+            setRequestedScenario(event.target.value as DemoScenarioId);
+            setSelectedNode(null);
+          }}>
           {candidates.map((scenario) => (
             <option key={scenario.id} value={scenario.id}>{copy.scenarios[scenario.id]}</option>
           ))}
@@ -283,46 +328,52 @@ function RoutePanel({ tenantId, copy, language }: {
           </dl>
         )}
       </div>
-      <section className={styles.timeline} aria-label={language.startsWith('ru') ? 'Логический маршрут (симуляция)' : 'Logical request path (simulation)'}>
-        <h3>{language.startsWith('ru') ? 'Схема запроса · только симуляция' : 'Request path · simulation only'}</h3>
-        <p className={styles.microNote}>
-          {language.startsWith('ru')
-            ? 'Gateway и AI-провайдер показаны схематично: сетевые запросы не выполняются. Результат отражает только проверку правил.'
-            : 'Gateway and AI provider are schematic only: no network requests occur. Results show policy checks, not live traffic.'}
-        </p>
-        <ol className={styles.timelineList}>
-          {([
-            ['client', language.startsWith('ru') ? 'Клиент / приложение' : 'Client / application', 'application'],
-            ['gateway', 'API Gateway', 'illustrative'],
-            ['policy', 'CPA Key Policy', 'routing'],
-            ['pool', language.startsWith('ru') ? 'Пул аккаунтов' : 'Account pool', 'account-pool'],
-            ['account', language.startsWith('ru') ? 'Аккаунт' : 'Account', 'provider-account'],
-            ['egress', 'Proxy / VPN', 'egress'],
-            ['provider', 'AI Provider', 'illustrative'],
-          ] as const).map(([id, label, stage], index) => {
-            const step = preview.steps.find((item) => item.stage === stage);
-            const state = stage === 'illustrative'
-              ? (id === 'provider' && !decision.allowed ? 'not-reached' : 'illustrative')
-              : step?.state ?? 'not-reached';
-            return (
-              <li key={id} className={styles.timelineRow}>
-                <span className={[
-                  styles.timelineBullet,
-                  state === 'passed' ? styles.timelinePassed :
-                    state === 'blocked' ? styles.timelineBlocked : styles.timelinePending,
-                ].join(' ')} aria-hidden="true">{index + 1}</span>
-                <span className={styles.timelineName}>{label}</span>
-                <span className={styles.timelineState}>
-                  {state === 'illustrative'
-                    ? (language.startsWith('ru') ? 'Только схема' : 'Schematic only')
-                    : state === 'passed' ? copy.stagePassed :
-                      state === 'blocked' ? copy.stageBlocked : copy.stagePending}
-                </span>
-              </li>
-            );
-          })}
+
+      <section className={styles.flowDiagram} aria-labelledby={flowTitleId}>
+        <div className={styles.flowHeading}>
+          <h3 id={flowTitleId}>{copy.flowTitle}</h3>
+          <p>{copy.flowHint}</p>
+        </div>
+        <ol className={styles.flowList}>
+          {flow.map((node, index) => (
+            <li key={node.id}>
+              <button type="button" aria-pressed={inspected.id === node.id}
+                aria-label={`${copy.flowNodes[node.id]} — ${copy.flowStates[node.state]}`}
+                onClick={() => setSelectedNode(node.id)}
+                className={[
+                  styles.flowNode,
+                  inspected.id === node.id ? styles.flowNodeSelected : '',
+                  node.state === 'passed' ? styles.flowNodePassed :
+                    node.state === 'blocked' ? styles.flowNodeBlocked :
+                      node.state === 'illustrative' ? styles.flowNodeIllustrative :
+                        styles.flowNodePending,
+                ].join(' ')}>
+                <span className={styles.flowNumber} aria-hidden="true">{index + 1}</span>
+                <strong className={styles.flowName}>{copy.flowNodes[node.id]}</strong>
+                <span className={styles.flowState}>{copy.flowStates[node.state]}</span>
+              </button>
+            </li>
+          ))}
         </ol>
+        <div className={styles.flowInspector} role="region"
+          aria-label={copy.flowInspector} aria-live="polite">
+          <span className={styles.cardEyebrow}>{copy.flowInspector}</span>
+          <h4>{copy.flowNodes[inspected.id]}</h4>
+          <p className={styles.flowStateText}>{copy.flowStates[inspected.state]}</p>
+          <p className={styles.flowReference}>{flowDetails[inspected.id]}</p>
+          {inspected.state === 'illustrative' && (
+            <p className={styles.microNote}>{copy.flowSchematic}</p>
+          )}
+          {inspected.state === 'blocked' && reason && (
+            <div className={styles.flowRecovery}>
+              <strong>{copy.denialWhy}: {reason.title}</strong>
+              <p>{copy.nextAction}: {reason.next}</p>
+            </div>
+          )}
+        </div>
+        <p className={styles.microNote}>{copy.flowSource}</p>
       </section>
+
       <div className={styles.timeline}>
         <h3>{copy.timelineTitle}</h3>
         <ol className={styles.timelineList}>
@@ -471,7 +522,7 @@ export function SaasBlueprintDemoPage() {
             {activeTab === 'clients' && <ClientPanel copy={copy} view={view} query={normalizedSearch} />}
             {activeTab === 'accounts' && <AccountsPanel copy={copy} view={view} query={normalizedSearch} />}
             {activeTab === 'egress' && <EgressPanel copy={copy} view={view} query={normalizedSearch} />}
-            {activeTab === 'routing' && <RoutePanel key={tenantId} tenantId={tenantId} copy={copy} language={i18n.language} />}
+            {activeTab === 'routing' && <RoutePanel key={tenantId} view={view} copy={copy} />}
           </div>
         </div>
       </div>

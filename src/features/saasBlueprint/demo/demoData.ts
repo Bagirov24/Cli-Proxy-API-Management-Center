@@ -8,6 +8,7 @@ import type {
   ProviderAccount,
   RouteRequest,
   Tenant,
+  Owner,
 } from '../domain';
 import { resolveSaasRoute, type RouteDecision } from '../resolveRoute';
 import { safeDecisionPreview, type SafeDecisionPreview } from '../safeDecisionPreview';
@@ -244,10 +245,67 @@ function withNorthPool(poolId: string): BlueprintSnapshot {
   };
 }
 
+/** Whitelisted tenant-visible references. Not a live request trace or a Core response. */
+export interface DemoFlowContext {
+  readonly applicationName: string | null;
+  readonly keyReference: string | null;
+  readonly poolReference: string | null;
+  readonly accountReference: string | null;
+  readonly accountOwnerKind: Owner['kind'] | null;
+  readonly accountOwnerName: string | null;
+  readonly accountAccess: 'owned' | 'shared' | null;
+  readonly egressName: string | null;
+  readonly egressOwnerKind: Owner['kind'] | null;
+  readonly egressOwnerName: string | null;
+  readonly egressAccess: 'owned' | 'shared' | null;
+  readonly providerReference: string | null;
+  readonly modelReference: string | null;
+}
+
 export interface DemoRun {
   readonly scenario: DemoScenario;
   readonly decision: RouteDecision;
   readonly preview: SafeDecisionPreview;
+  readonly context: DemoFlowContext;
+}
+
+/** Always project from the scoped view: a denied foreign resource remains unknown. */
+function projectScenarioContext(
+  snapshot: BlueprintSnapshot, request: RouteRequest, decision: RouteDecision
+): DemoFlowContext {
+  const view = selectTenantDemoView(snapshot, request.tenantId);
+  const binding = snapshot.routingBindings.find((route) =>
+    route.tenantId === request.tenantId &&
+    route.applicationId === request.applicationId &&
+    route.keyBindingId === request.keyBindingId &&
+    route.requestedModelId === request.requestedModelId
+  );
+  const account = view?.accounts.find((entry) => entry.id === request.selectedAccountId);
+  const egress = view?.egress.find((entry) => entry.id === account?.egressProfileId);
+  const ownerName = (owner: Owner | undefined): string | null =>
+    owner?.kind === 'tenant'
+      ? snapshot.tenants.find((tenant) => tenant.id === owner.tenantId)?.name ?? null
+      : null;
+  const access = (owner: Owner | undefined): 'owned' | 'shared' | null =>
+    !owner ? null :
+      owner.kind === 'tenant' && owner.tenantId === request.tenantId ? 'owned' : 'shared';
+
+  return {
+    applicationName: view?.applications.find((app) => app.id === request.applicationId)?.name ?? null,
+    keyReference: view?.keys.find((key) => key.id === request.keyBindingId)?.id ?? null,
+    poolReference: view?.pools.find((pool) => pool.id === binding?.poolId)?.id ?? null,
+    accountReference: account?.id ?? null,
+    accountOwnerKind: account?.owner.kind ?? null,
+    accountOwnerName: ownerName(account?.owner),
+    accountAccess: access(account?.owner),
+    egressName: egress?.name ?? null,
+    egressOwnerKind: egress?.owner.kind ?? null,
+    egressOwnerName: ownerName(egress?.owner),
+    egressAccess: access(egress?.owner),
+    // The final upstream provider is only illustrative even for ALLOW.
+    providerReference: decision.allowed ? decision.providerId : null,
+    modelReference: decision.allowed ? decision.modelId : null,
+  };
 }
 
 export function runDemoScenario(id: DemoScenarioId): DemoRun {
@@ -287,7 +345,10 @@ export function runDemoScenario(id: DemoScenarioId): DemoRun {
     nowMs: DEMO_CLOCK,
     runtime: { verifiedVpnConnectorIds: [] },
   });
-  return { scenario, decision, preview: safeDecisionPreview(decision) };
+  return {
+    scenario, decision, preview: safeDecisionPreview(decision),
+    context: projectScenarioContext(snapshot, request, decision),
+  };
 }
 
 export function getTenantScenarios(tenantId: string): readonly DemoScenario[] {

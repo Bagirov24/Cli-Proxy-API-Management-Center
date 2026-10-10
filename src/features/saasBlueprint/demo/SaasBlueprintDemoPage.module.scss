@@ -684,6 +684,178 @@
   }
 }
 
+
+.flowDiagram {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding: clamp(16px, 2.5vw, 24px);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: var(--bg-secondary);
+}
+
+.flowHeading {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+
+  h3 {
+    font-size: 17px;
+    margin: 0;
+  }
+
+  p {
+    max-width: 800px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 0;
+  }
+}
+
+.flowList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 9px;
+
+  > li {
+    min-width: 0;
+  }
+}
+
+.flowNode {
+  width: 100%;
+  min-height: 158px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  gap: 11px;
+  padding: 14px 11px;
+  border: 1px solid var(--border-primary);
+  border-top: 3px solid var(--border-primary);
+  border-radius: 11px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  transition: background var(--dur-hover) ease, border-color var(--dur-hover) ease;
+
+  &:hover {
+    background: var(--bg-hover);
+  }
+
+  &:focus-visible {
+    outline: 3px solid var(--primary-30);
+    outline-offset: 2px;
+  }
+}
+
+.flowNodeSelected {
+  box-shadow: inset 0 0 0 2px var(--text-primary);
+}
+
+.flowNodePassed {
+  border-top-color: var(--success-badge-text);
+}
+
+.flowNodeBlocked {
+  border-color: var(--failure-badge-border);
+  border-top-color: var(--failure-badge-text);
+  background: var(--failure-badge-bg);
+
+  &:hover {
+    background: var(--failure-badge-bg);
+  }
+}
+
+.flowNodeIllustrative {
+  border-top-style: dashed;
+}
+
+.flowNodePending {
+  border-top-style: dotted;
+}
+
+.flowNumber {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  font-size: 12px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.flowName {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.flowState {
+  margin-top: auto;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.flowNodeBlocked .flowState {
+  color: var(--failure-badge-text);
+}
+
+.flowInspector {
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--border-primary);
+  border-left: 4px solid var(--text-primary);
+  border-radius: 10px;
+  background: var(--bg-primary);
+
+  h4 {
+    font-size: 16px;
+    margin: 8px 0;
+  }
+
+  p {
+    line-height: 1.65;
+  }
+}
+
+.flowStateText {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-secondary);
+  margin: 0 0 7px;
+}
+
+.flowReference {
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+
+.flowRecovery {
+  border-top: 1px solid var(--border-primary);
+  padding-top: 11px;
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.55;
+
+  p {
+    margin: 5px 0 0;
+  }
+}
+
 .timeline {
   border: 1px solid var(--border-color);
   border-radius: 13px;
@@ -783,6 +955,10 @@
 }
 
 @media (max-width: 1050px) {
+  .flowList {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .heroGraphic {
     display: none;
   }
@@ -793,6 +969,14 @@
 }
 
 @media (max-width: 740px) {
+  .flowList {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .flowNode {
+    min-height: 130px;
+  }
+
   .page {
     gap: 18px;
     padding-bottom: 38px;
@@ -826,6 +1010,14 @@
 }
 
 @media (max-width: 410px) {
+  .flowList {
+    grid-template-columns: 1fr;
+  }
+
+  .flowNode {
+    min-height: 0;
+  }
+
   .metrics {
     gap: 8px;
   }
@@ -852,6 +1044,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .flowNode,
   .tab,
   .wizardDot,
   .primaryButton,
