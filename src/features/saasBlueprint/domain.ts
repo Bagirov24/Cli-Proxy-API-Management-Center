@@ -50,6 +50,8 @@ export interface ProviderAccount {
   readonly owner: Owner;
   readonly providerId: Identifier;
   readonly authMode: AccountAuthMode;
+  /** Never enable unsupported subscription OAuth as SaaS upstream. */
+  readonly authorizationStatus: 'approved' | 'unverified' | 'blocked';
   readonly status: 'active' | 'disabled' | 'reauth-required' | 'blocked';
   readonly allowedModelIds: readonly Identifier[];
   /** Required: each selected account has an explicit outbound route. */
