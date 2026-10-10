@@ -23,7 +23,7 @@ export function summarizeCpaPolicy(plugins: PluginListResponse): CpaPolicySnapsh
     return { state: 'missing', version: null, route: null };
   }
 
-  const enabled = plugins.pluginsEnabled && plugin.effectiveEnabled;
+  const enabled = plugins.pluginsEnabled && plugin.enabled && plugin.effectiveEnabled;
   const menuIndex = plugin.menus.findIndex((menu) => Boolean(menu.path.trim()));
   return {
     state: enabled ? 'enabled' : 'disabled',
