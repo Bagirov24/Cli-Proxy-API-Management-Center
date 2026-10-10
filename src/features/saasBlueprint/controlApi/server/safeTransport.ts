@@ -27,8 +27,13 @@ function id(value: unknown): string | null {
 }
 
 function label(value: unknown): string | null {
-  return typeof value === 'string' && value.length <= 256 &&
-    !/[\u0000-\u001f\u007f]/.test(value) ? value : null;
+  if (typeof value !== 'string' || value.length > 256) return null;
+  // Avoid control bytes without a no-control-regex lint exception.
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 32 || code === 127) return null;
+  }
+  return value;
 }
 
 function variant<const T extends readonly string[]>(
