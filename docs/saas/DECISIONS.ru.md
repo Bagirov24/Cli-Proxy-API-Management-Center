@@ -84,3 +84,7 @@
    `custom-no-apikey-fun` может создать новый UI-release.
 9. Обновляй `ROADMAP.ru.md` и статусы D-*/Q-* после доказанной проверки
    (тест + источник), а не после устного предположения.
+
+## D-017 — отделять симуляцию от реального сетевого trace
+
+**Статус: SIMULATED (реализовано только в read-only UX); enforcement — PROPOSED.** Семь узлов объясняют предполагаемый путь, но Gateway/Provider отмечены как схема, даже если чистый policy resolver вернул `ALLOW`. Никаких реальных запросов и secrets. Следующий этап: SaaS Control API/AuthZ/RBAC и read-only adapter на staging, только после отдельного контракта интеграции.
