@@ -173,3 +173,10 @@ RBAC+RLS double enforcement, backup+restore dry run.
 3. Спроектировать wireframe и read-only mock UI под `/saas` за feature flag.
 4. Спроектировать SaaS API/Vault/DB, только после этого обеспечить реальный
    account/egress enforcement на стенде.
+
+## Текущая поправка к этапу 1 (SIMULATED)
+
+- [x] Встроенная семиузловая схема request path поверх существующего policy resolver, с отдельной маркировкой Gateway и AI Provider как схематичных узлов.
+- [x] Добавлен статический regression test на обязательные подписи симуляции.
+- [ ] Довести browser/a11y и mobile screenshot acceptance, показать конкретные ресурсы безопасным tenant-scoped способом, добавить анимацию только с `prefers-reduced-motion`.
+- [ ] Следующий ограниченный этап (`SPEC`): SaaS Control API v1, actor/tenant/role/resource/action AuthZ матрица, read-only adapter к Core metadata, типовые error/denial contracts и контрактные тесты. Без изменения production.
