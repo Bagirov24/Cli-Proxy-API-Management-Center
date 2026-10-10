@@ -15,7 +15,8 @@ export interface ScopedSqlConnection {
   release(discard: boolean): void | Promise<void>;
 }
 export interface ScopedSqlPool {
-  connect(): Promise<ScopedSqlConnection>;
+  /** Cancellation while waiting for a reserved pool connection. */
+  connect(signal?: AbortSignal): Promise<ScopedSqlConnection>;
 }
 export interface SignedTransactionIssuer {
   sign(scope: AuthorizedReadScope, txid: string, expiry: number): Promise<string>;
@@ -105,7 +106,7 @@ export async function readSignedScopedMetadata(
 
   let connection: ScopedSqlConnection;
   try {
-    connection = await pool.connect();
+    connection = await pool.connect(signal);
   } catch {
     throw new Error('Scoped metadata unavailable');
   }
@@ -172,6 +173,8 @@ export async function readSignedScopedMetadata(
     if (signal?.aborted) throw new Error('Request cancelled');
     await connection.query('COMMIT', []);
     committed = true;
+    // A response cancelled during COMMIT must not be returned as fresh data.
+    if (signal?.aborted) throw new Error('Request cancelled');
     output = safe;
   } catch {
     discard = true;

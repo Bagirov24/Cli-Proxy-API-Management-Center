@@ -7,6 +7,9 @@ on:
       - 'tests/sql/saas_rls_v1.test.sql'
       - 'tests/sql/saas_rls_signed_scope.test.sql'
       - 'tests/sql/saas_scoped_queries.test.sql'
+      - 'tests/sql/saas_driver_fixture.test.sql'
+      - 'scripts/saas-staging/**'
+      - 'src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts'
       - 'docs/saas/**'
       - '.github/workflows/saas-staging-rls-ci.yml'
   workflow_dispatch:
@@ -82,4 +85,37 @@ jobs:
             }
           tail -n 15 /tmp/saas-sql-boundary.log
 
-      # No deploy, secrets from repository, or remote database connections.
+
+      - name: Install pinned Bun for ephemeral native PostgreSQL driver
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Seed synthetic roles and data on ephemeral database only
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/saas_driver_fixture.test.sql \
+            > /tmp/saas-driver-fixture.log 2>&1 || {
+              tail -n 70 /tmp/saas-driver-fixture.log
+              exit 1
+            }
+          tail -n 6 /tmp/saas-driver-fixture.log
+
+      - name: Test Bun native PostgreSQL transaction isolation and connection reuse
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Synthetic key exists only in this disposable PostgreSQL container.
+          # Never print or upload it. No GitHub secrets or Railway settings.
+          scope_key="$(psql -X -A -t -v ON_ERROR_STOP=1 -c \
+            "SELECT encode(secret,'hex') FROM saas_rls_private.scope_signers WHERE key_id='ci-pilot'")"
+          if [[ ! "$scope_key" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Invalid ephemeral signing fixture"
+            exit 1
+          fi
+          SAAS_EPHEMERAL_DRIVER_CI=true SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            bun scripts/saas-staging/verify-bun-postgres.mjs
+          unset scope_key
+
+      # No deploy, repository secrets, production SQL connections or credentials.
