@@ -1,4 +1,4 @@
-# REVIEW BRANCH ONLY. This is not a production deployment.
+# Production API Gateway image; release changes must be reviewed and explicitly deployed to Railway.
 # Pin the Caddy release and the complete plugin source commit.
 FROM caddy:2.11.7-builder-alpine AS builder
 WORKDIR /src
