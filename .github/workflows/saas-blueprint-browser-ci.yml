@@ -8,6 +8,7 @@ on:
       - 'src/router/MainRoutes.tsx'
       - 'src/components/layout/MainLayout.tsx'
       - 'tests/browser/saas_demo_browser.py'
+      - 'docs/saas/**'
       - '.github/workflows/saas-blueprint-browser-ci.yml'
   workflow_dispatch:
 

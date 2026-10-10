@@ -100,3 +100,19 @@
 ## D-021 — автоматический browser smoke, не production acceptance
 
 Скрипт `tests/browser/saas_demo_browser.py` и изолированный workflow тестируют синтетический standalone preview. Результат [SUCCESS #38075528744](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38075528744), четыре viewport/locale/theme комбинации и 20 PNG. Тест не содержит и не использует Core credentials, Railway deployment, VPN-конфигурации или реальные запросы. **Manual WCAG + staging оставлены PROPOSED; browser smoke — VERIFIED только в изолированном CI.**
+
+## D-022 — проверка WCAG без production-зависимостей
+
+**Статус: VERIFIED только в синтетическом browser CI.** Добавлен
+axe-core 4.10.3 как временный инструмент GitHub runner; не включать
+его в пользовательский `management.html` и не использовать live
+credentials. Пять конфигураций × шесть состояний = 30 автоматических
+аудитов, zero detected violations
+([run #38078136183](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38078136183)).
+Первым аудитом найден dark-theme hover `2,58:1`; исправлено.
+
+**Ограничение:** `color-contrast: incomplete` встречается в каждом
+скане для пяти повторяющихся элементов; не трактовать это как PASS.
+Ручной WCAG/assistive technology review остаётся `PROPOSED`, включая
+реальное 200/400% zoom. PR остаётся Draft; production не меняется.
+

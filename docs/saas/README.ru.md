@@ -140,7 +140,36 @@ VPN Connector, полноценный billing ledger, live trace pipeline.
 ```bash
 python -m pip install playwright==1.55.0
 python -m playwright install chromium
+npm install --prefix /tmp/saas-axe --no-save --no-package-lock --ignore-scripts axe-core@4.10.3
+# На Windows установите axe-core в подходящий каталог и задайте SAAS_AXE_SCRIPT
 python tests/browser/saas_demo_browser.py
 ```
 
 Публичный Core Management API не требуется; настоящие учётные данные не вводить.
+
+## UX-итерация 4 — автоматический WCAG A/AA smoke (SIMULATED)
+
+В Chromium добавлены **5 конфигураций** (1440 RU/light, 820 EN/dark,
+390 RU/dark/reduced motion, 320 EN/light/reduced motion, 640 RU/light/reflow).
+Ширина 640 CSS px моделирует reflow при увеличении 1280 px рабочего окна
+до 200%; это **не замена тестированию реального браузерного zoom**.
+
+Проверяется каждый из шести экранных состояний (clients, accounts,
+accounts-hover, network, denied flow, allowed flow): всего **30 axe-core
+WCAG A/AA аудитов** с JSON-отчётами и **25 PNG**. Проверки выполняются
+только на synthetic Vite preview, а скрипт axe-core@4.10.3 устанавливается
+временным инструментом CI, без включения в production bundle.
+[Успешный Chromium + axe CI #38078136183](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38078136183):
+0 автоматических нарушений; 5/5 браузерных сценариев PASS.
+
+В первоначальном запуске выявлен реальный дефект: контраст текста кнопки
+мастера в состоянии hover и тёмной теме составлял **2,58:1**. Состояние
+исправлено, теперь в аудите нарушений не фиксируется.
+
+**Ограничение:** все 30 сканов имеют `color-contrast` в секции
+`incomplete` для повторяющихся элементов с градиентом/фоновыми изображениями.
+Это не означает автоматическую проверку их контраста. Нужны ручной
+contrast audit, скринридеры, реальное 200/400% увеличение, 400% reflow,
+крупный текст и UX-приёмка. Backend/AuthZ/network enforcement по-прежнему
+`SPEC / PROPOSED`, публикация production запрещена.
+

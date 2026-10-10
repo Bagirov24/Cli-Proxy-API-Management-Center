@@ -200,3 +200,17 @@ RBAC+RLS double enforcement, backup+restore dry run.
 - [x] Tenant isolation при смене tenant, восстановление поиска, табы с клавиатуры, демонстрационный BYOK/BYOA wizard, mobile overflow и reduced-motion.
 - [ ] Согласовать скриншоты с пользователем; до этого не считать UX окончательно принятым.
 - [ ] Полный WCAG и end-to-end staging — отдельно, без реальных production токенов/CPA/VPN.
+
+## Этап 1 — дополнительный гейт доступности, итерация 4
+
+- [x] 5 Chromium конфигураций, в т.ч. 640 CSS px для эквивалентной reflow
+      ширины 200% масштабирования; 25 PNG и 30 JSON axe-core WCAG A/AA.
+- [x] Автоматически обнаружен дефект dark hover `2,58:1`; исправлен и
+      покрыт отдельным `accounts-hover` аудитом.
+- [x] Полный `bun run verify`, opt-in build и браузерный smoke успешны на
+      commit `473a1f66d112079fd20689de5af6ce93a574faeb`.
+- [ ] Провести ручную проверку `color-contrast: incomplete` (5 повторяющихся
+      элементов), увеличение браузера, скринридеры и а11y UX-приёмку.
+- [ ] Backend API/AuthZ/RBAC/read-only adapter и настоящие метрики/трейсы
+      остаются `SPEC / PROPOSED`; не переходить к production без согласия.
+

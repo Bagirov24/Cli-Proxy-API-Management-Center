@@ -282,3 +282,19 @@ idempotency key. Аналитика не должна блокировать о�
 ## Изолированный браузерный QA (SIMULATED)
 
 Браузерный smoke-test работает против локального `http://127.0.0.1:5173/#/saas-demo-preview` с флагом `true`, не против Railway/Core/Gateway. Workflow запускает только Vite и временный Chromium, загружает screenshot-артефакты (только синтетические данные) и проверяет отсутствие внешних HTTP-вызовов. Egress/VPN, SaaS AuthZ, CPA enforcement и реальные provider connections этим тестом **не проверяются**. CI не осуществляет deploy и не изменяет release `management.html`.
+
+## Изоляция автоматического WCAG-аудита
+
+`tests/browser/saas_demo_browser.py` вызывает axe-core 4.10.3 через
+`page.add_script_tag` **только на локальном синтетическом preview**
+(`data-saas-demo-root`). Пакет ставится во временный каталог runner
+и не добавляется в `package.json` / `bun.lock` / production HTML.
+
+Контрольные условия: никаких внешних HTTP-запросов, браузерных исключений
+и горизонтального переполнения, проверка tenant switch, ресурсов,
+клавиатуры и reduced-motion. Отчёты содержат только синтетические данные;
+в GitHub artifacts сохраняются не более 7 дней. Автоматический аудит
+сообщает также `incomplete`-проверки, которые должны быть оценены человеком.
+Никаких подтверждений server-side AuthZ, маршрутизации Core, VPN либо
+runtime network isolation эта проверка не предоставляет.
+
