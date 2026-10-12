@@ -563,3 +563,16 @@ epoch и deadline и fail-closed при переходе через неё. До
 
 **IMPLEMENTED / CI PENDING**, production revocation/HTTP barrier
 по-прежнему не доказан.
+
+## Этап 2G.4d.4c — cooperative SQL publication barrier
+
+[Publication barrier proof](PUBLICATION_BARRIER_PILOT_V1.ru.md)
+добавляет одноразовый PostgreSQL `007`: signed read transaction
+может удерживать `FOR SHARE` private tenant epoch до объявленного
+момента публикации, а параллельный writer grant/revoke ждёт завершения
+этой транзакции. Проверяется через независимые реальные sessions и
+третьего наблюдателя.
+
+**IMPLEMENTED / CI PENDING.** Это не HTTP response-send механизм:
+функция не внедрена в live read handler, а сетевые доставки и
+slow-client/crash semantics остаются SPEC.

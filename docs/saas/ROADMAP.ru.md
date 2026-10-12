@@ -677,3 +677,18 @@ atomic revision increments. See
 - [ ] **VERIFIED** только после точного GitHub CI SHA.
 - [ ] **SPEC/PROPOSED:** revocation/response linearization,
   clock-skew/multi-instance policies и production driver.
+
+## Этап 2G.4d.4c — deterministic read/revoke ordering pilot
+
+- [x] `007` signed `FOR SHARE` lock на tenant epoch с DB recheck
+  после получения lock, без доступа reader к private таблицам.
+- [x] Real independent psql sessions: writer revoke COMMIT ждёт
+  release read-publication transaction, третий observer не видит
+  незафиксированное изменение и North/Orbit изолированы.
+- [x] SQL denial tests: unsigned, cross-tenant, role mismatch,
+  paused tenant, audit-only forbidden collection.
+- [ ] **VERIFIED** после exact-SHA GitHub Actions.
+- [ ] **SPEC:** управляемый bounded publication/transport lifecycle,
+  cancellation/crash recovery, persistence and multi-instance tests.
+- [ ] **PROPOSED:** production decision that defines the HTTP
+  revocation completion point, backpressure and acceptable in-flight reads.

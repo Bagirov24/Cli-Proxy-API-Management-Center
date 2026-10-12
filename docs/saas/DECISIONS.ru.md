@@ -477,3 +477,17 @@ grants; финальный guard сравнивает обе величины и
 DB snapshot, а не бесконечную авторизацию. Expiry → 404 +
 tenantless audit; malformed SQL → 503/quarantine. Для production
 всё ещё нужен надёжный clock authority и revocation barrier.
+
+## D-043 — PostgreSQL `FOR SHARE` задаёт лишь кооперативный DB barrier, не гарантию доставки HTTP (2G.4d.4c)
+
+**IMPLEMENTED staging-only / CI PENDING; production SPEC/PROPOSED.**
+
+Читающая signed DB транзакция получает `FOR SHARE` на private
+tenant epoch после актуального RBAC и повторно проверяет полномочия.
+Writer-side triggers UPDATE того же epoch блокируются до read COMMIT,
+так что commit revocation нельзя обогнать внутри этого кооперативного
+протокола. E2E использует независимые PostgreSQL reader/writer/observer,
+но не реализует публичный response-send callback или подтверждение
+доставки по сети. Производственный протокол должен ограничить срок
+lease, определить семантику при отмене/краше и не создавать unbounded
+locks на медленных клиентах.

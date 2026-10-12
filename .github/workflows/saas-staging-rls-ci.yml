@@ -220,8 +220,30 @@ jobs:
               exit 1
             }
           tail -n 5 /tmp/saas-expiry-revision-acceptance.log
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/007_read_publication_barrier_pilot.sql \
+            > /tmp/saas-publication-migration.log 2>&1 || {
+              tail -n 65 /tmp/saas-publication-migration.log
+              exit 1
+            }
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/007_read_publication_barrier_pilot.sql \
+            > /tmp/saas-publication-replay.log 2>&1 || {
+              tail -n 65 /tmp/saas-publication-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_publication_barrier.test.sql \
+            > /tmp/saas-publication-acceptance.log 2>&1 || {
+              tail -n 90 /tmp/saas-publication-acceptance.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-publication-acceptance.log
           timeout --signal=TERM --kill-after=5s 50s env \
             SAAS_EPHEMERAL_REVISION_CI=true \
             bash scripts/saas-staging/verify-revision-concurrency.sh
+          timeout --signal=TERM --kill-after=5s 60s env \
+            SAAS_EPHEMERAL_PUBLICATION_CI=true \
+            bash scripts/saas-staging/verify-publication-barrier.sh
 
       # No deploy, repository secrets, production SQL connections or credentials.
