@@ -12,10 +12,12 @@ import {
 } from '../src/features/saasBlueprint/controlApi/server/trustedAccessToken';
 import {
   createPinnedHmacScopeIssuer, CONTROL_READ_SELECT_SQL, SCOPED_READ_GATE_SQL,
+  SCOPED_AUTHORIZATION_REVISION_SQL, SCOPED_PUBLICATION_BARRIER_SQL,
   type ScopedSqlPool, type SignedTransactionIssuer, type SqlValue,
 } from '../src/features/saasBlueprint/controlApi/server/signedSqlBoundary';
 import {
-  createTrustedSqlReadBoundary, type TrustedSqlReadRequest,
+  createTrustedSqlReadBoundary, createTrustedSqlPublishedBoundary,
+  type TrustedLocalPublicationSink, type TrustedSqlReadRequest,
 } from '../src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary';
 import type {
   ServerAuthorizationRevisionSource,
@@ -66,6 +68,7 @@ interface TestHarnessOptions {
   readonly revisions?: ServerAuthorizationRevisionSource;
   readonly onCommit?: (count: number) => Promise<void> | void;
   readonly onActorLookup?: (count: number) => void;
+  readonly publisher?: TrustedLocalPublicationSink;
 }
 
 function harness(options: TestHarnessOptions = {}) {
@@ -111,6 +114,12 @@ function harness(options: TestHarnessOptions = {}) {
           if (sql === SCOPED_READ_GATE_SQL) {
             return { rows: [{ allowed: options.gateAnswers?.[gateIndex++] ?? true }] };
           }
+          if (sql === SCOPED_PUBLICATION_BARRIER_SQL) {
+            return { rows: [{ revision: '7' }] };
+          }
+          if (sql === SCOPED_AUTHORIZATION_REVISION_SQL) {
+            return { rows: [{ revision: '7', not_after_ms: null }] };
+          }
           if (sql.startsWith('SELECT id, ')) {
             await options.onSelect?.();
             if (options.failSelect) throw new Error('DB_PASSWORD_NEVER_LOG');
@@ -131,7 +140,7 @@ function harness(options: TestHarnessOptions = {}) {
     issuer, audience, publicKeys: new Map([['synthetic-key', rsa.publicKey]]),
     nowSeconds: () => now,
   });
-  const read = createTrustedSqlReadBoundary({
+  const deps = {
     tokens: verifier,
     actorDirectory: {
       async resolveActorId(identity) {
@@ -147,7 +156,13 @@ function harness(options: TestHarnessOptions = {}) {
     },
     pool, signer, audit, revisions: options.revisions,
     newCorrelationId: () => correlationId,
-  });
+  };
+  const read = createTrustedSqlReadBoundary(deps);
+  const published = options.publisher
+    ? createTrustedSqlPublishedBoundary({
+      ...deps, revisions: options.revisions ?? syntheticRevision().source,
+    }, options.publisher)
+    : null;
   const request = (
     accessTokenValue: string, overrides: Partial<TrustedSqlReadRequest> = {}
   ): TrustedSqlReadRequest => ({
@@ -156,7 +171,7 @@ function harness(options: TestHarnessOptions = {}) {
     ...overrides,
   });
   return {
-    read, request, actors, directory, queries, released, quarantines,
+    read, published, request, actors, directory, queries, released, quarantines,
     auditEvents: () => auditBuffer.snapshot(),
     get acquired() { return acquired; },
   };
@@ -825,5 +840,146 @@ describe('Stage 2G.4d.4b — synthetic clock-only grant expiration', () => {
       { notAfterMs: null }, 1800000000000)).toBe(false);
     expect(isAuthorizationRevisionExpiredAt(
       { notAfterMs: 1800000000000 }, Number.NaN)).toBe(true);
+  });
+});
+
+describe('Stage 2G.4d.5b — trusted actor to receipt-only local publication', () => {
+  test('verified JWT/actor/RBAC, sanitizer and sync audit precede local handoff', async () => {
+    const eventOrder: string[] = [];
+    const h = harness({ publisher: {
+      async stage(payload, signal) {
+        expect(signal.aborted).toBe(false);
+        expect(payload).toMatchObject({
+          correlationId, tenantId: 'demo-north', collection: 'projects',
+        });
+        expect(Object.isFrozen(payload)).toBe(true);
+        expect(Object.isFrozen(payload.rows[0])).toBe(true);
+        expect(JSON.stringify(payload)).not.toContain('MUST_NOT_RETURN');
+        eventOrder.push('private-stage');
+        return () => {
+          expect(h.auditEvents()).toHaveLength(1);
+          expect(h.auditEvents()[0]).toMatchObject({
+            result: 'allow', tenantId: 'demo-north', reason: 'read-allowed',
+          });
+          eventOrder.push('local-handoff');
+        };
+      },
+    } });
+    const result = await h.published!(h.request(await accessToken({
+      actorId: 'actor-orbit', role: 'tenant-owner',
+      authorizationRevision: '9223372036854775807',
+    })));
+    expect(result).toEqual({
+      ok: true, status: 200, source: 'staging-local-publication',
+      correlationId, published: true,
+    });
+    expect(JSON.stringify(result)).not.toContain('north-project');
+    expect(JSON.stringify(h.auditEvents())).not.toContain('9223372036854775807');
+    expect(eventOrder).toEqual(['private-stage', 'local-handoff']);
+    expect(h.queries.filter(q => q.sql === SCOPED_PUBLICATION_BARRIER_SQL))
+      .toEqual([{ sql: SCOPED_PUBLICATION_BARRIER_SQL,
+        params: ['demo-north', 'actor-north', 'tenant-viewer', 'projects'] }]);
+    expect(h.acquired).toBe(3);
+    expect(h.released).toEqual([false, false, false]);
+    expect(h.quarantines).toEqual([]);
+  });
+
+  test('foreign tenant, auditor collection and forged actor never stage data', async () => {
+    let stageCalls = 0;
+    const h = harness({ publisher: { async stage() {
+      stageCalls++;
+      return () => {};
+    } } });
+    const forged = await accessToken({ actorId: 'actor-orbit', role: 'tenant-owner' });
+    expect(await h.published!(h.request(forged, {
+      tenantId: 'demo-orbit',
+    }))).toMatchObject({ ok: false, status: 404 });
+    expect(await h.published!(h.request(await accessToken({ sub: 'sub-auditor' }), {
+      collection: 'accounts',
+    }))).toMatchObject({ ok: false, status: 403 });
+    expect(await h.published!(h.request(await accessToken({ aud: 'foreign' })))
+      ).toMatchObject({ ok: false, status: 401 });
+    expect(stageCalls).toBe(0);
+    expect(h.acquired).toBe(0);
+    expect(h.auditEvents().every(e => e.tenantId === null)).toBe(true);
+  });
+
+  test('SQL publication permission revoked after private stage suppresses handoff and allow audit', async () => {
+    let committed = false;
+    const h = harness({
+      publisher: { async stage() { return () => { committed = true; }; } },
+      gateAnswers: [true, true, true, true, true, false],
+    });
+    const result = await h.published!(h.request(await accessToken()));
+    expect(result).toMatchObject({ ok: false, status: 404 });
+    expect(committed).toBe(false);
+    expect(h.queries.at(-1)?.sql).toBe('ROLLBACK');
+    expect(h.released).toEqual([false, false, false]);
+    expect(h.quarantines).toEqual([]);
+    expect(h.auditEvents()).toMatchObject([{ result: 'deny',
+      reason: 'authorization-changed', tenantId: null }]);
+  });
+
+  test('failed synchronous audit cannot emit locally staged bytes', async () => {
+    let committed = false;
+    const h = harness({
+      publisher: { async stage() { return () => { committed = true; }; } },
+      auditSink: { write() { throw new Error('PRIVATE_AUDIT_SINK_SECRET'); } },
+    });
+    const result = await h.published!(h.request(await accessToken()));
+    expect(result).toMatchObject({ ok: false, status: 503 });
+    expect(committed).toBe(false);
+    expect(JSON.stringify(result)).not.toContain('PRIVATE_AUDIT');
+    expect(h.quarantines).toContain('read-failed');
+    expect(h.released).toEqual([false, false, true]);
+  });
+
+  test('identity mapping revoked DURING publication staging never hands off', async () => {
+    let committed = false;
+    const h = harness({ publisher: { async stage() {
+      h.directory.delete(issuer + ':sub-north');
+      return () => { committed = true; };
+    } } });
+    const result = await h.published!(h.request(await accessToken()));
+    expect(result).toMatchObject({ ok: false, status: 503 });
+    expect(committed).toBe(false);
+    expect(JSON.stringify(result)).not.toContain('north-project');
+    expect(h.quarantines).toContain('read-failed');
+  });
+
+  test('membership revoked DURING publication staging never hands off', async () => {
+    let committed = false;
+    const h = harness({ publisher: { async stage() {
+      h.actors.set('actor-north', {
+        id: 'actor-north',
+        memberships: [membership('demo-north', 'tenant-viewer', 'revoked')],
+      });
+      return () => { committed = true; };
+    } } });
+    const result = await h.published!(h.request(await accessToken()));
+    expect(result).toMatchObject({ ok: false, status: 503 });
+    expect(committed).toBe(false);
+    expect(h.quarantines).toContain('read-failed');
+    expect(h.auditEvents()).toMatchObject([{
+      result: 'error', tenantId: null,
+    }]);
+  });
+
+  test('cancel in private staging never audits Allow or returns raw metadata', async () => {
+    const controller = new AbortController();
+    let committed = false;
+    const h = harness({ publisher: { async stage() {
+      controller.abort();
+      return () => { committed = true; };
+    } } });
+    const result = await h.published!(h.request(await accessToken(), {
+      signal: controller.signal,
+    }));
+    expect(result).toMatchObject({ ok: false, status: 503 });
+    expect(committed).toBe(false);
+    expect(JSON.stringify(result)).not.toContain('north-project');
+    expect(h.auditEvents()).toMatchObject([{
+      result: 'error', reason: 'request-cancelled', tenantId: null,
+    }]);
   });
 });
