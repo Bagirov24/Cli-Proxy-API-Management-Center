@@ -82,9 +82,16 @@ SELECT revision::TEXT AS orbit_before FROM
 BEGIN;
 DO $tests$
 DECLARE
-  n BIGINT := :'north_before';
-  o BIGINT := :'orbit_before';
+  n BIGINT;
+  o BIGINT;
 BEGIN
+  -- psql variables are not expanded inside DO dollar-quoted source.
+  SELECT revision INTO STRICT n
+    FROM saas_rls_private.tenant_authorization_revisions
+    WHERE tenant_id='demo-north';
+  SELECT revision INTO STRICT o
+    FROM saas_rls_private.tenant_authorization_revisions
+    WHERE tenant_id='demo-orbit';
   UPDATE saas_rls.memberships SET role='tenant-owner'
   WHERE actor_id='actor-north' AND tenant_id='demo-north';
   PERFORM saas_rls_test.assert_true(
