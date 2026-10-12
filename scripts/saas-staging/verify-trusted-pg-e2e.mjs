@@ -239,6 +239,54 @@ function readLastCommittedNorthAuditId() {
 
 /** No client-facing output: an isolated NOLOGIN PG role observes only an
  * already committed local audit ID. This is NOT remote HTTP delivery. */
+/** Disposable PG fixture only. The role can claim/ACK *mock* event labels,
+ * not transport a payload or claim real HTTP receipt. */
+function syntheticDeliveryFixtureSql(eventId, sqlBuilder) {
+  assert.ok(Number.isSafeInteger(eventId) && eventId > 0);
+  const sql = sqlBuilder(eventId);
+  assert.ok(typeof sql === 'string' &&
+    sql.includes('saas_rls_private.') && sql.length < 1400);
+  const run=Bun.spawnSync(
+    ['psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-c',sql],
+    { stderr:'ignore' }
+  );
+  assert.equal(run.exitCode,0,'CI-only synthetic delivery SQL failed');
+  return Buffer.from(run.stdout).toString('utf8').trim();
+}
+
+function mockDeliveryLease(eventId, seconds) {
+  assert.ok([1,15].includes(seconds));
+  const output=syntheticDeliveryFixtureSql(eventId,id =>
+    'BEGIN; SET LOCAL ROLE saas_mock_delivery_worker; ' +
+    'SELECT delivery_event_id::text || \'|\' || delivery_generation::text ' +
+    '|| \'|\' || fencing_token::text || \'|\' || idempotency_key::text ' +
+    '|| \'|\' || attempt_number::text ' +
+    'FROM saas_rls_private.claim_synthetic_delivery(1,'+seconds+','+id+'); COMMIT;'
+  );
+  if (!output) return null;
+  const parts=output.split('|');
+  assert.equal(parts.length,5);
+  assert.equal(parts[0],String(eventId));
+  assert.match(parts[2],/^[0-9a-f-]{36}$/);
+  assert.match(parts[3],/^[0-9a-f-]{36}$/);
+  return Object.freeze({
+    eventId, generation:Number(parts[1]), fencingToken:parts[2],
+    idempotencyKey:parts[3], attempt:Number(parts[4]),
+  });
+}
+
+function mockDeliveryAck(lease, idempotencyKey=lease.idempotencyKey) {
+  assert.match(lease.fencingToken,/^[0-9a-f-]{36}$/);
+  assert.match(idempotencyKey,/^[0-9a-f-]{36}$/);
+  const result=syntheticDeliveryFixtureSql(lease.eventId,id =>
+    'BEGIN; SET LOCAL ROLE saas_mock_delivery_worker; SELECT ' +
+    'saas_rls_private.mark_mock_delivery_ack('+id+','+lease.generation+
+    ',\''+lease.fencingToken+'\'::uuid,\''+idempotencyKey+'\'::uuid); COMMIT;'
+  );
+  assert.ok(result === 't' || result === 'f');
+  return result === 't';
+}
+
 function reconcileCommittedLocalAuditInFixture(eventId) {
   assert.ok(Number.isSafeInteger(eventId) && eventId>0);
   const fixtureQuery=(sql)=>{
@@ -843,7 +891,59 @@ try {
   const committedAuditId=readLastCommittedNorthAuditId();
   assert.ok(committedAuditId>lastNorthAuditBefore,
     'Signed trusted publication must create a NEW committed PG event');
+  assert.equal(mockDeliveryLease(committedAuditId,1),null,
+    'Commit-only synthetic intent must wait for LOCAL audit observation');
   reconcileCommittedLocalAuditInFixture(committedAuditId);
+  // Pure memory receiver: one mock side effect keyed by the immutable
+  // event UUID. First delivery succeeds at receiver but ACK is dropped.
+  // Retry MUST carry same key and receiver MUST NOT apply effect twice.
+  const mockReceiverEffects = new Map();
+  const mockAccept = lease => {
+    const found = mockReceiverEffects.get(lease.idempotencyKey);
+    if (found !== undefined) {
+      assert.equal(found,lease.eventId,'Mock receiver dedup may not cross events');
+      return lease.idempotencyKey;
+    }
+    mockReceiverEffects.set(lease.idempotencyKey,lease.eventId);
+    return lease.idempotencyKey;
+  };
+  const firstMockLease=mockDeliveryLease(committedAuditId,1);
+  assert.equal(firstMockLease.generation,1);
+  assert.equal(firstMockLease.attempt,1);
+  const acceptedMockAck=mockAccept(firstMockLease);
+  assert.equal(acceptedMockAck,firstMockLease.idempotencyKey);
+  // Network-free simulation of lost acknowledgement: do not mark DB ACK.
+  assert.equal(mockReceiverEffects.size,1);
+  await Bun.sleep(1350);
+  const retriedMockLease=mockDeliveryLease(committedAuditId,15);
+  assert.equal(retriedMockLease.generation,2);
+  assert.equal(retriedMockLease.attempt,2);
+  assert.equal(retriedMockLease.idempotencyKey,firstMockLease.idempotencyKey);
+  assert.notEqual(retriedMockLease.fencingToken,firstMockLease.fencingToken);
+  assert.equal(mockAccept(retriedMockLease),acceptedMockAck,
+    'Mock receiver must acknowledge duplicate immutable event idempotently');
+  assert.equal(mockReceiverEffects.size,1,
+    'Lost ACK must not produce second synthetic receiver effect');
+  assert.equal(mockDeliveryAck(firstMockLease),false,
+    'Old generation cannot falsely finish a reclaimed event');
+  assert.equal(mockDeliveryAck(retriedMockLease,firstMockLease.fencingToken),false,
+    'A guessed or incorrect mock ACK marker must be rejected');
+  assert.equal(mockDeliveryAck(retriedMockLease),true,
+    'Only current fenced claim with correct mock response may be marked');
+  assert.equal(mockDeliveryAck(retriedMockLease),false,
+    'Duplicate mock ACK must be terminal and harmless');
+  assert.equal(mockDeliveryLease(committedAuditId,1),null,
+    'Committed terminal mock event must never be redelivered');
+  const terminalMockState=syntheticDeliveryFixtureSql(committedAuditId,id =>
+    'SELECT status || \'|\' || attempts::text FROM ' +
+    'saas_rls_private.synthetic_delivery_state WHERE event_id='+id
+  );
+  assert.equal(terminalMockState,'mock_acked|2');
+  for (const secret of [firstMockLease.idempotencyKey,
+    firstMockLease.fencingToken,retriedMockLease.fencingToken]) {
+    assert.equal(JSON.stringify(publicationReceipt).includes(secret),false,
+      'No worker key may enter a public receipt');
+  }
   assert.equal('eventId' in publicationReceipt,false);
   assert.equal('leaseToken' in publicationReceipt,false);
   assertAudit(publicationReceipt, {
@@ -858,7 +958,7 @@ try {
   assert.equal(readPrivateOutboxCount(), outboxBefore + 1,
     'Cross-tenant refusal must not insert a fake Allow event');
   assert.equal(driver.stats().poisoned, false);
-  console.info('PASS: real Bun.SQL trusted receipt persists then reconciles LOCAL PG audit, no HTTP ACK');
+  console.info('PASS: real Bun.SQL commit→local audit→synthetic idempotent intent retry, lost MOCK ACK only');
 
   // 2G.4d.7a: real ephemeral PostgreSQL with TWO verified RS256 bearer
   // tokens for the SAME actor. The server derives SHA-256 of each exact
