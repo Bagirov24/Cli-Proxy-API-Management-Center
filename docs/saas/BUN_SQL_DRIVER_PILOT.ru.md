@@ -135,8 +135,9 @@ Production адаптер обязан подтвердить quarantine и св
 
 ## Дополнение 2G.1b — native отмена и controlled pool replacement
 
-**Испытание staging-only, итоговый статус определяется по CI на
-конкретном commit.** Для первого bounded security инкремента добавлены
+**VERIFIED staging-only на ephemeral PostgreSQL 16, SHA
+`0b0f7223189a46d3fd79ad486d2e89a4590487ba`;
+production SQL driver — PROPOSED.** Для первого bounded security инкремента добавлены
 adversarial unit-тесты (2G.1) и fault-probes Bun.SQL 1.3.14 с настоящим
 ephemeral PG16 (2G.1b).
 
@@ -196,3 +197,19 @@ pool при доказанной очистке/уничтожении стар�
 Также 2,5-секундное ожидание очереди `reserve({signal})` оказалось
 таймаутом probe, поэтому native abort нельзя объявлять
 подтверждённым. В следующем тесте эти два исхода разделяются.
+
+### Итоговая проверка 2G.1b
+
+[PG16 CI #38261137458](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38261137458):
+**SUCCESS** для отказоустойчивого test-boundary. Это не означает,
+что native cancellation отвечает требованиям:
+- `reserve({signal})` не подтвердил native abort за **1253 мс**;
+  тест классифицировал истечение своего deadline как DRIVER LIMITATION.
+- `Query.cancel()` действительно завершился cancellation error,
+  но только спустя **3001 мс** при допустимом budget 2500 мс.
+- Серверный `statement_timeout` завершил SQL ошибкой, после
+  подтверждённого `ROLLBACK` transaction-local actor/MAC исчезли.
+- Quarantine запретил новый `connect` в старом pool. Свежий
+  независимый pool выполнил North/Orbit RLS reads без смешения.
+- Новый драйвер `pg.Pool` **НЕ** подключён. Поддержка
+  атомарного individual discard и отказов сети по-прежнему PROPOSED.

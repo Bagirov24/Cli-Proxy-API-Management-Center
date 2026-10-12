@@ -378,8 +378,13 @@ cache invalidation и серверная интеграция остаются *
 - [x] Добавлен изолированный протокол испытаний реальных Bun.SQL
   `reserve({ signal })`, `Query.cancel()`, `statement_timeout`,
   подтверждённого `ROLLBACK`, `SQL.close()` и создания нового пула.
-- [ ] Результаты этого инкремента подтверждены финальным GitHub Actions
-  run (не проставлять VERIFIED до SUCCESS на текущем SHA).
+- [x] Результат 2G.1b подтверждён 4/4 GitHub Actions на
+  `0b0f7223189a46d3fd79ad486d2e89a4590487ba`:
+  [CI](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38261137470),
+  [PG16](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38261137458),
+  [Demo](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38261137532),
+  [Browser](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38261137479).
+  **VERIFIED только тесты и fail-closed quarantine; НЕ bounded native cancel**.
 - [x] При первом native CI после отмены `reserve({signal})` повторное
   чтение из **того же** Bun-пула закончилось отказом, поэтому такой пул
   нельзя считать безопасно восстановленным; тест исправлен на quarantine

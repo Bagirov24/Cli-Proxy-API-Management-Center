@@ -270,3 +270,10 @@ probe timer, поэтому нельзя утверждать, что драйв
 Эти исходы записываются как ограничения, а не успешная отмена.
 Production SQL connector остаётся PROPOSED; допустим лишь новый
 экземпляр pool после quarantine, с подтверждённой RLS-изоляцией.
+
+**Подтверждение 2G.1b:** [ephemeral PostgreSQL CI #38261137458](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38261137458)
+успешно подтвердил fail-closed quarantine и fresh-pool North/Orbit,
+но native reserve abort не завершился до 1253 мс, а query cancel
+занял 3001 мс. Указанные ограничения остаются в решении о запрете
+production Bun pool, не оправдывают silent fallback и не ведут
+к переключению на direct egress.

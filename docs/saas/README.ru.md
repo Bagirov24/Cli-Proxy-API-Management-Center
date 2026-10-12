@@ -320,7 +320,7 @@ production-pool: встроенный Bun.SQL 1.3.14 пока не доказа�
 atomic physical discard, bounded network disconnect и корректность
 повторного использования после отмены. См. [BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md).
 
-## Этап 2G.1b — native Bun SQL fault probes (STAGING / CI-gated)
+## Этап 2G.1b — native Bun SQL fault probes (VERIFIED: ephemeral CI only)
 
 Добавлен строго изолированный раздел в `scripts/saas-staging/verify-bun-postgres.mjs`.
 В GitHub Actions на *временном* PG16 запускаются:
@@ -341,3 +341,13 @@ atomic physical discard, bounded network disconnect и корректность
 в SQL allowlist и не открывает пользователю произвольный SQL. Нельзя
 интерпретировать восстановление **нового** пула как успешный recycle
 повреждённого connection. См. [BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md).
+
+**Результат 2G.1b:** проверено на [PostgreSQL CI #38261137458](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38261137458).
+В Bun 1.3.14 native `reserve({signal})` не подтвердил отмену за 1253 мс,
+а `Query.cancel()` вернул ошибку отмены только через 3001 мс
+(проверяемый лимит 2500 мс). Это отрицательные результаты по срокам
+отмены, а не готовый production-драйвер. Подтверждён безопасный отказ
+и изоляция с **новым** пулом. Остальные три workflow этого SHA —
+[CI](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38261137470),
+[Demo](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38261137532),
+[Browser](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38261137479) — SUCCESS.
