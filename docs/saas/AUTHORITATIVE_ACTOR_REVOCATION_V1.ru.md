@@ -36,3 +36,14 @@ identical, and expects a generic tenantless Deny.
 
 No public endpoint, Core/Gateway, CPA/egress, production OIDC,
 Railway, credentials or production deploy/merge.
+
+## Multi-process actor logout serialization (2G.4d.6a)
+
+`verify-publication-barrier.sh` now also opens a signed PostgreSQL
+reader and a privileged synthetic actor-wide logout writer in separate
+physical connections. A third observer must see old actor-active state
+and unchanged epoch while the reader holds FOR SHARE. Logout COMMIT is
+required to wait until that reader commits; the newly signed scope
+afterward is denied and restoration bumps North again, not Orbit.
+This proves cooperative PostgreSQL DB ordering only, not remote
+transport delivery or real OIDC session logout.

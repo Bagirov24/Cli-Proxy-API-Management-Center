@@ -193,3 +193,100 @@ if (( restored != final + 2 )); then
   exit 1
 fi
 echo "PASS: terminated PG16 reader rolls back FOR SHARE; pending revoke COMMIT unblocks"
+
+# 2G.4d.6a: actor-wide logout writer MUST use the same per-tenant
+# revision lock as grants. Two independent PG backends + an observer.
+initial_actor_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+initial_orbit_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-orbit'")"
+
+PGAPPNAME=saas_actor_publication_reader psql -X -q -v ON_ERROR_STOP=1 \
+  > /tmp/saas-actor-publication-reader.log 2>&1 <<'SQL' &
+BEGIN;
+SET LOCAL statement_timeout='15000ms';
+SELECT saas_rls_test.issue_scope('actor-north','demo-north',120);
+SET LOCAL ROLE saas_rls_reader;
+SELECT saas_rls_test.assert_true(
+  saas_rls.acquire_authorized_read_barrier(
+    'demo-north','actor-north','tenant-admin','projects') IS NOT NULL,
+  'Signed active actor must hold epoch while publishing');
+SELECT pg_sleep(4);
+RESET ROLE;
+COMMIT;
+SQL
+reader_pid="$!"
+ready=0
+for i in {1..65}; do
+  if [[ "$(query "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name='saas_actor_publication_reader' AND wait_event='PgSleep'")" == "1" ]]; then
+    ready=1
+    break
+  fi
+  sleep 0.1
+done
+if [[ "$ready" != "1" ]]; then
+  echo "Actor publication reader failed to acquire private epoch lock"
+  tail -n 20 /tmp/saas-actor-publication-reader.log
+  exit 1
+fi
+
+PGAPPNAME=saas_actor_logout_writer psql -X -q -v ON_ERROR_STOP=1 \
+  > /tmp/saas-actor-logout-writer.log 2>&1 <<'SQL' &
+BEGIN;
+SET LOCAL statement_timeout='15000ms';
+UPDATE saas_rls_private.actor_session_state
+ SET status='revoked',revision=revision+1
+ WHERE actor_id='actor-north' AND status='active';
+COMMIT;
+SQL
+writer_pid="$!"
+blocked=0
+for i in {1..45}; do
+  if [[ "$(query "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name='saas_actor_logout_writer' AND wait_event_type='Lock'")" == "1" ]]; then
+    blocked=1
+    break
+  fi
+  sleep 0.1
+done
+if [[ "$blocked" != "1" ]]; then
+  echo "Actor logout writer did not wait for signed reader epoch"
+  tail -n 20 /tmp/saas-actor-logout-writer.log
+  exit 1
+fi
+pre_logout_status="$(query "SELECT status FROM saas_rls_private.actor_session_state WHERE actor_id='actor-north'")"
+pre_logout_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+if [[ "$pre_logout_status" != "active" || "$pre_logout_epoch" != "$initial_actor_epoch" ]]; then
+  echo "Uncommitted logout became visible before signed publication COMMIT"
+  exit 1
+fi
+
+wait "$reader_pid"
+reader_pid=""
+wait "$writer_pid"
+writer_pid=""
+post_logout_status="$(query "SELECT status FROM saas_rls_private.actor_session_state WHERE actor_id='actor-north'")"
+post_logout_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+if [[ "$post_logout_status" != "revoked" ]] || (( post_logout_epoch != initial_actor_epoch + 1 )); then
+  echo "Actor-wide logout must COMMIT once after signed publication releases lock"
+  exit 1
+fi
+
+psql -X -q -v ON_ERROR_STOP=1 <<'SQL' > /tmp/saas-actor-after-logout-check.log
+BEGIN;
+SELECT saas_rls_test.issue_scope('actor-north','demo-north',120);
+SET LOCAL ROLE saas_rls_reader;
+SELECT saas_rls_test.assert_true(
+  NOT saas_rls.scope_membership_matches(
+    'demo-north','actor-north','tenant-admin'),
+  'Previously valid signed actor must be denied after logout COMMIT');
+RESET ROLE;
+ROLLBACK;
+SQL
+
+query "UPDATE saas_rls_private.actor_session_state SET status='active',revision=revision+1 WHERE actor_id='actor-north' AND status='revoked'" >/dev/null
+restored_actor_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+restored_orbit_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-orbit'")"
+if (( restored_actor_epoch != initial_actor_epoch + 2 )) ||
+   [[ "$restored_orbit_epoch" != "$initial_orbit_epoch" ]]; then
+  echo "Actor logout recovery must version North and leave Orbit unchanged"
+  exit 1
+fi
+echo "PASS: PG16 actor-wide logout COMMIT waits for signed publication; old scope then denied"
