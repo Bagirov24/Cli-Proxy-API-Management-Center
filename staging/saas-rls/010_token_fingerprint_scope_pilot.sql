@@ -20,6 +20,19 @@ $guard$;
 ALTER TABLE saas_rls_private.actor_session_state
   ADD COLUMN IF NOT EXISTS require_token_fingerprint BOOLEAN NOT NULL DEFAULT FALSE;
 
+-- Enrollment tombstone survives actor/session DELETE+recreate, including
+-- deleting the final enrolled token; it is never deleted by fixture writes.
+CREATE TABLE IF NOT EXISTS saas_rls_private.token_bound_actor_tombstones (
+  actor_id TEXT PRIMARY KEY CHECK (actor_id ~ '^[A-Za-z0-9_-]{1,128}$')
+);
+ALTER TABLE saas_rls_private.token_bound_actor_tombstones OWNER TO saas_rls_owner;
+REVOKE ALL ON saas_rls_private.token_bound_actor_tombstones
+ FROM PUBLIC,saas_rls_reader;
+INSERT INTO saas_rls_private.token_bound_actor_tombstones(actor_id)
+SELECT actor_id FROM saas_rls_private.actor_session_state
+ WHERE require_token_fingerprint
+ON CONFLICT (actor_id) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS saas_rls_private.actor_token_sessions (
   fingerprint TEXT PRIMARY KEY CHECK (fingerprint ~ '^[0-9a-f]{64}$'),
   actor_id TEXT NOT NULL CHECK (actor_id ~ '^[A-Za-z0-9_-]{1,128}$'),
@@ -57,6 +70,8 @@ BEGIN
     ) THEN
       RAISE EXCEPTION 'Unknown actor for token fingerprint enrollment';
     END IF;
+    INSERT INTO saas_rls_private.token_bound_actor_tombstones(actor_id)
+      VALUES (affected_actor) ON CONFLICT (actor_id) DO NOTHING;
   END IF;
   -- Scope revocation/insertion is committed with the SAME epoch updates
   -- used by the read-publication FOR SHARE lock. Over-invalidation is safe.
@@ -115,6 +130,9 @@ BEGIN
     -- Once any token is registered, even after last token deletion, legacy
     -- actor-only MAC cannot reactivate access (permanent enrollment flag).
     IF EXISTS (
+      SELECT 1 FROM saas_rls_private.token_bound_actor_tombstones t
+       WHERE t.actor_id=actor_claim
+    ) OR EXISTS (
       SELECT 1 FROM saas_rls_private.actor_session_state s
        WHERE s.actor_id=actor_claim AND s.require_token_fingerprint
     ) THEN RETURN FALSE; END IF;
@@ -181,6 +199,8 @@ BEGIN
         'saas_rls_private.actor_token_sessions','SELECT')
    OR has_table_privilege('saas_ci_runner',
         'saas_rls_private.actor_token_sessions','INSERT')
+   OR has_table_privilege('saas_rls_reader',
+        'saas_rls_private.token_bound_actor_tombstones','SELECT')
    OR has_table_privilege('saas_rls_reader',
         'saas_rls_private.actor_session_state','UPDATE')
    OR has_function_privilege('saas_rls_reader',

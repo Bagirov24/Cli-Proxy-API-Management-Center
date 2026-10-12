@@ -125,13 +125,23 @@ SET LOCAL ROLE saas_rls_reader;
 SELECT saas_rls_test.assert_true(saas_rls.scope_tenant() IS NULL,
  'Deleting last enrolled token must not restore actor-only scope');
 RESET ROLE;
+-- Even a privileged DELETE/re-create of the actor session state must not
+-- resurrect actor-only authorization for an already enrolled actor ID.
+DELETE FROM saas_rls_private.actor_session_state WHERE actor_id='actor-bound-sql';
+INSERT INTO saas_rls_private.actor_session_state(actor_id,status)
+ VALUES ('actor-bound-sql','active');
+SELECT saas_rls_test.issue_scope('actor-bound-sql','demo-north',120);
+SET LOCAL ROLE saas_rls_reader;
+SELECT saas_rls_test.assert_true(saas_rls.scope_tenant() IS NULL,
+ 'Deleting/recreating the actor row must preserve permanent token enrollment');
+RESET ROLE;
 SELECT saas_rls_test.assert_true(
- (SELECT require_token_fingerprint FROM saas_rls_private.actor_session_state
- WHERE actor_id='actor-bound-sql') AND
+ (SELECT COUNT(*)=1 FROM saas_rls_private.token_bound_actor_tombstones
+  WHERE actor_id='actor-bound-sql') AND
  NOT has_table_privilege('saas_rls_reader','saas_rls_private.actor_token_sessions','SELECT')
  AND NOT has_table_privilege('saas_ci_runner','saas_rls_private.actor_token_sessions','INSERT')
  AND NOT has_function_privilege('saas_rls_reader',
   'saas_rls_test.issue_bound_scope(text,text,text,integer)','EXECUTE'),
- 'Permanent enrollment and private least privilege');
+ 'Enrollment tombstone survives actor recycling and stays private');
 ROLLBACK;
 \echo 'PASS: signed token A revoke, sibling B survives, expiry, no legacy downgrade'
