@@ -75,3 +75,18 @@ The **production HTTP publication** and **durable audit** blockers
 remain OPEN: independent actor stores may race, audit can exist
 without durable delivery, an external callback is not a proven
 atomic transport, and no physical connection discard proof exists.
+
+## 2G.4d.6a/b — transactional actor-wide revocation and audit outbox
+
+| Ephemeral pilot | CI proof | Status |
+| --- | --- | --- |
+| Private actor-wide kill switch atomically bumps tenant epochs | [PostgreSQL #38292965787](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965787); real multi-process signed FOR SHARE vs logout writer | VERIFIED ephemeral |
+| Signed reader cannot SELECT/UPDATE private session registry | Migration 008 and PG16 least privilege SQL | VERIFIED ephemeral |
+| Signed append-only minimal publication audit/outbox, durable on COMMIT, rollback on failure | Migration 009, [PostgreSQL #38292965787](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965787) | VERIFIED ephemeral |
+| Non-superuser signed local publish creates private event and receipt only | PG16 E2E, [PostgreSQL #38292965787](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965787) | VERIFIED ephemeral |
+| Individual bearer token/session revocation | Actor-wide only, no token-bound MAC | SPEC |
+| Durable audit + external HTTP publish atomicity | Handoff precedes PG COMMIT; not reversible if COMMIT fails | SPEC |
+| Tamper-evident cross-instance audit retention/replication | No externally secured audit trail | SPEC |
+
+The pilot remains disconnected from production OIDC/session authority,
+public SaaS HTTP, Railway, Core/Gateway, CPA and network enforcement.

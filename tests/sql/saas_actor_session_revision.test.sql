@@ -31,21 +31,8 @@ ROLLBACK;
 BEGIN;
 UPDATE saas_rls_private.actor_session_state
    SET status='revoked', revision=revision+1 WHERE actor_id='actor-north';
-DO $probe$
-DECLARE
-  n BIGINT;
-BEGIN
-  SELECT revision INTO STRICT n
-  FROM saas_rls_private.tenant_authorization_revisions
-  WHERE tenant_id='demo-north';
-  PERFORM saas_rls_test.assert_true(
-    n=(SELECT revision::BIGINT FROM saas_rls_private.tenant_authorization_revisions
-       WHERE tenant_id='demo-north')
-    AND n>0, 'North tenant revision exists after actor revocation');
-END
-$probe$;
 SELECT saas_rls_test.assert_true(
-  (SELECT revision::TEXT<>:'north_before'
+  (SELECT revision=(:'north_before')::BIGINT+1
    FROM saas_rls_private.tenant_authorization_revisions
    WHERE tenant_id='demo-north')
   AND (SELECT revision::TEXT=:'orbit_before'
@@ -82,11 +69,22 @@ VALUES ('actor-north','demo-orbit','tenant-viewer','active');
 UPDATE saas_rls_private.actor_session_state
    SET status='revoked', revision=revision+1 WHERE actor_id='actor-north';
 SELECT saas_rls_test.assert_true(
-  (SELECT revision::TEXT<>:'north_before'
+  (SELECT revision=(:'north_before')::BIGINT+1
    FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north')
-  AND (SELECT revision::TEXT<>:'orbit_before'
+  AND (SELECT revision=(:'orbit_before')::BIGINT+2
    FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-orbit'),
-  'shared actor kill switch must invalidate ALL linked tenants');
+  'shared actor kill switch must atomically bump North once and Orbit twice');
+ROLLBACK;
+
+-- Identical UPDATEs do not advance the epoch, even if a privileged
+-- fixture repeats the same active actor status.
+BEGIN;
+UPDATE saas_rls_private.actor_session_state
+ SET status=status WHERE actor_id='actor-north';
+SELECT saas_rls_test.assert_true(
+  (SELECT revision=(:'north_before')::BIGINT
+   FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'),
+  'No-op actor UPDATE must not advance tenant revision');
 ROLLBACK;
 
 -- Replay of guarded migration must retain revoked fixture actors; separately

@@ -645,7 +645,9 @@ disposable PG16. Отзыв меняет тот же tenant revision, котор
 проверяет signed metadata и publication. Для actor, состоящего
 в нескольких tenants, инвалидация охватывает все memberships.
 
-**IMPLEMENTED / CI PENDING.** Это не per-token OIDC session
+**IMPLEMENTED / VERIFIED** в disposable PG16 на SHA
+`2df528fa665a4702003fbf834e75e25e815e1025`, [PostgreSQL #38292965787](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965787),
+[CI #38292965756](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965756), [Demo #38292965740](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965740), [Chromium #38292965795](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965795) — 4/4 SUCCESS. Это не per-token OIDC session
 revocation: исходная HMAC scope пока подписывает actor+tenant, а не
 идентификатор отдельной сессии.
 
@@ -658,6 +660,8 @@ epoch без SQL rows, prompts, secrets и grant IDs. INSERT возможен
 actor/member role. Событие сохраняется после успешного SQL COMMIT
 и удаляется при ROLLBACK всей транзакции.
 
-**IMPLEMENTED / CI PENDING.** Транзакционная запись не доказывает
+**IMPLEMENTED / VERIFIED** в disposable PG16:
+[PostgreSQL #38292965787](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965787), [CI #38292965756](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965756) (1 815 Bun PASS, 0 FAIL), Demo/Chromium
+SUCCESS. Транзакционная запись не доказывает
 фактическую доставку remote HTTP bytes и не создаёт production
 tamper-evident audit service.

@@ -1,6 +1,9 @@
 # Stage 2G.4d.6b — signed durable-on-COMMIT publication outbox
 
-**IMPLEMENTED guarded ephemeral migration; CI PENDING.** No production
+**IMPLEMENTED / VERIFIED** in disposable PG16 on code SHA
+`2df528fa665a4702003fbf834e75e25e815e1025`, [PostgreSQL #38292965787](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965787),
+[CI #38292965756](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965756) (1 815 tests PASS, 0 FAIL), Demo and Chromium SUCCESS.
+No production
 logging or HTTP transport. Migration 009 follows migrations 001–008.
 
 A private append-only `local_publication_audit_outbox` stores ONLY

@@ -529,7 +529,8 @@ entrypoint повторно использует JWT→actor→RBAC и обе me
 
 ## D-046 — actor-wide session revoke обязан менять PostgreSQL tenant epoch (2G.4d.6a)
 
-**IMPLEMENTED staging-only / CI PENDING; production SPEC.**
+**IMPLEMENTED / VERIFIED** ephemeral PG16 ([PostgreSQL #38292965787](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965787));
+production SPEC.
 
 Подписанная роль+membership в PostgreSQL ещё не учитывала отзыв
 активности actor, если синтетический directory продолжал выдавать
@@ -541,7 +542,8 @@ actor-wide kill switch под существующим `FOR SHARE`, но не
 
 ## D-047 — audit outbox записывается только при подписанном PG Allow и не содержит ресурсы (2G.4d.6b)
 
-**IMPLEMENTED migration / CI PENDING; production SPEC.**
+**IMPLEMENTED / VERIFIED** ephemeral PG16 ([PostgreSQL #38292965787](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965787));
+production SPEC.
 
 Изолированный PostgreSQL `009` хранит minimal metadata
 actor/tenant/collection/correlation/revision после авторизованного

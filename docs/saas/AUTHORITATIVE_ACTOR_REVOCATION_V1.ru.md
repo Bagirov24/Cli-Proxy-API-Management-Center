@@ -1,6 +1,9 @@
 # 2G.4d.6a — actor-wide PostgreSQL session revocation (ephemeral pilot)
 
-**IMPLEMENTED / CI PENDING.** This is NOT an OIDC/session-token registry.
+**IMPLEMENTED / VERIFIED** only in disposable PostgreSQL16, code SHA
+`2df528fa665a4702003fbf834e75e25e815e1025`:
+[PostgreSQL #38292965787](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965787), [CI #38292965756](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965756), [Demo #38292965740](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965740), [Chromium #38292965795](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965795) — 4/4 SUCCESS.
+This is NOT an OIDC/session-token registry.
 Only the synthetic singleton actor session state is authoritative in PG16.
 
 Migration `008_actor_session_epoch_pilot.sql` creates a private

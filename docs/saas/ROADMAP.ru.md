@@ -773,7 +773,8 @@ atomic revision increments. See
 - [x] SQL тесты revocation, rollback, affected tenants и отсутствие
   private SELECT/UPDATE для saas_ci_runner.
 - [x] Real PG16 after-second-COMMIT actor session kill-switch E2E.
-- [ ] **VERIFIED:** exact-SHA GitHub Actions.
+- [x] **VERIFIED** SHA `2df528fa665a4702003fbf834e75e25e815e1025`:
+  [PostgreSQL #38292965787](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965787), [CI #38292965756](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965756), Demo, Chromium — 4/4 SUCCESS.
 - [ ] **SPEC:** subject/token-scoped signed session identity, OIDC
   discovery/JWK rotation, persisted session/logout/replay controls.
 - [ ] **SPEC:** durable audit/outbox under signed PG publication lease.
@@ -784,9 +785,11 @@ atomic revision increments. See
   signed-authorized record function (no direct read/write reader grants).
 - [x] PostgreSQL SQL tests: forged tenant, wrong role, revoked actor,
   duplicate correlation, atomic ROLLBACK and persistent COMMIT record.
-- [ ] TypeScript opt-in signed outbox write integrated inside publication
-  lease, after final DB gate and before local handoff.
-- [ ] Real ephemeral PG16 receipt-only E2E with durable outbox entry.
-- [ ] **VERIFIED** only after exact SHA CI.
+- [x] TypeScript opt-in signed outbox write inside the publication
+  lease, after last DB gate, before synchronous audit/local handoff.
+- [x] Real non-superuser PG16 E2E: receipt-only publish creates exactly
+  one persisted minimal private event, foreign tenant creates none.
+- [x] **VERIFIED** on SHA `2df528fa665a4702003fbf834e75e25e815e1025`:
+  [PostgreSQL #38292965787](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965787), [CI #38292965756](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965756) (1 815 PASS), Demo and Chromium — 4/4 SUCCESS.
 - [ ] **SPEC:** tamper-evident durable audit replication/retention,
   guarantee for callback failure/commit uncertainty and real HTTP.
