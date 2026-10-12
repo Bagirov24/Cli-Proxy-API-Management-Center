@@ -409,3 +409,22 @@ role/grant/status writes и отдельная доказанная линейр
 семантика. Между последней revision проверкой и HTTP delivery гонка
 сохраняется. См.
 [AUTHORIZATION_REVISION_CONTRACT_V1.ru.md](AUTHORIZATION_REVISION_CONTRACT_V1.ru.md).
+
+
+## D-039 — PostgreSQL tenant revision является транзакционным writer state, но не HTTP revocation barrier
+
+**IMPLEMENTED staging-only SQL pilot / CI PENDING; production SPEC.**
+
+После 2G.4d opt-in TS guard вводится отдельный узкий PostgreSQL 16
+proof: private monotonic tenant epoch, триггеры membership/role/tenant
+status/grants/resource catalog с row lock внутри транзакции изменения,
+tombstone tenant ID и signed SQL `authorized_revision` без private
+reader privileges. Временный CI writer имеет test-only привилегии;
+production credentials не используются. Concurrency проверяет
+distinct writers одной tenant revision и committed visibility.
+
+Не объявляем endpoint готовым: TypeScript revision provider ещё
+не использует этот SQL, expiry времени не bump, final check/response
+race остаётся, нескольких backend instances и производственного
+authoritative writer API нет. См.
+[TRANSACTIONAL_AUTHORIZATION_REVISIONS_V1.ru.md](TRANSACTIONAL_AUTHORIZATION_REVISIONS_V1.ru.md).

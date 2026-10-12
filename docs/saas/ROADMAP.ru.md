@@ -592,3 +592,23 @@ reuse повреждённого пула.
 No 004 migration yet: no authoritative write path is present to enforce
 atomic revision increments. See
 [AUTHORIZATION_REVISION_CONTRACT_V1.ru.md](AUTHORIZATION_REVISION_CONTRACT_V1.ru.md).
+
+
+## Этап 2G.4d.2 — server-owned epoch в одноразовой PostgreSQL 16
+
+- [x] Staging-only `004` private BIGINT epoch c tenant tombstone и
+  инкрементом в **той же транзакции**, что изменение status,
+  membership/role, Pool/Account/Egress grant или resource catalog.
+- [x] Фиксированный signed SQL `authorized_revision` с no-access для
+  reader к private таблицам, строгой проверкой current actor/role и
+  tenant/collection scope.
+- [x] Добавлены SQL acceptance и отдельные concurrent `psql` writer /
+  read tests: rollback atomicity, shared-resource fan-out, отсутствие
+  lost bump, изоляция North/Orbit.
+- [ ] **VERIFIED** только после финального SHA и GitHub Actions.
+- [ ] **SPEC:** server-only native driver adapter для включения этой
+  revision в TypeScript read boundary; expiry-time invalidation,
+  policy coverage и multi-instance transaction/crash/deadlock QA.
+- [ ] **PROPOSED:** linearizable response/revocation completion barrier.
+
+См. [TRANSACTIONAL_AUTHORIZATION_REVISIONS_V1.ru.md](TRANSACTIONAL_AUTHORIZATION_REVISIONS_V1.ru.md).

@@ -141,6 +141,15 @@ jobs:
               exit 1
             }
           tail -n 4 /tmp/saas-e2e-grants.log
+          # New 2G.4d.2 private revisions are installed ONLY in ephemeral CI.
+          # Existing 2G.4c E2E mutations now exercise writer-side triggers.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/004_tenant_authorization_revisions_pilot.sql \
+            > /tmp/saas-authorization-revisions-install.log 2>&1 || {
+              tail -n 60 /tmp/saas-authorization-revisions-install.log
+              exit 1
+            }
+          tail -n 3 /tmp/saas-authorization-revisions-install.log
           # Synthetic RS256 keys are generated only in this Bun process.
           # Real wire SQL uses only saas_ci_runner, never the postgres login.
           timeout --signal=TERM --kill-after=5s 90s env \
@@ -148,5 +157,27 @@ jobs:
             SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
             bun scripts/saas-staging/verify-trusted-pg-e2e.mjs
           unset runner_password scope_key
+
+      - name: Verify staging authorization epochs and concurrent revocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Apply twice to catch non-idempotent epoch reset on migration replay.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/004_tenant_authorization_revisions_pilot.sql \
+            > /tmp/saas-authorization-revisions-replay.log 2>&1 || {
+              tail -n 65 /tmp/saas-authorization-revisions-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_authorization_revisions.test.sql \
+            > /tmp/saas-authorization-revisions-acceptance.log 2>&1 || {
+              tail -n 100 /tmp/saas-authorization-revisions-acceptance.log
+              exit 1
+            }
+          tail -n 6 /tmp/saas-authorization-revisions-acceptance.log
+          timeout --signal=TERM --kill-after=5s 50s env \
+            SAAS_EPHEMERAL_REVISION_CI=true \
+            bash scripts/saas-staging/verify-revision-concurrency.sh
 
       # No deploy, repository secrets, production SQL connections or credentials.

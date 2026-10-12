@@ -93,3 +93,11 @@ proxy/VPN, management.html publication or production DB access.
 
 See [POST_COMMIT_REVALIDATION_V1.ru.md](POST_COMMIT_REVALIDATION_V1.ru.md),
 [ROADMAP.ru.md](ROADMAP.ru.md), [DECISIONS.ru.md](DECISIONS.ru.md).
+
+## Next implemented increment: ephemeral PG writer/storage proof (2G.4d.2)
+
+[TRANSACTIONAL_AUTHORIZATION_REVISIONS_V1.ru.md](TRANSACTIONAL_AUTHORIZATION_REVISIONS_V1.ru.md)
+adds a guarded private PostgreSQL epoch table, transactional triggers,
+signed revision read attestation and concurrent SQL acceptance. This is
+**not yet wired** to the optional TypeScript `revisions` port; therefore
+the old synthetic limitations and the response/revocation race remain.

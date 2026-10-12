@@ -490,3 +490,22 @@ authoritative storage/writer и atomic revision bump пока нет. Новая
 PostgreSQL миграция намеренно не добавлена. Временная PostgreSQL CI
 проверяет прежний signed RLS E2E как regression, а не новую
 линейризуемость; window после последнего revision check остаётся.
+
+
+## Этап 2G.4d.2 — атомарное изменение tenant revision (ephemeral PG16)
+
+Добавлен отдельный [staging SQL revision pilot](TRANSACTIONAL_AUTHORIZATION_REVISIONS_V1.ru.md):
+`004_tenant_authorization_revisions_pilot.sql` поддерживает закрытые
+tenant epoch с транзакционными триггерами для tenant status, membership,
+роли, независимых Pool/Account/Egress grants и общих ресурсов. Через
+signed scope предоставляется только `authorized_revision` без доступа
+к private epochs. SQL-фикстуры проверяют rollback, 404-equivalent DB
+denial, cross-tenant isolation, drift между двумя транзакциями и
+раздельный Pool/Account/Egress; две отдельные PostgreSQL writer-сессии
+проверяют блокировку общего epoch, отсутствие dirty read и lost update.
+
+**Статус: IMPLEMENTED / CI PENDING.** Это PostgreSQL storage/writer proof:
+действующий TypeScript `ServerAuthorizationRevisionSource` пока
+не привязан к новой функции. TTL expiry по времени и гонка между
+final check и ответом остаются SPEC. Нет новых HTTP endpoints,
+production DB, Railway, Core, Gateway или изменений UI.
