@@ -403,3 +403,123 @@ query "BEGIN;
     WHERE actor_id='actor-concurrent-token';
   COMMIT;" >/dev/null
 echo "PASS: PG16 per-token revoke COMMIT waits for signed publication; revoked token then denied"
+
+# 2G.4d.7b: independent issuer SUBJECT revoke COMMIT is ordered with the
+# exact same signed publication epoch FOR SHARE. Token row stays active;
+# subject registry status is the authority. Test-only roles and identifiers.
+query "BEGIN;
+ INSERT INTO saas_rls.memberships(actor_id,tenant_id,role,status)
+ VALUES ('actor-concurrent-issuer','demo-north','tenant-viewer','active');
+ INSERT INTO saas_rls_private.actor_session_state(actor_id,status)
+ VALUES ('actor-concurrent-issuer','active');
+ COMMIT;" >/dev/null
+psql -X -q -v ON_ERROR_STOP=1 <<'SQL' > /tmp/saas-subject-pin-fixture.log
+BEGIN;
+SET LOCAL ROLE saas_issuer_directory_admin;
+SELECT saas_rls_private.pin_verified_subject(
+ 'https://ci-issuer.example.test/oauth','sub-concurrent',
+ 'actor-concurrent-issuer');
+COMMIT;
+BEGIN;
+SET LOCAL ROLE saas_issuer_provisioner;
+SELECT saas_rls_private.enroll_verified_token(
+ 'https://ci-issuer.example.test/oauth','sub-concurrent',
+ 'actor-concurrent-issuer',repeat('d',64),
+ statement_timestamp()+interval '90 seconds');
+COMMIT;
+SQL
+subject_initial_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+
+PGAPPNAME=saas_subject_publication_reader psql -X -q -v ON_ERROR_STOP=1 \
+ > /tmp/saas-subject-publication-reader.log 2>&1 <<'SQL' &
+BEGIN;
+SET LOCAL statement_timeout='15000ms';
+SELECT saas_rls_test.issue_bound_scope(
+ 'actor-concurrent-issuer','demo-north',repeat('d',64),120);
+SET LOCAL ROLE saas_rls_reader;
+SELECT saas_rls_test.assert_true(
+ saas_rls.acquire_authorized_read_barrier(
+  'demo-north','actor-concurrent-issuer','tenant-viewer','projects') IS NOT NULL,
+ 'Issuer-pinned subject signed publication must hold epoch lock');
+SELECT pg_sleep(4);
+RESET ROLE;
+COMMIT;
+SQL
+reader_pid="$!"
+ready=0
+for i in {1..65}; do
+ if [[ "$(query "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name='saas_subject_publication_reader' AND wait_event='PgSleep'")" == "1" ]]; then
+  ready=1
+  break
+ fi
+ sleep 0.1
+done
+if [[ "$ready" != "1" ]]; then
+ echo "Issuer-bound subject reader did not hold signed publication epoch lock"
+ tail -n 20 /tmp/saas-subject-publication-reader.log
+ exit 1
+fi
+
+PGAPPNAME=saas_subject_logout_writer psql -X -q -v ON_ERROR_STOP=1 \
+ > /tmp/saas-subject-logout-writer.log 2>&1 <<'SQL' &
+BEGIN;
+SET LOCAL statement_timeout='15000ms';
+SET LOCAL ROLE saas_issuer_directory_admin;
+SELECT saas_rls_private.revoke_verified_subject(
+ 'https://ci-issuer.example.test/oauth','sub-concurrent');
+COMMIT;
+SQL
+writer_pid="$!"
+blocked=0
+for i in {1..45}; do
+ if [[ "$(query "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name='saas_subject_logout_writer' AND wait_event_type='Lock'")" == "1" ]]; then
+  blocked=1
+  break
+ fi
+ sleep 0.1
+done
+if [[ "$blocked" != "1" ]]; then
+ echo "Issuer subject logout did not wait for signed publication"
+ tail -n 20 /tmp/saas-subject-logout-writer.log
+ exit 1
+fi
+subject_pre_status="$(query "SELECT status FROM saas_rls_private.issuer_subject_bindings WHERE issuer='https://ci-issuer.example.test/oauth' AND subject='sub-concurrent'")"
+subject_pre_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+if [[ "$subject_pre_status" != "active" || "$subject_pre_epoch" != "$subject_initial_epoch" ]]; then
+ echo "Subject revocation became visible before signed publication committed"
+ exit 1
+fi
+wait "$reader_pid"
+reader_pid=""
+wait "$writer_pid"
+writer_pid=""
+subject_post_status="$(query "SELECT status FROM saas_rls_private.issuer_subject_bindings WHERE issuer='https://ci-issuer.example.test/oauth' AND subject='sub-concurrent'")"
+subject_post_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+subject_token_status="$(query "SELECT status FROM saas_rls_private.actor_token_sessions WHERE fingerprint=repeat('d',64)")"
+if [[ "$subject_post_status" != "revoked" || "$subject_token_status" != "active" ]] ||
+ (( subject_post_epoch != subject_initial_epoch + 1 )); then
+ echo "Subject revoke must bump tenant epoch once without bulk token mutation"
+ exit 1
+fi
+psql -X -q -v ON_ERROR_STOP=1 <<'SQL' > /tmp/saas-subject-post-revoke-check.log
+BEGIN;
+SELECT saas_rls_test.issue_bound_scope(
+ 'actor-concurrent-issuer','demo-north',repeat('d',64),120);
+SET LOCAL ROLE saas_rls_reader;
+SELECT saas_rls_test.assert_true(
+ saas_rls.scope_tenant() IS NULL AND
+ saas_rls.authorized_revision(
+  'demo-north','actor-concurrent-issuer','tenant-viewer','projects') IS NULL,
+ 'Subject-wide revoke denies previously valid bound token after COMMIT');
+RESET ROLE;
+ROLLBACK;
+SQL
+query "BEGIN;
+ DELETE FROM saas_rls_private.actor_token_sessions
+  WHERE actor_id='actor-concurrent-issuer';
+ DELETE FROM saas_rls_private.actor_session_state
+  WHERE actor_id='actor-concurrent-issuer';
+ DELETE FROM saas_rls.memberships
+  WHERE actor_id='actor-concurrent-issuer';
+ COMMIT;" >/dev/null
+echo "PASS: PG16 issuer SUBJECT revoke COMMIT waits for signed publication and denies active token"
