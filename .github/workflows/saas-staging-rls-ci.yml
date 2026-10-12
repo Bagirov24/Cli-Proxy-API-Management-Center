@@ -372,5 +372,8 @@ jobs:
           timeout --signal=TERM --kill-after=5s 60s env \
             SAAS_EPHEMERAL_PUBLICATION_CI=true \
             bash scripts/saas-staging/verify-publication-barrier.sh
+          timeout --signal=TERM --kill-after=5s 50s env \
+            SAAS_EPHEMERAL_AUDIT_RECONCILE_CI=true \
+            bash scripts/saas-staging/verify-audit-reconciliation.sh
 
       # No deploy, repository secrets, production SQL connections or credentials.
