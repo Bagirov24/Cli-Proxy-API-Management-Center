@@ -1,6 +1,7 @@
 # Stage 2G.4a — End-to-end Trusted Identity → PostgreSQL RLS → Audit
 
-> **Статус: IMPLEMENTED / CI PENDING.** Интеграционный тест выполняется
+> **Статус: IMPLEMENTED / VERIFIED в ephemeral PostgreSQL CI
+на кодовом SHA `73066e254e5db2bdd6abeb479c75cae648fc9624`.** Интеграционный тест выполняется
 > только в GitHub Actions на одноразовой PostgreSQL 16.6 и Bun 1.3.14.
 > **STAGING ONLY:** нет production credentials, публичного HTTP,
 > настоящего OIDC, CLIProxyAPI Core/Gateway или SaaS deployment.
@@ -109,3 +110,28 @@ test suite, чтобы не переписать исторические ожи
 [TRUSTED_SQL_READ_BOUNDARY_V1.ru.md](TRUSTED_SQL_READ_BOUNDARY_V1.ru.md),
 [BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md),
 [ROADMAP.ru.md](ROADMAP.ru.md).
+
+## Подтверждённая проверка GitHub Actions (2G.4a)
+
+На кодовом SHA `73066e254e5db2bdd6abeb479c75cae648fc9624`:
+
+- [PG16 + настоящая JWT→RLS→Audit цепочка #38269435054](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38269435054):
+  **SUCCESS**. Логи подтвердили `PASS: stage 2G.4a synthetic JWT
+  through real ephemeral PG16 signed RLS + redacted audit`.
+  Проверены независимые Pool/Account/Egress grants, IDOR/invalid JWT,
+  post-COMMIT revocation, failed audit и cancellation/quarantine.
+- [Основной CI #38269435023](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38269435023):
+  **SUCCESS** — 1758 Bun unit-тестов / 0 ошибок, ESLint,
+  TypeScript, Vite. Default-off HTML **3 305,72 KB**, unchanged.
+  **Эти 1758 unit-тестов НЕ включают SQL E2E probe** — он выполнен
+  отдельно внутри PostgreSQL workflow.
+- [Opt-in demo #38269434999](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38269434999):
+  **SUCCESS**, HTML **3 386,51 KB**, unchanged.
+- [Chromium QA #38269435126](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38269435126):
+  **SUCCESS**, синтетический browser QA.
+
+**VERIFIED** только интеграция синтетического access-token и actor
+mapping с настоящим PG16 RLS и redacted in-memory audit на временной БД.
+Эти проверки НЕ подтверждают production OIDC, согласование
+membership в разных хранилищах, durable audit, индивидуальный
+physical discard Bun.SQL или настоящий Gateway/Core data-plane.

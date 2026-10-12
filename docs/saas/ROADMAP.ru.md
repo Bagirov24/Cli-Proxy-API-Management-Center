@@ -493,8 +493,15 @@ reuse повреждённого пула.
   JWT role/tenant/actor, foreign issuer/kid/audience, ID-token,
   SQL-like input, auditor deny, revoke mapping/role after COMMIT,
   audit failure, cancellation/pool quarantine.
-- [ ] Финальный SHA подтверждён GitHub Actions 4/4. Поставить
-  VERIFIED только после SUCCESS и по точному commit SHA.
+- [x] 4/4 GitHub Actions SUCCESS для кода SHA
+  `73066e254e5db2bdd6abeb479c75cae648fc9624`:
+  [Main CI #38269435023](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38269435023)
+  (1758 unit tests, 0 fail, lint/TS/Vite),
+  [PG16 actual E2E #38269435054](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38269435054),
+  [Demo #38269434999](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38269434999),
+  [Chromium #38269435126](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38269435126).
+  VERIFIED реальная RLS интеграция с **synthetic** JWT/actor/audit,
+  НЕ production auth, durable audit или network enforcement.
 - [ ] **PROPOSED:** trusted tenant-state gate (suspended tenant
   должен давать явный Deny, не 200 empty), consistent actor-state
   snapshot across replicas/DB, real OIDC/JTI revocation, real

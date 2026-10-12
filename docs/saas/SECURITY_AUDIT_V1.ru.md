@@ -145,3 +145,9 @@ tenantless Deny/Error, ошибки audit sink даже при успешном 
 и отмена ответа. Используется исключительно synthetic in-memory
 buffer с `classification=staging` — не persistent audit ledger.
 Результаты: [E2E_POSTGRES_SECURITY_ACCEPTANCE_V1.ru.md](E2E_POSTGRES_SECURITY_ACCEPTANCE_V1.ru.md).
+
+**2G.4a VERIFIED на настоящем PG16:** [E2E #38269435054](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38269435054).
+Audit события фиксируют разрешённые North/Orbit reads и tenantless
+Deny/Error после реального SQL RLS, а audit exception блокирует
+выдачу уже полученных rows. Sink по-прежнему только synthetic
+in-memory; никакая долговременная запись не выполнена.

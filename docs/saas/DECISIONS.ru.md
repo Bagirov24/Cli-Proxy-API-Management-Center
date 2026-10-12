@@ -326,7 +326,9 @@ ACL, tamper evidence, async sinks и reliability — PROPOSED.
 
 ## D-035 — 2G.4a проверяет реальную RLS транзакцию, но не production identity
 
-**Статус: IMPLEMENTED ephemeral CI contract; VERIFIED после Actions.**
+**Статус: IMPLEMENTED / VERIFIED ephemeral PG16 E2E
+([PG16 #38269435054](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38269435054),
+SHA `73066e2`); production identity/data plane — PROPOSED.**
 
 Полный staging-only путь синтетического JWT → trusted actor map →
 двойная membership/RBAC проверка → подписанный по txid SQL scope →

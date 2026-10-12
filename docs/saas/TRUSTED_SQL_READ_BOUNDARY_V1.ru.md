@@ -164,3 +164,10 @@ signed SQL transaction, PostgreSQL RLS и synchronous audit запущено
 Новый скрипт и acceptance matrix документированы в
 [E2E_POSTGRES_SECURITY_ACCEPTANCE_V1.ru.md](E2E_POSTGRES_SECURITY_ACCEPTANCE_V1.ru.md).
 Это **не** production OIDC, durable actor-store или public HTTP/DTO.
+
+**Подтверждение 2G.4a:** [PG16 CI #38269435054](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38269435054)
+проверил этот же TypeScript boundary с настоящим non-superuser
+Bun.SQL/PostgreSQL 16 FORCE RLS, синтетическими JWT и
+redacted in-memory audit. Actor mapping остаётся synthetic,
+полные ControlResource DTO/production OIDC и согласование
+между хранилищами не реализованы.

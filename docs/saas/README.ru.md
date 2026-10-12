@@ -415,8 +415,13 @@ grant, а также отсутствие Core-native CPA routing. Negative chec
 SQL-like input, server actor revocation после DB COMMIT, отказ
 audit и stale cancellation.
 
-**Статус:** IMPLEMENTED CI acceptance, **VERIFIED только после
-фактического SUCCESS Actions**. Это не production SaaS API,
+**Статус: IMPLEMENTED / VERIFIED в ephemeral GitHub Actions на
+`73066e254e5db2bdd6abeb479c75cae648fc9624`**:
+[PG16 actual E2E #38269435054](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38269435054)
+и [Main CI #38269435023](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38269435023)
+(1758 unit tests, 0 fail), [Demo #38269434999](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38269434999),
+[Browser #38269435126](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38269435126).
+Это лишь synthetic JWT/actor + настоящий PG16, не production backend. Это не production SaaS API,
 не реальный OIDC, не durable audit и не единая транзакция
 между in-memory actor-directory и PostgreSQL. См. ограничения
 в отдельном E2E документе.
