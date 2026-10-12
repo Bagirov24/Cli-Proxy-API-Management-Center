@@ -186,3 +186,13 @@ audit reason `authorization-changed` без tenant ID. Не путать с
 и tenantless generic 404. Синтетический actor mapping остаётся
 неатомарным с PostgreSQL; двойной SQL gate не закрывает race после
 COMMIT. Подробности: [TENANT_DB_AUTHZ_GATE_V1.ru.md](TENANT_DB_AUTHZ_GATE_V1.ru.md).
+
+## 2G.4c — post-COMMIT revalidation
+
+Изолированный trusted boundary повторяет тот же fixed SQL read через
+**новую** подписанную транзакцию после первого COMMIT,
+сверяет row set, лишь затем rechecks JWT+actor map+membership и
+передаёт результат синхронному audit. Изменение разрешённых
+данных/DB grants после первого COMMIT приводит к generic 404,
+SQL error → 503. Не обещать атомарность отзыва после второго
+COMMIT: [POST_COMMIT_REVALIDATION_V1.ru.md](POST_COMMIT_REVALIDATION_V1.ru.md).

@@ -127,3 +127,14 @@ SQL exception не прикрепляется к `Error.cause` и не прот�
 **VERIFIED только staging DB-authoritative gate**, не атомарная
 гарантия отзыва прав между SQL/actor-store, не физический discard,
 не real OIDC и не deployment.
+
+## Дополнение 2G.4c — after-COMMIT read-set validation
+
+2G.4b использовал два signed gates до/после SELECT в одной
+транзакции. В 2G.4c **после первого COMMIT** весь allowlisted
+read повторяется во второй signed transaction; отозванный в
+промежутке tenant/membership/grant или изменившиеся видимые
+Account/Pool/Egress rows возвращают generic 404 вместо stale data.
+Это диагностический security-hardening в CI, **не** атомарный
+revision-barrier. Подробнее:
+[POST_COMMIT_REVALIDATION_V1.ru.md](POST_COMMIT_REVALIDATION_V1.ru.md).

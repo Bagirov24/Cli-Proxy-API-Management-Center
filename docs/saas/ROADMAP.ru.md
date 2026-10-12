@@ -538,3 +538,27 @@ reuse повреждённого пула.
   connection discard, durable audit, public API/data plane.
 
 Детали: [TENANT_DB_AUTHZ_GATE_V1.ru.md](TENANT_DB_AUTHZ_GATE_V1.ru.md).
+
+## Этап 2G.4c — post-COMMIT signed DB revalidation
+
+- [x] Сервер фиксирует verified tenant/collection/limit/access-token/signal
+  до await; caller не может изменить второй SQL scope через мутируемый
+  request object.
+- [x] Две signed PostgreSQL read-only транзакции для той же коллекции,
+  каждая с independent RLS/gates, txid и HMAC; сравнение только
+  санитизированных и упорядоченных метаданных.
+- [x] Fail-closed 404 + tenantless audit при post-COMMIT revoke tenant,
+  membership, grant или несовпадающем row set. Driver/signer/timeout
+  failures по-прежнему 503/quarantine без скрытых Allow.
+- [x] Adversarial unit и ephemeral PG16 tests: отозванный tenant,
+  membership и Account grant между транзакциями, stale response,
+  мутируемые request fields и cancel второй транзакции.
+- [ ] GitHub Actions на commit этого инкремента — до SUCCESS
+  **IMPLEMENTED / NOT VERIFIED**.
+- [ ] **PROPOSED:** действительно согласованный versioned
+  authorization state и revocation barrier после второго COMMIT,
+  robust production physical connection discard, real OIDC,
+  durable audit/HTTP/Data Plane. Двойное чтение не заменяет эти
+  требования и не рекомендовано в качестве production SLA.
+
+См. [POST_COMMIT_REVALIDATION_V1.ru.md](POST_COMMIT_REVALIDATION_V1.ru.md).

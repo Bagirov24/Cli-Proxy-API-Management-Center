@@ -448,3 +448,18 @@ stale server role, RLS и повторное использование испр
 [Browser #38272959125](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38272959125)); механизм не
 устраняет атомарную race window после SQL/COMMIT и не является
 production OIDC, real accounts либо сетевым enforcement.
+
+## Этап 2G.4c — повторная signed RLS проверка после COMMIT
+
+Добавлена [post-COMMIT read-only revalidation](POST_COMMIT_REVALIDATION_V1.ru.md).
+После первого signed PostgreSQL SELECT/COMMIT тот же доверенный actor
+повторно читает **ту же коллекцию и LIMIT** через новую signed
+transaction с новым `txid`. Изменение DB tenant status, membership,
+роли или конкретных resource grants между транзакциями вызывает
+generic 404, а ранние rows не возвращаются; SQL/pool errors остаются
+generic 503. Аудит не раскрывает tenant/resource IDs при Deny.
+
+Unit и CI-only real PG16 tests моделируют отзыв прав/Account grant
+**после** COMMIT; результаты CI пока **PENDING**. Эта проверка
+**не** обеспечивает атомарность отзыва после второго COMMIT,
+не заменяет production OIDC/driver/audit и не подключает HTTP/Core.

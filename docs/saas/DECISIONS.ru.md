@@ -367,3 +367,22 @@ generic 404+tenantless Deny audit; подтверждённый ROLLBACK поз�
 прямой SELECT в private tables и не объявляем атомарность revocation
 после COMMIT. См.
 [TENANT_DB_AUTHZ_GATE_V1.ru.md](TENANT_DB_AUTHZ_GATE_V1.ru.md).
+
+## D-037 — Post-COMMIT authorization/read-set recheck только в staging (2G.4c)
+
+**Статус: IMPLEMENTED isolated; CI pending; production revocation
+linearizability PROPOSED.**
+
+После первого signed DB COMMIT синтетический SaaS read boundary
+выполняет вторую транзакцию с новым HMAC/txid, тем же verified actor,
+tenant, ролью, collection и LIMIT. Любое расхождение в санитизированном
+read set, а также DB gate Deny, скрывает все старые rows с generic
+404 и tenantless `authorization-changed` audit. Unknown SQL errors,
+aborts, failed cleanup остаются generic 503/quarantine. Никакого
+caller-supplied SQL, production DB hook, public endpoint или credentials.
+
+Ограничение: **два снимка не обеспечивают атомарную гарантию** между
+последним COMMIT и HTTP response. Для production ещё нужен отдельный
+revision/serialization/revocation consistency design. Синтетические
+E2E привилегированные UPDATE выполняются только на disposable PG16.
+Подробно: [POST_COMMIT_REVALIDATION_V1.ru.md](POST_COMMIT_REVALIDATION_V1.ru.md).

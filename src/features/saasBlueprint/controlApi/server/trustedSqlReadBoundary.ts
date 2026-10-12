@@ -140,14 +140,21 @@ export function createTrustedSqlReadBoundary(deps: TrustedSqlReadDependencies) {
             request.limit < 1 || request.limit > 100))) {
         return finish(response(NOT_FOUND), 'invalid-request');
       }
-      collection = request.collection;
+      // Freeze values at the trusted boundary. A request object with mutable
+      // properties cannot switch collection/tenant/limit across awaits.
+      const requestedCollection = request.collection;
+      const requestedTenant = request.tenantId;
+      const requestedLimit = request.limit;
+      const signal = request.signal;
+      const accessToken = request.accessToken;
+      collection = requestedCollection;
 
-      const initialSession = await sessions.verify(request.accessToken);
-      if (request.signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
+      const initialSession = await sessions.verify(accessToken);
+      if (signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
       if (!initialSession) return finish(response(UNAUTHENTICATED), 'unauthenticated');
 
-      const actor = await deps.actors.lookup(initialSession.actorId, request.signal);
-      if (request.signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
+      const actor = await deps.actors.lookup(initialSession.actorId, signal);
+      if (signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
       if (!actor || actor.id !== initialSession.actorId ||
           !Array.isArray(actor.memberships)) {
         return finish(response(UNAUTHENTICATED), 'unauthenticated');
@@ -155,32 +162,45 @@ export function createTrustedSqlReadBoundary(deps: TrustedSqlReadDependencies) {
       trustedActorId = actor.id;
       // Snapshot before SQL: actor stores may mutate memberships in place.
       const originalMemberships = JSON.stringify(actor.memberships);
-      const allowed = authorizeTenantRead(actor, request.tenantId, request.collection);
+      const allowed = authorizeTenantRead(actor, requestedTenant, requestedCollection);
       if (!allowed.allowed) {
         return finish(response(allowed.reason === 'not-found' ? NOT_FOUND : FORBIDDEN),
           allowed.reason === 'not-found' ? 'tenant-hidden' : 'role-forbidden');
       }
-      trustedTenantId = request.tenantId;
+      trustedTenantId = requestedTenant;
       const scope: AuthorizedReadScope = {
         actorId: actor.id,
-        tenantId: request.tenantId,
+        tenantId: requestedTenant,
         role: allowed.membership.role,
         correlationId,
       };
       const rows = await readSignedScopedMetadata(deps.pool, deps.signer, {
-        scope, collection: request.collection, signal: request.signal, limit: request.limit,
+        scope, collection: requestedCollection, signal, limit: requestedLimit,
       });
-      if (request.signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
+      if (signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
+
+      // Stage 2G.4c: a separate signed transaction checks CURRENT PG RLS,
+      // membership/tenant state AND the same independently granted resources
+      // after the first COMMIT. Drift => deny, never return the old rows.
+      // This is deliberately NOT an atomic revocation guarantee after the
+      // final verification; a revision/serialization protocol is still SPEC.
+      const refreshedRows = await readSignedScopedMetadata(deps.pool, deps.signer, {
+        scope, collection: requestedCollection, signal, limit: requestedLimit,
+      });
+      if (signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
+      if (JSON.stringify(refreshedRows) !== JSON.stringify(rows)) {
+        return finish(response(NOT_FOUND), 'authorization-changed');
+      }
 
       // Verify the SAME access token + issuer/subject mapping after the async
       // SQL read; revoked/changed rights must not produce stale responses.
-      const currentSession = await sessions.verify(request.accessToken);
-      if (request.signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
+      const currentSession = await sessions.verify(accessToken);
+      if (signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
       if (!currentSession || currentSession.actorId !== initialSession.actorId) {
         return finish(response(UNAUTHENTICATED), 'unauthenticated');
       }
-      const current = await deps.actors.lookup(currentSession.actorId, request.signal);
-      if (request.signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
+      const current = await deps.actors.lookup(currentSession.actorId, signal);
+      if (signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
       if (!current || current.id !== scope.actorId) {
         return finish(response(UNAUTHENTICATED), 'unauthenticated');
       }
@@ -188,13 +208,13 @@ export function createTrustedSqlReadBoundary(deps: TrustedSqlReadDependencies) {
           JSON.stringify(current.memberships) !== originalMemberships) {
         return finish(response(NOT_FOUND), 'authorization-changed');
       }
-      const again = authorizeTenantRead(current, request.tenantId, request.collection);
+      const again = authorizeTenantRead(current, requestedTenant, requestedCollection);
       if (!again.allowed || again.membership.role !== scope.role) {
         return finish(response(NOT_FOUND), 'authorization-changed');
       }
       return finish({
         ok: true, status: 200, source: 'staging-signed-rls', correlationId,
-        tenantId: scope.tenantId, collection: request.collection, rows,
+        tenantId: scope.tenantId, collection: requestedCollection, rows,
       }, 'read-allowed');
     } catch (error) {
       if (request?.signal?.aborted) {

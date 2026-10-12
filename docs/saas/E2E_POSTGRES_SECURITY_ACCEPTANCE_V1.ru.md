@@ -149,3 +149,16 @@ tenant/resource IDs. Полный протокол и ограничения con
 ([Actions](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38272959201),
 кодовый SHA `12a3b5ba2c9e32786773e369eb1b80195b75e4d8`),
 не production tenant/session coherence.
+
+## 2G.4c — отдельная signed transaction после COMMIT
+
+Синтетический JWT → настоящий PG16 RLS E2E расширен
+проверкой новой signed transaction после первого COMMIT.
+Специальный **CI-only** `psql` mutator с фиксированными UPDATE
+приостанавливает tenant, отзывает membership либо отключает
+`grant-account` сразу после первого COMMIT. Повторный
+SQL gate и read-set сравнение должны выдать generic 404,
+без первоначальных rows и чужих resource IDs. Никакой
+production admin SQL/HTTP endpoint не добавлен. Описание:
+[POST_COMMIT_REVALIDATION_V1.ru.md](POST_COMMIT_REVALIDATION_V1.ru.md).
+Статус этого инкремента до GitHub CI — IMPLEMENTED / NOT VERIFIED.

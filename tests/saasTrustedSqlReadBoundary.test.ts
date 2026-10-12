@@ -56,6 +56,7 @@ interface TestHarnessOptions {
   readonly onSelect?: () => Promise<void> | void;
   readonly failSelect?: boolean;
   readonly rows?: readonly Record<string, unknown>[];
+  readonly rowsBySelect?: readonly (readonly Record<string, unknown>[])[];
   readonly gateAnswers?: readonly boolean[];
   readonly auditSink?: SecurityAuditSink;
 }
@@ -82,6 +83,7 @@ function harness(options: TestHarnessOptions = {}) {
   });
   let acquired = 0;
   let gateIndex = 0;
+  let selectIndex = 0;
   let poisoned = false;
   const pool: ScopedSqlPool = {
     quarantine(reason) { quarantines.push(reason); poisoned = true; },
@@ -101,7 +103,7 @@ function harness(options: TestHarnessOptions = {}) {
             await options.onSelect?.();
             if (options.failSelect) throw new Error('DB_PASSWORD_NEVER_LOG');
             const tenant = String(params[0]);
-            return { rows: options.rows ?? [{
+            return { rows: options.rowsBySelect?.[selectIndex++] ?? options.rows ?? [{
               id: tenant === 'demo-north' ? 'north-project' : 'orbit-project',
               tenant_id: tenant, name: 'Synthetic project',
               status: 'active', token_secret: 'MUST_NOT_RETURN',
@@ -169,8 +171,8 @@ describe('Stage 2G.2 — trusted JWT -> actor -> AuthZ -> signed SQL (synthetic 
         name: 'Synthetic project', status: 'active' }],
     });
     expect(JSON.stringify(result)).not.toContain('MUST_NOT_RETURN');
-    expect(h.acquired).toBe(1);
-    expect(h.released).toEqual([false]);
+    expect(h.acquired).toBe(2);
+    expect(h.released).toEqual([false, false]);
     expect(h.quarantines).toEqual([]);
     expect(h.auditEvents()).toEqual([{
       version: 1, occurredAt: '2027-01-15T08:00:00.000Z',
@@ -184,7 +186,8 @@ describe('Stage 2G.2 — trusted JWT -> actor -> AuthZ -> signed SQL (synthetic 
     expect(sql).not.toContain('demo-north');
     expect(h.queries.at(0)?.sql).toBe('BEGIN');
     expect(h.queries.at(-1)?.sql).toBe('COMMIT');
-    expect(h.queries.filter(q => q.sql.startsWith('SELECT set_config')).length).toBe(5);
+    expect(h.queries.filter(q => q.sql.startsWith('SELECT set_config')).length).toBe(10);
+    expect(h.queries.filter(q => q.sql === CONTROL_READ_SELECT_SQL.projects)).toHaveLength(2);
     expect(h.queries.find(q => q.sql === CONTROL_READ_SELECT_SQL.projects)?.params)
       .toEqual(['demo-north', 7]);
     const claims = new Map(h.queries.filter(q => q.sql.startsWith('SELECT set_config'))
@@ -248,7 +251,7 @@ describe('Stage 2G.2 — trusted JWT -> actor -> AuthZ -> signed SQL (synthetic 
       const denied = await h.read(h.request(await accessToken()));
       expect(denied).toMatchObject({ ok: false, status: 404 });
     }
-    expect(h.acquired).toBe(1);
+    expect(h.acquired).toBe(2);
   });
 
   test('forged JWT actor/role/tenant and extra request headers cannot elevate rights', async () => {
@@ -293,7 +296,7 @@ describe('Stage 2G.2 — trusted JWT -> actor -> AuthZ -> signed SQL (synthetic 
     expect(await h.read(h.request(token))).toMatchObject({
       ok: false, status: 401,
     });
-    expect(h.acquired).toBe(1);
+    expect(h.acquired).toBe(2);
   });
 
   test('membership revoked or downgraded during SQL cannot return a stale result', async () => {
@@ -308,7 +311,7 @@ describe('Stage 2G.2 — trusted JWT -> actor -> AuthZ -> signed SQL (synthetic 
       const result = await h.read(h.request(await accessToken()));
       expect(result).toMatchObject({ ok: false, status: 404 });
       expect(JSON.stringify(result)).not.toContain('north-project');
-      expect(h.acquired).toBe(1);
+      expect(h.acquired).toBe(2);
     }
   });
 
@@ -361,6 +364,93 @@ describe('Stage 2G.2 — trusted JWT -> actor -> AuthZ -> signed SQL (synthetic 
     expect(h.released).toEqual([false]);
     expect(h.auditEvents()).toMatchObject([{
       result: 'deny', reason: 'authorization-changed', tenantId: null,
+    }]);
+  });
+
+  test('post-COMMIT PostgreSQL suspension/revocation denies a stale successful first read', async () => {
+    // 2 gate checks for the first committed SELECT; in the fresh signed
+    // transaction the database changes its answer to false.
+    const h = harness({ gateAnswers: [true, true, false] });
+    const result = await h.read(h.request(await accessToken()));
+    expect(result).toMatchObject({
+      ok: false, status: 404, error: { code: 'NOT_FOUND' },
+    });
+    expect(JSON.stringify(result)).not.toContain('north-project');
+    expect(JSON.stringify(result)).not.toContain('demo-north');
+    expect(h.queries.filter(q => q.sql === CONTROL_READ_SELECT_SQL.projects)).toHaveLength(1);
+    expect(h.queries.filter(q => q.sql === SCOPED_READ_GATE_SQL)).toHaveLength(3);
+    expect(h.released).toEqual([false, false]);
+    expect(h.quarantines).toEqual([]);
+    expect(h.auditEvents()).toMatchObject([{
+      result: 'deny', reason: 'authorization-changed',
+      actorId: 'actor-north', tenantId: null,
+    }]);
+  });
+
+  test('post-COMMIT grant revocation changes the row set and invalidates old metadata', async () => {
+    const shared = {
+      id: 'shared-account', kind: 'account', owner_kind: 'platform',
+      owner_tenant_id: null, status: 'active',
+    };
+    const owned = {
+      id: 'north-account', kind: 'account', owner_kind: 'tenant',
+      owner_tenant_id: 'demo-north', status: 'active',
+    };
+    const h = harness({ rowsBySelect: [[owned, shared], [owned]] });
+    const response = await h.read(h.request(await accessToken(), { collection: 'accounts' }));
+    expect(response).toMatchObject({ ok: false, status: 404 });
+    expect(JSON.stringify(response)).not.toContain('shared-account');
+    expect(h.queries.filter(q => q.sql === CONTROL_READ_SELECT_SQL.accounts)).toHaveLength(2);
+    expect(h.released).toEqual([false, false]);
+    expect(h.quarantines).toEqual([]);
+    expect(h.auditEvents()).toMatchObject([{
+      result: 'deny', reason: 'authorization-changed', tenantId: null,
+    }]);
+    expect(JSON.stringify(h.auditEvents())).not.toContain('shared-account');
+  });
+
+  test('cancellation during the second signed transaction discards stale output and pool', async () => {
+    const controller = new AbortController();
+    let selects = 0;
+    const h = harness({ onSelect() {
+      selects++;
+      if (selects === 2) controller.abort();
+    } });
+    const result = await h.read(h.request(await accessToken(), {
+      signal: controller.signal,
+    }));
+    expect(result).toMatchObject({ ok: false, status: 503 });
+    expect(JSON.stringify(result)).not.toContain('north-project');
+    expect(h.released).toEqual([false, true]);
+    expect(h.quarantines).toContain('read-failed');
+    expect(h.auditEvents()).toMatchObject([{
+      result: 'error', reason: 'request-cancelled', tenantId: null,
+    }]);
+  });
+
+  test('snapshot of request tenant, collection and limit survives caller mutation during SELECT', async () => {
+    let request!: TrustedSqlReadRequest;
+    const h = harness({ onSelect() {
+      const mutable = request as unknown as {
+        tenantId: string; collection: string; limit: number;
+      };
+      mutable.tenantId = 'demo-orbit';
+      mutable.collection = 'accounts';
+      mutable.limit = 100;
+    } });
+    request = h.request(await accessToken(), { limit: 3 });
+    const result = await h.read(request);
+    expect(result).toMatchObject({
+      ok: true, status: 200, collection: 'projects', tenantId: 'demo-north',
+    });
+    const statements = h.queries.filter(q => q.sql === CONTROL_READ_SELECT_SQL.projects);
+    expect(statements).toHaveLength(2);
+    expect(statements.map(q => q.params)).toEqual([
+      ['demo-north', 3], ['demo-north', 3],
+    ]);
+    expect(h.queries.some(q => q.sql === CONTROL_READ_SELECT_SQL.accounts)).toBe(false);
+    expect(h.auditEvents()).toMatchObject([{
+      result: 'allow', tenantId: 'demo-north', collection: 'projects',
     }]);
   });
 
@@ -460,8 +550,8 @@ describe('Stage 2G.2 — trusted JWT -> actor -> AuthZ -> signed SQL (synthetic 
     });
     expect(JSON.stringify(result)).not.toContain('SYNTHETIC_REFRESH_TOKEN');
     expect(JSON.stringify(result)).not.toContain('north-project');
-    expect(h.acquired).toBe(1);
-    expect(h.released).toEqual([false]);
+    expect(h.acquired).toBe(2);
+    expect(h.released).toEqual([false, false]);
   });
 
   test('SQL-like input, malformed limits and aborted calls never acquire a connection', async () => {

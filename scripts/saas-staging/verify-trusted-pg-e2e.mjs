@@ -127,6 +127,33 @@ function boundedDriver(sql) {
   };
 }
 
+/**
+ * PRIVILEGED FIXTURE MUTATIONS, not part of the SaaS read boundary.
+ * Runs only in the GitHub Actions disposable PostgreSQL under the existing
+ * CI postgres bootstrap. All arguments are allowlisted here (not client SQL).
+ * The application SQL connections remain non-superuser saas_ci_runner.
+ */
+function changeEphemeralFixture(action) {
+  const statements = {
+    suspendNorth: "UPDATE saas_rls.tenants SET status='suspended' WHERE id='demo-north' AND status='active'",
+    restoreNorth: "UPDATE saas_rls.tenants SET status='active' WHERE id='demo-north' AND status='suspended'",
+    revokeNorth: "UPDATE saas_rls.memberships SET status='revoked' WHERE actor_id='actor-north' AND tenant_id='demo-north' AND status='active'",
+    restoreNorthMembership: "UPDATE saas_rls.memberships SET status='active' WHERE actor_id='actor-north' AND tenant_id='demo-north' AND status='revoked'",
+    disableSharedAccount: "UPDATE saas_rls.resource_grants SET status='disabled' WHERE id='grant-account' AND grantee_tenant_id='demo-north' AND status='active'",
+    restoreSharedAccount: "UPDATE saas_rls.resource_grants SET status='active' WHERE id='grant-account' AND grantee_tenant_id='demo-north' AND status='disabled'",
+  };
+  if (!Object.prototype.hasOwnProperty.call(statements, action)) {
+    throw new Error('Unrecognized staging-only fixture mutation');
+  }
+  // No password or SQL output is logged. PGUSER/PGPASSWORD are fixed in
+  // the ephemeral PG workflow; neither comes from a SaaS client.
+  const outcome = Bun.spawnSync(
+    ['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', '-c', statements[action]],
+    { stdout: 'ignore', stderr: 'ignore' }
+  );
+  assert.equal(outcome.exitCode, 0, 'Disposable PG16 fixture mutation failed');
+}
+
 const issuer = 'https://synthetic-staging-issuer.example.test/oauth';
 const audience = 'saas-control-api';
 const rsa = await crypto.subtle.generateKey({
@@ -399,6 +426,41 @@ try {
     reason: 'unauthenticated', actorId: 'actor-north', tenantId: null,
   });
   directory.set(issuer + ':sub-north', 'actor-north');
+
+  // Stage 2G.4c: mutate the ACTUAL ephemeral PostgreSQL immediately AFTER
+  // the first transaction has committed. The in-memory actor directory stays
+  // unchanged, so only the NEW signed transaction can discover DB revocation.
+  for (const scenario of [
+    { change: 'suspendNorth', restore: 'restoreNorth', collection: 'projects' },
+    { change: 'revokeNorth', restore: 'restoreNorthMembership', collection: 'projects' },
+    { change: 'disableSharedAccount', restore: 'restoreSharedAccount', collection: 'accounts' },
+  ]) {
+    driver.afterNextCommit(() => changeEphemeralFixture(scenario.change));
+    let decision;
+    try {
+      decision = await read(request(north, 'demo-north', scenario.collection));
+      assert.equal(decision.ok, false);
+      assert.equal(decision.status, 404);
+      assert.equal('rows' in decision, false);
+      assert.equal('tenantId' in decision, false);
+      assertAudit(decision, {
+        reason: 'authorization-changed', actorId: 'actor-north', tenantId: null,
+      });
+      const serialized = JSON.stringify(decision) + JSON.stringify(sink.snapshot());
+      assert.equal(serialized.includes('shared-account'), false);
+      assert.equal(serialized.includes('north-project'), false);
+      assert.equal(driver.stats().poisoned, false);
+    } finally {
+      changeEphemeralFixture(scenario.restore);
+    }
+    assert.deepEqual(
+      visibleIds(await read(request(orbit, 'demo-orbit')),
+        'Unpoisoned Orbit access after post-COMMIT verification deny'),
+      ['orbit-project']
+    );
+  }
+  assert.equal(driver.stats().discarded, 0);
+  console.info('PASS: after-COMMIT real PG16 tenant/member/grant revocation returns 404 and hides old rows');
 
   const brokenAudit = createSecurityAuditRecorder({
     write() { throw new Error('HIDDEN_TEST_ONLY_REFRESH_TOKEN'); },
