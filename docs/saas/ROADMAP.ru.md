@@ -447,3 +447,28 @@ reuse повреждённого пула.
   connection discard, Core metadata source и публичный SaaS API.
 
 См. [TRUSTED_SQL_READ_BOUNDARY_V1.ru.md](TRUSTED_SQL_READ_BOUNDARY_V1.ru.md).
+
+## Этап 2G.3 — Security Audit Contract / server-only
+
+- [x] Типизированные события с version, UTC timestamp, correlation ID,
+  operation, source, classification, actor/tenant context,
+  результатом allow/deny/error и enum reason.
+- [x] Sink принимает **только фиксированную allowlist** атрибутов.
+  Ни JWT/API/OAuth keys, Authorization headers, prompts, SQL, secrets,
+  proxy URI, ни произвольные metadata/foreign object IDs не копируются.
+- [x] В `trustedSqlReadBoundary` audit-порт обязателен. Для
+  отказанных/ошибочных чтений tenant ID принудительно null.
+  Сбой sink → generic 503 без SQL rows, не silent success.
+- [x] Только синхронный in-memory sink, без await после финальной
+  проверки AuthZ. Отдельная async/durable модель требует review.
+- [x] Synthetic adversarial tests: Allow/Deny/Error, IDOR, wrong JWT,
+  revocation mid-SQL, cancellation, sink exception, malicious
+  metadata/credentials, schema/reason enforcement, bounded buffer.
+- [ ] Финальные 4 GitHub Actions на текущем SHA успешно завершены
+  (до результата CI обозначать только IMPLEMENTED / NOT VERIFIED).
+- [ ] 2G.4 — настоящий synthetic JWT→PostgreSQL wire protocol→RLS→audit
+  end-to-end, отдельные consistency/revocation races.
+- [ ] Persistent audit, tamper-evident store, ACL, retention,
+  multi-replica consistency и real Core/SSO — **PROPOSED**.
+
+См. [SECURITY_AUDIT_V1.ru.md](SECURITY_AUDIT_V1.ru.md).

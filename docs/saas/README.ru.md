@@ -371,3 +371,21 @@ allowlist. **Статус: IMPLEMENTED contract / VERIFIED synthetic unit tests*
 Этот порт не является HTTP API, OIDC/SSO или production backend;
 реальная E2E PostgreSQL интеграция JWT→AuthZ→SQL остаётся PROPOSED.
 Подробнее: [TRUSTED_SQL_READ_BOUNDARY_V1.ru.md](TRUSTED_SQL_READ_BOUNDARY_V1.ru.md).
+
+## Этап 2G.3 — server-side security audit (SYNTHETIC)
+
+Добавлен server-only [Security Audit Contract v1](SECURITY_AUDIT_V1.ru.md):
+события `allow/deny/error` с серверным correlationId,
+результатом и фиксированным reason code. Только validated actor ID
+и Allow tenant; для Deny/Error `tenantId=null`, чтобы audit sink
+не стал каналом утечки чужих resource identifiers. События
+**не содержат** токенов OAuth/API key, secret URL, SQL/параметров,
+prompts, AI responses или произвольного metadata payload.
+
+Новый `securityAudit.ts` подключён к изолированному
+`trustedSqlReadBoundary.ts`: запись выполняется синхронно после
+последней AuthZ-проверки; ошибка sink **блокирует выдачу
+ранее прочитанных SQL metadata с generic 503**. Для unit-тестов
+существует только ограниченный по размеру synthetic in-memory buffer.
+Это **не** production audit ledger и не HTTP endpoint; durable
+event storage, retention и tamper resistance остаются PROPOSED.

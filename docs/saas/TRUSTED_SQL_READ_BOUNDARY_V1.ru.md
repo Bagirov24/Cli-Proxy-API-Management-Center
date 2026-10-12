@@ -104,8 +104,10 @@ pipeline через настоящий драйвер**.
   [BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md).
 - Сторонние клиенты **не** получают произвольный SQL, signer service,
   signed GUC, native Core API key или доступ к production.
-- Отдельные следующие инкременты: 2G.3 проверяемый audit contract,
-  2G.4 end-to-end ephemeral PG acceptance, затем согласованная
+- 2G.3 добавил обязательный server-side audit contract с redacted
+  Allow/Deny/Error и fail-closed поведением при ошибке sink.
+  См. [SECURITY_AUDIT_V1.ru.md](SECURITY_AUDIT_V1.ru.md).
+  2G.4 — end-to-end ephemeral PG acceptance, затем согласованная
   архитектура live SaaS identity/data plane и безопасного storage.
 
 Другие спецификации:
@@ -132,3 +134,17 @@ pipeline через настоящий драйвер**.
 Первый CI SHA `16e1529` имел **2 ESLint prefer-const ошибки**
 после успешных 1 745 unit-тестов. Они исправлены в
 `2ceb572`, затем выполнен полный повторный CI.
+
+## Интеграция с аудитом (2G.3 — SIMULATED)
+
+Успешная финальная проверка AuthZ заканчивается вызовом
+обязательного синхронного `SecurityAuditRecorder` c `read-allowed`.
+Отказ для чужого tenant — `tenant-hidden`, для auditor —
+`role-forbidden`, для изменившегося actor/membership —
+`authorization-changed` или `unauthenticated`. При отмене —
+`request-cancelled`, ошибке SQL — `source-unavailable`.
+У каждого Deny/Error audit event **tenantId=null**.
+Если sink недоступен, даже уже прочитанные rows не возвращаются:
+только generic 503. Версия, источник, `classification: synthetic`,
+timestamp и разрешённые поля описаны в
+[SECURITY_AUDIT_V1.ru.md](SECURITY_AUDIT_V1.ru.md).

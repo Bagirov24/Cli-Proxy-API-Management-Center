@@ -298,3 +298,25 @@ SQL fixture rows **не равны** полным ControlResource DTO; новы�
 session revocation/storage consistency и end-to-end PG16 acceptance —
 отдельные будущие работы. См.
 [TRUSTED_SQL_READ_BOUNDARY_V1.ru.md](TRUSTED_SQL_READ_BOUNDARY_V1.ru.md).
+
+## D-034 — Audit является серверной границей, не отладочным логом (2G.3)
+
+**Статус: IMPLEMENTED contract / synthetic tests, CI pending.**
+
+Для Blueprint B вводится обязательный `SecurityAuditRecorder` на
+server-side `trustedSqlReadBoundary`: результат Allow/Deny/Error,
+UTC timestamp, correlation ID, server-proven actor и tenant, код
+причины из фиксированного набора, источник и маркировка
+synthetic/staging. Денай/ошибка всегда имеют `tenantId=null`.
+Запрещено копировать JWT, Authorization, ключи, proxy URI, SQL,
+prompts и произвольные дополнительные поля. Событие
+составляется вручную из ровно 11 атрибутов и передаётся
+синхронному sink; проблемы sink приводят к generic 503,
+а не пропуску записи и выдаче rows.
+
+Инкремент сознательно **не выбирает долговременное хранилище** и
+не включает логирование в production. Временный bounded ring
+используется только в synthetic security tests. Жизненный цикл
+production audit ledger, outbox, retention, расследование,
+ACL, tamper evidence, async sinks и reliability — PROPOSED.
+Детали: [SECURITY_AUDIT_V1.ru.md](SECURITY_AUDIT_V1.ru.md).

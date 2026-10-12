@@ -1,4 +1,8 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
+import {
+  createSecurityAuditRecorder, createSyntheticAuditBuffer,
+  type SecurityAuditSink,
+} from '../src/features/saasBlueprint/controlApi/server/securityAudit';
 import type {
   ControlActor, TenantMembership,
 } from '../src/features/saasBlueprint/controlApi/contracts';
@@ -52,6 +56,7 @@ interface TestHarnessOptions {
   readonly onSelect?: () => Promise<void> | void;
   readonly failSelect?: boolean;
   readonly rows?: readonly Record<string, unknown>[];
+  readonly auditSink?: SecurityAuditSink;
 }
 
 function harness(options: TestHarnessOptions = {}) {
@@ -70,6 +75,10 @@ function harness(options: TestHarnessOptions = {}) {
   const queries: { readonly sql: string; readonly params: readonly SqlValue[] }[] = [];
   const released: boolean[] = [];
   const quarantines: string[] = [];
+  const auditBuffer = createSyntheticAuditBuffer();
+  const audit = createSecurityAuditRecorder(options.auditSink ?? auditBuffer, {
+    classification: 'synthetic', nowMs: () => 1_800_000_000_000,
+  });
   let acquired = 0;
   let poisoned = false;
   const pool: ScopedSqlPool = {
@@ -116,7 +125,7 @@ function harness(options: TestHarnessOptions = {}) {
         return actors.get(actorId) ?? null;
       },
     },
-    pool, signer, newCorrelationId: () => correlationId,
+    pool, signer, audit, newCorrelationId: () => correlationId,
   });
   const request = (
     accessTokenValue: string, overrides: Partial<TrustedSqlReadRequest> = {}
@@ -127,6 +136,7 @@ function harness(options: TestHarnessOptions = {}) {
   });
   return {
     read, request, actors, directory, queries, released, quarantines,
+    auditEvents: () => auditBuffer.snapshot(),
     get acquired() { return acquired; },
   };
 }
@@ -157,6 +167,13 @@ describe('Stage 2G.2 — trusted JWT -> actor -> AuthZ -> signed SQL (synthetic 
     expect(h.acquired).toBe(1);
     expect(h.released).toEqual([false]);
     expect(h.quarantines).toEqual([]);
+    expect(h.auditEvents()).toEqual([{
+      version: 1, occurredAt: '2027-01-15T08:00:00.000Z',
+      source: 'trusted-sql-read-boundary', classification: 'synthetic',
+      operation: 'saas.metadata.read', correlationId,
+      actorId: 'actor-north', tenantId: 'demo-north', collection: 'projects',
+      result: 'allow', reason: 'read-allowed',
+    }]);
     const sql = h.queries.map(x => x.sql).join(' ');
     expect(sql).not.toContain('actor-north');
     expect(sql).not.toContain('demo-north');
@@ -331,6 +348,82 @@ describe('Stage 2G.2 — trusted JWT -> actor -> AuthZ -> signed SQL (synthetic 
     expect(JSON.stringify(result)).not.toContain('DB_PASSWORD_NEVER_LOG');
     expect(h.quarantines).toContain('read-failed');
     expect(h.released).toEqual([true]);
+  });
+
+  test('audit hides foreign tenant and all untrusted claims on a denied cross-tenant read', async () => {
+    const h = harness();
+    const bad = await accessToken({
+      actorId: 'actor-orbit', role: 'tenant-owner', tenantId: 'demo-orbit',
+    });
+    const result = await h.read(h.request(bad, { tenantId: 'demo-orbit' }));
+    expect(result).toMatchObject({ ok: false, status: 404 });
+    expect(h.auditEvents()).toMatchObject([{
+      actorId: 'actor-north', tenantId: null, collection: 'projects',
+      classification: 'synthetic', result: 'deny', reason: 'tenant-hidden',
+    }]);
+    const serialized = JSON.stringify(h.auditEvents());
+    expect(serialized).not.toContain('demo-orbit');
+    expect(serialized).not.toContain('tenant-owner');
+    expect(serialized).not.toContain(bad);
+    expect(h.acquired).toBe(0);
+  });
+
+  test('invalid identity generates a tenantless audit denial without secrets', async () => {
+    const h = harness();
+    const invalid = await accessToken({ aud: 'wrong-audience', tenantId: 'secret-tenant' });
+    const response = await h.read(h.request(invalid));
+    expect(response).toMatchObject({ ok: false, status: 401 });
+    expect(h.auditEvents()).toMatchObject([{
+      actorId: null, tenantId: null, result: 'deny', reason: 'unauthenticated',
+    }]);
+    const serialized = JSON.stringify(h.auditEvents());
+    expect(serialized).not.toContain(invalid);
+    expect(serialized).not.toContain('secret-tenant');
+  });
+
+  test('audit marks mid-SQL revocation with safe reason and no tenant ID', async () => {
+    const h: ReturnType<typeof harness> = harness({ onSelect() {
+      h.actors.set('actor-north', {
+        id: 'actor-north',
+        memberships: [membership('demo-north', 'tenant-viewer', 'revoked')],
+      });
+    } });
+    const result = await h.read(h.request(await accessToken()));
+    expect(result).toMatchObject({ ok: false, status: 404 });
+    expect(h.auditEvents()).toMatchObject([{
+      actorId: 'actor-north', tenantId: null,
+      result: 'deny', reason: 'authorization-changed',
+    }]);
+    expect(JSON.stringify(h.auditEvents())).not.toContain('north-project');
+  });
+
+  test('audit records cancellation without leaked tenant, SQL or token data', async () => {
+    const controller = new AbortController();
+    const h = harness({ onSelect() { controller.abort(); } });
+    const token = await accessToken();
+    const result = await h.read(h.request(token, { signal: controller.signal }));
+    expect(result).toMatchObject({ ok: false, status: 503 });
+    expect(h.auditEvents()).toMatchObject([{
+      actorId: 'actor-north', tenantId: null,
+      result: 'error', reason: 'request-cancelled',
+    }]);
+    expect(JSON.stringify(h.auditEvents())).not.toContain(token);
+    expect(JSON.stringify(h.auditEvents())).not.toContain('SELECT');
+  });
+
+  test('failed audit sink causes generic 503 even after a successful SQL read', async () => {
+    const h = harness({
+      auditSink: { write() { throw new Error('SYNTHETIC_REFRESH_TOKEN_DO_NOT_LOG'); } },
+    });
+    const result = await h.read(h.request(await accessToken()));
+    expect(result).toEqual({
+      ok: false, status: 503, correlationId,
+      error: { code: 'SOURCE_UNAVAILABLE', message: 'Service unavailable' },
+    });
+    expect(JSON.stringify(result)).not.toContain('SYNTHETIC_REFRESH_TOKEN');
+    expect(JSON.stringify(result)).not.toContain('north-project');
+    expect(h.acquired).toBe(1);
+    expect(h.released).toEqual([false]);
   });
 
   test('SQL-like input, malformed limits and aborted calls never acquire a connection', async () => {

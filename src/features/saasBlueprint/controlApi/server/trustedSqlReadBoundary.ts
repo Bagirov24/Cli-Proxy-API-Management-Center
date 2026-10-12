@@ -1,4 +1,5 @@
 import { authorizeTenantRead } from '../authorization';
+import type { SecurityAuditReason, SecurityAuditRecorder } from './securityAudit';
 import type {
   AuthorizedReadScope, ControlActor, ControlCollection,
 } from '../contracts';
@@ -29,6 +30,8 @@ export interface TrustedSqlReadDependencies {
   };
   readonly pool: ScopedSqlPool;
   readonly signer: SignedTransactionIssuer;
+  /** Mandatory test/staging audit port; a failed write denies the response. */
+  readonly audit: SecurityAuditRecorder;
   /** Trusted backend-generated only. Never use client correlation headers. */
   readonly newCorrelationId?: () => string;
 }
@@ -96,32 +99,67 @@ export function createTrustedSqlReadBoundary(deps: TrustedSqlReadDependencies) {
     const response = (failure: typeof UNAUTHENTICATED | typeof FORBIDDEN |
       typeof NOT_FOUND | typeof UNAVAILABLE): TrustedSqlReadResult =>
       ({ ...failure, correlationId });
+    let trustedActorId: string | null = null;
+    let trustedTenantId: string | null = null;
+    let collection: ControlCollection | null = null;
+
+    const finish = (
+      result: TrustedSqlReadResult, reason: SecurityAuditReason
+    ): TrustedSqlReadResult => {
+      // Synchronous only: no new await between final RBAC and returning
+      // metadata. The sink never receives any JWT, SQL or raw request body.
+      try {
+        deps.audit.record({
+          correlationId, actorId: trustedActorId,
+          tenantId: result.ok ? trustedTenantId : null,
+          collection, result: result.ok ? 'allow' :
+            result.status === 503 ? 'error' : 'deny', reason,
+        });
+        return result;
+      } catch {
+        // A failed audit write must not become an unauthorized success.
+        // Already read SQL rows are discarded and diagnostic text is hidden.
+        return response(UNAVAILABLE);
+      }
+    };
+
     try {
       // Do not accept caller-supplied actor/role or forged SQL GUC in request.
       if (!SAFE_ACTOR.test(correlationId) || !request?.signal ||
-          request.signal.aborted) return response(UNAVAILABLE);
+          request.signal.aborted) {
+        return finish(response(UNAVAILABLE), 'request-cancelled');
+      }
       if (typeof request.accessToken !== 'string' ||
-          request.accessToken.length > 8192) return response(UNAUTHENTICATED);
+          request.accessToken.length > 8192) {
+        return finish(response(UNAUTHENTICATED), 'unauthenticated');
+      }
       if (!SAFE_TENANT.test(request.tenantId) ||
           !Object.prototype.hasOwnProperty.call(CONTROL_READ_SELECT_SQL, request.collection) ||
           (request.limit !== undefined && (!Number.isSafeInteger(request.limit) ||
-            request.limit < 1 || request.limit > 100))) return response(NOT_FOUND);
+            request.limit < 1 || request.limit > 100))) {
+        return finish(response(NOT_FOUND), 'invalid-request');
+      }
+      collection = request.collection;
 
       const initialSession = await sessions.verify(request.accessToken);
-      if (request.signal.aborted) return response(UNAVAILABLE);
-      if (!initialSession) return response(UNAUTHENTICATED);
+      if (request.signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
+      if (!initialSession) return finish(response(UNAUTHENTICATED), 'unauthenticated');
 
       const actor = await deps.actors.lookup(initialSession.actorId, request.signal);
-      if (request.signal.aborted) return response(UNAVAILABLE);
+      if (request.signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
       if (!actor || actor.id !== initialSession.actorId ||
-          !Array.isArray(actor.memberships)) return response(UNAUTHENTICATED);
-
+          !Array.isArray(actor.memberships)) {
+        return finish(response(UNAUTHENTICATED), 'unauthenticated');
+      }
+      trustedActorId = actor.id;
       // Snapshot before SQL: actor stores may mutate memberships in place.
-      const initialMemberships = JSON.stringify(actor.memberships);
+      const originalMemberships = JSON.stringify(actor.memberships);
       const allowed = authorizeTenantRead(actor, request.tenantId, request.collection);
       if (!allowed.allowed) {
-        return response(allowed.reason === 'not-found' ? NOT_FOUND : FORBIDDEN);
+        return finish(response(allowed.reason === 'not-found' ? NOT_FOUND : FORBIDDEN),
+          allowed.reason === 'not-found' ? 'tenant-hidden' : 'role-forbidden');
       }
+      trustedTenantId = request.tenantId;
       const scope: AuthorizedReadScope = {
         actorId: actor.id,
         tenantId: request.tenantId,
@@ -131,34 +169,36 @@ export function createTrustedSqlReadBoundary(deps: TrustedSqlReadDependencies) {
       const rows = await readSignedScopedMetadata(deps.pool, deps.signer, {
         scope, collection: request.collection, signal: request.signal, limit: request.limit,
       });
-      if (request.signal.aborted) return response(UNAVAILABLE);
+      if (request.signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
 
       // Verify the SAME access token + issuer/subject mapping after the async
-      // SQL read. Neither client-provided JWT roles nor cached memberships
-      // can turn a revoked/changed authorization into a successful response.
+      // SQL read; revoked/changed rights must not produce stale responses.
       const currentSession = await sessions.verify(request.accessToken);
-      if (request.signal.aborted) return response(UNAVAILABLE);
+      if (request.signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
       if (!currentSession || currentSession.actorId !== initialSession.actorId) {
-        return response(UNAUTHENTICATED);
+        return finish(response(UNAUTHENTICATED), 'unauthenticated');
       }
       const current = await deps.actors.lookup(currentSession.actorId, request.signal);
-      if (request.signal.aborted) return response(UNAVAILABLE);
-      if (!current || current.id !== scope.actorId) return response(UNAUTHENTICATED);
+      if (request.signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
+      if (!current || current.id !== scope.actorId) {
+        return finish(response(UNAUTHENTICATED), 'unauthenticated');
+      }
       if (!Array.isArray(current.memberships) ||
-          JSON.stringify(current.memberships) !== initialMemberships) {
-        return response(NOT_FOUND);
+          JSON.stringify(current.memberships) !== originalMemberships) {
+        return finish(response(NOT_FOUND), 'authorization-changed');
       }
       const again = authorizeTenantRead(current, request.tenantId, request.collection);
       if (!again.allowed || again.membership.role !== scope.role) {
-        return response(NOT_FOUND);
+        return finish(response(NOT_FOUND), 'authorization-changed');
       }
-      return {
+      return finish({
         ok: true, status: 200, source: 'staging-signed-rls', correlationId,
         tenantId: scope.tenantId, collection: request.collection, rows,
-      };
+      }, 'read-allowed');
     } catch {
-      // Never echo SQL, JWT, actor directory errors or secret-bearing rows.
-      return response(UNAVAILABLE);
+      // No SQL/driver, JWT, identity directory or sink details escape.
+      return finish(response(UNAVAILABLE),
+        request?.signal?.aborted ? 'request-cancelled' : 'source-unavailable');
     }
   };
 }
