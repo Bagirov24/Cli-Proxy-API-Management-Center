@@ -944,6 +944,64 @@ try {
     assert.equal(JSON.stringify(publicationReceipt).includes(secret),false,
       'No worker key may enter a public receipt');
   }
+  // Adversarial unfixable boundary: a synchronous LOCAL effect may happen
+  // while an independently signed PG transaction is still uncommitted.
+  // If PostgreSQL later ROLLBACKs, the event+intent vanish but the mock
+  // recipient cannot be "un-called". This is a NEGATIVE proof and never a
+  // valid remote-delivery/ACK contract. No external network is used here.
+  const ambiguousEffects = [];
+  const beforeAmbiguous = readPrivateOutboxCount();
+  const ambiguousSql =
+    "BEGIN; SET LOCAL statement_timeout='10000ms'; " +
+    "SELECT saas_rls_test.issue_scope('actor-north','demo-north',120); " +
+    "SET LOCAL ROLE saas_rls_reader; " +
+    "SELECT saas_rls_test.assert_true(" +
+    "saas_rls.record_signed_local_publication(" +
+    "'demo-north','actor-north','tenant-admin','projects'," +
+    "'ci-synthetic-orphan-precommit')," +
+    "'Signed synthetic precommit Allow required'); " +
+    "SELECT pg_sleep(2); RESET ROLE; ROLLBACK;";
+  const ambiguousWorker=Bun.spawn({
+    cmd:['psql','-X','-q','-v','ON_ERROR_STOP=1','-c',ambiguousSql],
+    env:{...process.env,PGAPPNAME:'saas_mock_local_before_rollback'},
+    stdout:'ignore',stderr:'ignore',
+  });
+  let sawUncommitted=false;
+  try {
+    for(let i=0;i<30;i+=1) {
+      const check=Bun.spawnSync([
+        'psql','-X','-A','-t','-v','ON_ERROR_STOP=1','-c',
+        "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name='saas_mock_local_before_rollback' AND wait_event='PgSleep'",
+      ],{stderr:'ignore'});
+      assert.equal(check.exitCode,0);
+      if(Buffer.from(check.stdout).toString('utf8').trim()==='1') {
+        sawUncommitted=true;
+        break;
+      }
+      await Bun.sleep(45);
+    }
+    assert.equal(sawUncommitted,true,
+      'Synthetic source must have staged signed event before local callback');
+    ambiguousEffects.push('SYNTHETIC_LOCAL_EFFECT_ALREADY_EMITTED');
+    assert.equal(ambiguousEffects.length,1);
+    assert.equal(await ambiguousWorker.exited,0,
+      'Explicit signed synthetic transaction must end with ROLLBACK');
+  } finally {
+    if(!sawUncommitted) ambiguousWorker.kill();
+  }
+  assert.equal(readPrivateOutboxCount(),beforeAmbiguous,
+    'ROLLBACK removed audit+intent despite local effect already being emitted');
+  const orphan=Bun.spawnSync([
+    'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-c',
+    "SELECT COUNT(*) FROM saas_rls_private.local_publication_audit_outbox e " +
+    "LEFT JOIN saas_rls_private.synthetic_delivery_intents i ON i.event_id=e.event_id " +
+    "WHERE e.correlation_id='ci-synthetic-orphan-precommit'",
+  ],{stderr:'ignore'});
+  assert.equal(orphan.exitCode,0);
+  assert.equal(Buffer.from(orphan.stdout).toString('utf8').trim(),'0');
+  assert.deepEqual(ambiguousEffects,['SYNTHETIC_LOCAL_EFFECT_ALREADY_EMITTED'],
+    'No PostgreSQL audit can prove absence or reverse the uncommitted effect');
+  console.info('PASS: synthetic pre-COMMIT local effect survives PG ROLLBACK while signed intent vanishes (negative proof)');
   assert.equal('eventId' in publicationReceipt,false);
   assert.equal('leaseToken' in publicationReceipt,false);
   assertAudit(publicationReceipt, {
