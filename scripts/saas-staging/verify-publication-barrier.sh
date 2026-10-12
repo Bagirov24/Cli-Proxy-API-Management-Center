@@ -290,3 +290,116 @@ if (( restored_actor_epoch != initial_actor_epoch + 2 )) ||
   exit 1
 fi
 echo "PASS: PG16 actor-wide logout COMMIT waits for signed publication; old scope then denied"
+
+# Stage 2G.4d.7a: independent physical sessions prove SINGLE TOKEN
+# revocation serializes with its signed publication epoch lock, without
+# revoking the whole actor or leaking token/private registry to the reader.
+# issue_bound_scope is the test-only privileged five-field HMAC issuer
+# installed by tests/sql/saas_token_fingerprint_scope.test.sql.
+query "BEGIN;
+  INSERT INTO saas_rls.memberships(actor_id,tenant_id,role,status)
+    VALUES ('actor-concurrent-token','demo-north','tenant-viewer','active');
+  INSERT INTO saas_rls_private.actor_session_state(actor_id,status)
+    VALUES ('actor-concurrent-token','active');
+  INSERT INTO saas_rls_private.actor_token_sessions(fingerprint,actor_id,status,expires_at)
+    VALUES (repeat('c',64),'actor-concurrent-token','active',
+            clock_timestamp()+interval '60 seconds');
+  COMMIT;" >/dev/null
+
+token_initial_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+PGAPPNAME=saas_bound_token_reader psql -X -q -v ON_ERROR_STOP=1 \
+  > /tmp/saas-token-publication-reader.log 2>&1 <<'SQL' &
+BEGIN;
+SET LOCAL statement_timeout='15000ms';
+SELECT saas_rls_test.issue_bound_scope(
+ 'actor-concurrent-token','demo-north',repeat('c',64),120);
+SET LOCAL ROLE saas_rls_reader;
+SELECT saas_rls_test.assert_true(
+  saas_rls.acquire_authorized_read_barrier(
+   'demo-north','actor-concurrent-token','tenant-viewer','projects') IS NOT NULL,
+  'Bound token must hold signed FOR SHARE tenant revision lock');
+SELECT pg_sleep(4);
+RESET ROLE;
+COMMIT;
+SQL
+reader_pid="$!"
+ready=0
+for i in {1..65}; do
+  if [[ "$(query "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name='saas_bound_token_reader' AND wait_event='PgSleep'")" == "1" ]]; then
+    ready=1
+    break
+  fi
+  sleep 0.1
+done
+if [[ "$ready" != "1" ]]; then
+  echo "Bound token reader did not acquire signed publication lock"
+  tail -n 20 /tmp/saas-token-publication-reader.log
+  exit 1
+fi
+
+PGAPPNAME=saas_bound_token_revoker psql -X -q -v ON_ERROR_STOP=1 \
+  > /tmp/saas-token-revoke-writer.log 2>&1 <<'SQL' &
+BEGIN;
+SET LOCAL statement_timeout='15000ms';
+UPDATE saas_rls_private.actor_token_sessions
+ SET status='revoked' WHERE fingerprint=repeat('c',64) AND status='active';
+COMMIT;
+SQL
+writer_pid="$!"
+blocked=0
+for i in {1..45}; do
+  if [[ "$(query "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name='saas_bound_token_revoker' AND wait_event_type='Lock'")" == "1" ]]; then
+    blocked=1
+    break
+  fi
+  sleep 0.1
+done
+if [[ "$blocked" != "1" ]]; then
+  echo "Token-specific revoker was not blocked by reader's signed epoch lock"
+  tail -n 20 /tmp/saas-token-revoke-writer.log
+  exit 1
+fi
+token_pre_status="$(query "SELECT status FROM saas_rls_private.actor_token_sessions WHERE fingerprint=repeat('c',64)")"
+token_pre_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+if [[ "$token_pre_status" != "active" || "$token_pre_epoch" != "$token_initial_epoch" ]]; then
+  echo "Token revoke became committed before signed local publication barrier released"
+  exit 1
+fi
+
+wait "$reader_pid"
+reader_pid=""
+wait "$writer_pid"
+writer_pid=""
+token_post_status="$(query "SELECT status FROM saas_rls_private.actor_token_sessions WHERE fingerprint=repeat('c',64)")"
+token_post_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+if [[ "$token_post_status" != "revoked" ]] ||
+   (( token_post_epoch != token_initial_epoch + 1 )); then
+  echo "Revoked token must bump tenant epoch once AFTER reader COMMIT"
+  exit 1
+fi
+psql -X -q -v ON_ERROR_STOP=1 <<'SQL' > /tmp/saas-token-post-revoke-check.log
+BEGIN;
+SELECT saas_rls_test.issue_bound_scope(
+ 'actor-concurrent-token','demo-north',repeat('c',64),120);
+SET LOCAL ROLE saas_rls_reader;
+SELECT saas_rls_test.assert_true(
+  saas_rls.scope_tenant() IS NULL AND
+  saas_rls.authorized_revision(
+   'demo-north','actor-concurrent-token','tenant-viewer','projects') IS NULL,
+  'Previously signed individual token cannot read after revoke COMMIT');
+RESET ROLE;
+ROLLBACK;
+SQL
+
+# Disposable cleanup: delete all synthetic actor/token rows. The private
+# enrollment tombstone deliberately remains, preventing actor ID reuse
+# from ever downgrading this ID to the old four-field HMAC.
+query "BEGIN;
+  DELETE FROM saas_rls_private.actor_token_sessions
+    WHERE actor_id='actor-concurrent-token';
+  DELETE FROM saas_rls_private.actor_session_state
+    WHERE actor_id='actor-concurrent-token';
+  DELETE FROM saas_rls.memberships
+    WHERE actor_id='actor-concurrent-token';
+  COMMIT;" >/dev/null
+echo "PASS: PG16 per-token revoke COMMIT waits for signed publication; revoked token then denied"
