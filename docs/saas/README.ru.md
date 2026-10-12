@@ -665,3 +665,19 @@ actor/member role. Событие сохраняется после успешн
 SUCCESS. Транзакционная запись не доказывает
 фактическую доставку remote HTTP bytes и не создаёт production
 tamper-evident audit service.
+
+## Stage 2G.4d.6 — итоговая staging-верификация
+
+[Main CI #38293380784](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380784) (1 815 tests PASS, 0 FAIL; ESLint, tsc, Vite),
+[PG16 #38293380854](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380854) (actor kill-switch, raw signed RLS, outbox transaction, rollback,
+signed publication/revoker ordering and crash recovery), [Demo #38293380672](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380672),
+[Chromium #38293380657](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380657) — **4/4 SUCCESS** на SHA `bd96d7a038378fa30524914362013ebf06fd420f`.
+
+Важное усиление migration 008: после отзыва actor даже ранее
+подписанный scope не может получить строки **непосредственно из RLS**,
+потому что `scope_tenant()` и `read_allowed()` проверяют закрытое
+active actor state независимо от TypeScript boundary.
+
+Signed audit/outbox в migration 009 сохраняет минимальное redacted
+событие после COMMIT, не превращая его в remote-delivery receipt.
+Публичных SaaS endpoints, production OIDC и live-network changes нет.

@@ -58,3 +58,11 @@ to check private active actor state. A previously HMAC-signed actor
 whose singleton synthetic session is revoked cannot use an allowed raw
 RLS SELECT to circumvent `SCOPED_READ_GATE_SQL`; the database returns
 zero project rows. This is actor-wide, not per-token OIDC revocation.
+
+## Final exact-SHA acceptance
+
+[PG16 #38293380854](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380854) on code SHA `bd96d7a038378fa30524914362013ebf06fd420f` verified the raw signed RLS denial,
+private session status update, exact epoch bump, multi-tenant fanout,
+rollback, and independent reader/logout-writer COMMIT order.
+[Main CI #38293380784](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380784) verifies 1,815 unit tests; [Demo #38293380672](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380672) and [Chromium #38293380657](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380657) succeed.
+This **does not** prove issuer-bound per-token revocation or remote HTTP.

@@ -552,3 +552,14 @@ actor/tenant/collection/correlation/revision после авторизованн
 не превращается в второй Allow. Это устойчиво только после COMMIT,
 не означает доставки ответа. Atomic network publish/outbox,
 tamper-evidence, retention and external identity audit remain SPEC.
+
+## D-048 — actor logout запрещает даже direct signed RLS SELECT (2G.4d.6 hardening)
+
+**IMPLEMENTED / VERIFIED** ephemeral PG16, SHA `bd96d7a038378fa30524914362013ebf06fd420f`, [PG16 #38293380854](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380854).
+
+Отзыв actor не должен зависеть исключительно от добросовестного
+выполнения TypeScript `SCOPED_READ_GATE_SQL`. Migration 008
+обновляет RLS-предикаты `scope_tenant()` и `read_allowed()`:
+HMAC-проверенный scope отозванного actor больше не видит private
+tenant и SQL-проекции напрямую. Это одна actor-wide синтетическая
+сессия, не token-bound OIDC revocation; release blocked.

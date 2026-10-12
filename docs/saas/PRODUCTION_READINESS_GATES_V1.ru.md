@@ -90,3 +90,17 @@ atomic transport, and no physical connection discard proof exists.
 
 The pilot remains disconnected from production OIDC/session authority,
 public SaaS HTTP, Railway, Core/Gateway, CPA and network enforcement.
+
+## Final stage 2G.4d.6 evidence (not a production approval)
+
+**4/4 SUCCESS on code SHA `bd96d7a038378fa30524914362013ebf06fd420f`:** [Main CI #38293380784](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380784) (1,815 pass, 0 fail),
+[PG16 #38293380854](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380854) (signed actor revocation, raw RLS deny, outbox, process isolation),
+[Demo #38293380672](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380672) and [Chromium #38293380657](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380657). The previous verified staging experiments
+remain opt-in and isolated.
+
+**Still NO production release:** real token-bound OIDC sessions,
+one authoritative multi-instance actor directory, tamper-evident
+audit storage and distribution, atomic/ordered HTTP delivery,
+crash-safe SQL connection lifecycle, Vault/BYOA, CPA/Gateway,
+network egress, product billing and deployment approvals remain
+SPEC/PROPOSED.

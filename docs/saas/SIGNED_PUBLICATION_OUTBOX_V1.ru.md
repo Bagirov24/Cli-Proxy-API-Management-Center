@@ -33,3 +33,11 @@ No real production actor sessions, retention, immutable storage,
 tamper-evident signatures, audit delivery consumer, cross-region
 replication or production approvals. See
 [PRODUCTION_READINESS_GATES_V1.ru.md](PRODUCTION_READINESS_GATES_V1.ru.md).
+
+## Final exact-SHA acceptance
+
+[PG16 #38293380854](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380854) on code SHA `bd96d7a038378fa30524914362013ebf06fd420f` confirms signed outbox INSERT, no
+direct reader privileges, committed minimal redacted record, ROLLBACK,
+cross-tenant denial, duplicate correlation and E2E receipt-only handoff.
+[Main CI #38293380784](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380784) passes 1,815 unit tests; Demo and Chromium succeed.
+An audit event is durable on PG COMMIT, not a delivery receipt.

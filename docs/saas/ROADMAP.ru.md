@@ -793,3 +793,21 @@ atomic revision increments. See
   [PostgreSQL #38292965787](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965787), [CI #38292965756](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965756) (1 815 PASS), Demo and Chromium — 4/4 SUCCESS.
 - [ ] **SPEC:** tamper-evident durable audit replication/retention,
   guarantee for callback failure/commit uncertainty and real HTTP.
+
+## 2G.4d.6 final verified checkpoint (raw RLS + actor logout + outbox)
+
+- [x] **VERIFIED** final code SHA `bd96d7a038378fa30524914362013ebf06fd420f` — [Main CI #38293380784](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380784),
+  [PG16 #38293380854](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380854), [Demo #38293380672](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380672), [Chromium #38293380657](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380657): 4/4 SUCCESS.
+- [x] Даже raw signed `saas_rls.projects` RLS SELECT после
+  actor-wide revoke не видит строк; `scope_tenant()` возвращает NULL,
+  `read_allowed()` — FALSE.
+- [x] Independent PG processes: actor logout COMMIT ждёт завершения
+  signed `FOR SHARE` publisher, после чего старый actor denied.
+- [x] Minimal signed allow audit outbox durable after COMMIT; no
+  direct SELECT/INSERT/DELETE для `saas_ci_runner`, rollback атомарен.
+- [ ] **SPEC:** per-token/session identifier signed with actor/tenant/txid
+  and integrated with a production issuer/subject directory.
+- [ ] **SPEC:** tamper-evident external durable audit, atomic HTTP
+  delivery state, crash/backpressure recovery and physical driver discard.
+- [ ] **PROPOSED:** real SaaS endpoints, Vault/BYOK, CPA/Gateway,
+  egress enforcement, billing and release/security approvals.
