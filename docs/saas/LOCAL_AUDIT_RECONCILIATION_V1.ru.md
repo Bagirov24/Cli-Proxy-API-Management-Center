@@ -11,47 +11,47 @@ lease reclaim/fencing), [Demo #38302392314](https://github.com/Bagirov24/Cli-Pro
 ## Precise contract
 
 Previous migration 009 already creates an append-only, redacted
-\`local_publication_audit_outbox\` event inside the same signed
+`local_publication_audit_outbox` event inside the same signed
 PostgreSQL transaction as receipt-only LOCAL publication. Such an
 event becomes visible to a separate connection only after successful
 PostgreSQL COMMIT. A synchronous local handoff may still have occurred
 before a **failed COMMIT** and cannot be rolled back externally.
 
 New guarded migration
-\`staging/saas-rls/012_committed_local_audit_reconciliation_pilot.sql\`
+`staging/saas-rls/012_committed_local_audit_reconciliation_pilot.sql`
 adds a second, private **local observation state**, not a delivery queue:
-\`local_audit_reconciliation_state\` and immutable
-\`local_audit_reconciliation_history\`. One state row is permanently
-keyed by the original audit \`event_id\` foreign key. The original
+`local_audit_reconciliation_state` and immutable
+`local_audit_reconciliation_history`. One state row is permanently
+keyed by the original audit `event_id` foreign key. The original
 signed tenant/actor/revision/correlation audit row remains unchanged.
 
-The NOLOGIN NOINHERIT \`saas_audit_reconciler\` capability has EXECUTE
+The NOLOGIN NOINHERIT `saas_audit_reconciler` capability has EXECUTE
 on exactly two private SECURITY DEFINER functions and schema USAGE,
 **no SELECT/UPDATE/INSERT on private tables**. Neither application
-\`saas_ci_runner\` nor signed \`saas_rls_reader\` can use either function
+`saas_ci_runner` nor signed `saas_rls_reader` can use either function
 or directly inspect the state/history, worker UUID or signing keys.
 
-1. \`claim_committed_local_audit(max_events,lease_seconds,target_event)\`
+1. `claim_committed_local_audit(max_events,lease_seconds,target_event)`
    claims 1–16 existing visible audit IDs; leases last 1–30 seconds.
    A dedicated worker can omit the optional target ID and scan for
    eligible events. It receives **only** event ID, increasing
    generation and random fencing UUID, never tenant/actor, bearer,
    SQL rows, secrets, or a response body.
-2. Concurrent claimers use \`FOR UPDATE OF event SKIP LOCKED\` and
+2. Concurrent claimers use `FOR UPDATE OF event SKIP LOCKED` and
    a transactional state UPSERT; only one lease can be committed for
    an event at a time. A claimed but uncommitted lease/history rolls
    back on connection failure or cancellation. An already committed
    lease remains until expiry and may then be **reclaimed**, advancing
    its generation and replacing the random UUID.
-3. \`mark_local_audit_reconciled(event,generation,UUID)\` succeeds only
+3. `mark_local_audit_reconciled(event,generation,UUID)` succeeds only
    before active lease expiry, for exactly the current generation and
    UUID. It writes an append-only local history observation and
-   atomically marks state **\`reconciled_local\`**, removing the lease
+   atomically marks state **`reconciled_local`**, removing the lease
    token. After COMMIT the observation is terminal. Duplicate,
    stale, expired or guessed acknowledgements return FALSE; failed
    transaction ROLLBACK removes the observation and state mutation.
 
-\`reconciled_local\` means **only**: "a privileged local PostgreSQL
+`reconciled_local` means **only**: "a privileged local PostgreSQL
 worker observed the previously committed local audit event and
 committed its own bookkeeping." It does **NOT** mean data was
 transported, queued remotely, processed by a client, or acknowledged
@@ -84,11 +84,11 @@ use a dedicated authenticated worker connection and role.
 | Real non-superuser Bun.SQL receipt-only publish | Post-COMMIT audit ID is reconciled privately; no SQL rows/UUID in receipt |
 
 The multi-process crash script
-\`scripts/saas-staging/verify-audit-reconciliation.sh\` requires
-GitHub Actions, \`SAAS_EPHEMERAL_AUDIT_RECONCILE_CI=true\`,
-\`PGDATABASE=saas_ephemeral_test\`, localhost PG16 and a privileged
+`scripts/saas-staging/verify-audit-reconciliation.sh` requires
+GitHub Actions, `SAAS_EPHEMERAL_AUDIT_RECONCILE_CI=true`,
+`PGDATABASE=saas_ephemeral_test`, localhost PG16 and a privileged
 fixture. It kills one disposable backend using
-\`pg_terminate_backend\` only after verifying that an uncommitted
+`pg_terminate_backend` only after verifying that an uncommitted
 claim is blocked from another worker, then proves safe retry and
 fencing. No real AI traffic or production database is touched.
 

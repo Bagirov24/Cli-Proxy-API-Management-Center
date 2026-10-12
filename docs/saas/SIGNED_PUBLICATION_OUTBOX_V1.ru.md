@@ -49,3 +49,15 @@ actor/tenant/revision/correlation outbox records after PG COMMIT.
 Current outbox does NOT persist an individual token fingerprint, so
 token-specific durable reconciliation and remote response receipt
 remain SPEC; no raw bearer is ever stored or exposed.
+
+## 2G.4d.7c — local outbox observation after signed COMMIT
+
+Migration 012 adds an independent private reconciliation state and
+append-only attempt history, referencing existing 009 `event_id`.
+Only a separate NOLOGIN worker may claim previously committed
+Allow audit events, retry expired leases and terminally mark its
+**local observation** with generation/UUID fencing. The source event,
+tenant/actor/correlation and authorized revision never change.
+Local observation is not delivery to a remote client and MUST NOT be
+reported as a network ACK. Real PG16 Bun.SQL E2E and crash/rollback
+tests pass; see [LOCAL_AUDIT_RECONCILIATION_V1.ru.md](LOCAL_AUDIT_RECONCILIATION_V1.ru.md).

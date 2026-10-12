@@ -638,3 +638,32 @@ Writer issuer-subject revoke обязан ожидать reader `FOR SHARE`,
 после COMMIT revoke прежняя signed session denied даже при ACTIVE
 собственной token row. Не доказывает атомарность remote HTTP delivery
 и не создаёт production tamper-evident audit.
+
+## D-055 — audit observation не равна delivery ACK (2G.4d.7c)
+
+**IMPLEMENTED / VERIFIED** только isolated PG16 на code SHA
+`1aeeb218a68ca7f0c8094d51551802205b60f224`, [PG16 #38302392290](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392290).
+
+В private migration 012 статус `reconciled_local` означает, что
+выделенный PostgreSQL worker зафиксировал **наблюдение уже COMMITнутого
+Allow audit event**, а не что клиент получил HTTP payload. Исходный
+append-only audit 009 остаётся неизменным. Даже при отсутствии audit
+event после ROLLBACK локальный handoff мог произойти до неуспешного
+SQL COMMIT; это нельзя восстановить из таблицы. Remote ACK,
+tamper-evident журнал и атомарный protocol пока SPEC.
+
+## D-056 — fencing поколений и физический rollback worker (2G.4d.7c)
+
+**IMPLEMENTED / VERIFIED** disposable PG16: [PG16 #38302392290](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392290), [Main CI #38302392363](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392363).
+
+NOLOGIN `saas_audit_reconciler` имеет право вызвать только закрытые
+claim/mark функции, а не читать private audit/events напрямую.
+`FOR UPDATE SKIP LOCKED` обеспечивает эксклюзивную lease на
+committed event; generation и случайный UUID защищают от stale worker.
+Claim+history полностью откатываются при termination backend до
+COMMIT; закоммиченная незавершённая lease восстанавливается после
+clock-expiry. Terminal `reconciled_local` не допускает повторный
+ACK и не обещает exactly-once network delivery. В production
+требуется отдельный authenticated worker connection — privileged
+superuser может видеть свои uncommitted события в рамках собственного
+SQL transaction и обойти isolation fixture.

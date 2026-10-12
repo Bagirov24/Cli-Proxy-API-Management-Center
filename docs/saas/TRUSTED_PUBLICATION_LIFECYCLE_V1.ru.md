@@ -116,3 +116,15 @@ an individually active token is denied after subject revoke COMMIT.
 The synchronous local handoff still precedes DB COMMIT and is NOT a
 remote HTTP receipt; atomic transport/outbox reconciliation is SPEC.
 See [ISSUER_SESSION_ENROLLMENT_V1.ru.md](ISSUER_SESSION_ENROLLMENT_V1.ru.md).
+
+## 2G.4d.7c — post-COMMIT observation is separate from local handoff
+
+The trusted receipt-only publication inserts an allow-audit event in
+its signed transaction before local synchronous handoff; only AFTER
+successful PostgreSQL COMMIT can a different NOLOGIN reconciler worker
+claim the event and mark `reconciled_local`. The Bun.SQL E2E proves
+the receipt cannot expose event IDs/leases/rows, while PG16 crash tests
+prove rollback, retry and stale-worker fencing. No code attempts to
+publish HTTP bytes atomically with a SQL COMMIT. This remains SPEC,
+not a production release boundary. See
+[LOCAL_AUDIT_RECONCILIATION_V1.ru.md](LOCAL_AUDIT_RECONCILIATION_V1.ru.md).

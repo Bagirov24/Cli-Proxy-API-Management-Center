@@ -153,3 +153,21 @@ issuance policy; those remain **SPEC**.
 4/4 SUCCESS. No Railway deploy, base merge, Core/Gateway/CPA changes,
 production credentials, `/data`, public SaaS routes or real AI traffic.
 See [ISSUER_SESSION_ENROLLMENT_V1.ru.md](ISSUER_SESSION_ENROLLMENT_V1.ru.md).
+
+## 2G.4d.7c — committed LOCAL audit event reconciliation, not remote delivery
+
+| Property | Evidence | Status |
+| --- | --- | --- |
+| Minimal signed Allow event survives PG COMMIT; ROLLBACK removes it | 009/012 SQL and [PG16 #38302392290](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392290) | VERIFIED ephemeral |
+| Bounded SKIP LOCKED claim, UUID+generation lease fencing | Real PG16 concurrent workers and SQL rollback | VERIFIED ephemeral |
+| Forced backend crash discards uncommitted lease/history | Two physical connections + PG supervisor, [PG16 #38302392290](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392290) | VERIFIED ephemeral |
+| Expired committed lease can be reclaimed; stale/duplicate ACK denied | 012 SQL and independent process test, [PG16 #38302392290](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392290) | VERIFIED ephemeral |
+| Real trusted non-superuser receipt followed by private local audit observation | Bun.SQL E2E, [PG16 #38302392290](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392290) | VERIFIED ephemeral |
+| Atomic network HTTP receipt with SQL COMMIT | Local handoff happens before PG COMMIT; irrecoverable gap | SPEC |
+| Externally tamper-evident audit queue, retention and consumer | Private disposable PG only; no remote consumer | SPEC |
+| Worker authentication, crash/failover SLO, scheduler/alerts, secure secrets | CI-only NOLOGIN role + privileged fixture | SPEC |
+
+**Evidence on code SHA `1aeeb218a68ca7f0c8094d51551802205b60f224`:**
+[Main CI #38302392363](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392363) — 1,829 PASS / 0 FAIL, [PG16 #38302392290](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392290), [Demo #38302392314](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392314), [Chromium #38302392437](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392437) —
+4/4 SUCCESS. This does not change previous production release blockers;
+see [LOCAL_AUDIT_RECONCILIATION_V1.ru.md](LOCAL_AUDIT_RECONCILIATION_V1.ru.md).
