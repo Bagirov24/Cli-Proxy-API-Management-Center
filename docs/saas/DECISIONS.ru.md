@@ -277,3 +277,23 @@ Production SQL connector остаётся PROPOSED; допустим лишь н
 занял 3001 мс. Указанные ограничения остаются в решении о запрете
 production Bun pool, не оправдывают silent fallback и не ведут
 к переключению на direct egress.
+
+## D-033 — только server-held identity и двойная AuthZ-проверка (2G.2)
+
+**Статус: IMPLEMENTED isolated contract / SIMULATED tests,
+настоящий SaaS backend — PROPOSED.**
+
+Pinned JWT API access-token с `typ=at+jwt` и pinned issuer/kid/audience
+не предоставляет полномочий через role/tenant/actor claims. Internal
+actor берётся только из server-held issuer+subject directory; актуальные
+membership/RBAC валидируются до signed SQL и после SQL вместе с повторной
+проверкой token+actor mapping. В ответах не раскрываются чужие
+resource IDs, ошибки generic, незнакомый tenant = 404.
+Client tenant switch обязан отменять предыдущий async read.
+
+SQL fixture rows **не равны** полным ControlResource DTO; новый
+`trustedSqlReadBoundary.ts` не публикуется через HTTP и не
+подключается к UI. JWT replay до истечения TTL, реальный OIDC,
+session revocation/storage consistency и end-to-end PG16 acceptance —
+отдельные будущие работы. См.
+[TRUSTED_SQL_READ_BOUNDARY_V1.ru.md](TRUSTED_SQL_READ_BOUNDARY_V1.ru.md).

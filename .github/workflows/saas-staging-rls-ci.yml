@@ -10,6 +10,8 @@ on:
       - 'tests/sql/saas_driver_fixture.test.sql'
       - 'scripts/saas-staging/**'
       - 'src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts'
+      - 'src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts'
+      - 'tests/saasTrustedSqlReadBoundary.test.ts'
       - 'docs/saas/**'
       - '.github/workflows/saas-staging-rls-ci.yml'
   workflow_dispatch:

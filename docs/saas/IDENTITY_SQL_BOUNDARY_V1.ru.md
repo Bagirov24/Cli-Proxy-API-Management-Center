@@ -135,3 +135,19 @@ server-owned шаблонами, а не с произвольными стро�
 драйвер, TLS, OIDC и Core metadata adapter не появились.
 См. [BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md).
 
+
+## Дополнение 2G.2 — stitched trust-boundary (SIMULATED)
+
+Создан `server/trustedSqlReadBoundary.ts`, который связывает ранее
+независимые pinned JWT и signed SQL-порты. Только серверная пара
+issuer+subject определяет actor. Role/tenant из JWT либо клиентских
+заголовков игнорируются. Membership/RBAC проверяются **до** SQL и
+повторно **после** SQL вместе с проверкой того же токена и actor
+mapping; запрет/отмена отбрасывают rows. Чужой tenant скрывается за
+404, неподтверждённый JWT — 401, auditor/accounts — 403, SQL/abort
+failure — 503. Исключения и исходные driver secrets не отображаются.
+
+Новые результаты — **isolated synthetic tests**, не реальный
+OIDC→PG16 end-to-end и не источник полных API DTO. В
+`docs/saas/TRUSTED_SQL_READ_BOUNDARY_V1.ru.md` описаны тесты,
+limitations/replay и следующая 2G.4 приёмка.

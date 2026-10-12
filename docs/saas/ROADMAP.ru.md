@@ -420,3 +420,23 @@ cache invalidation и серверная интеграция остаются *
 отличает driver rejection от собственного deadline. Для любого
 сомнительного исхода **fail-closed quarantine и replacement**, не
 reuse повреждённого пула.
+
+## Этап 2G.2 — Trusted Identity → AuthZ → signed SQL (server-only)
+
+- [x] Добавлен отдельно от React/HTTP `trustedSqlReadBoundary.ts`
+  на существующих pinned RS256 verifier, issuer+subject directory,
+  current membership/RBAC и signedSqlBoundary (никаких production keys).
+- [x] Вторичная проверка token, actor mapping, membership и роли
+  после асинхронного SQL: fail-closed при изменениях доступа и abort.
+- [x] Синтетические adversarial unit tests: North/Orbit,
+  spoofed headers/JWT claims, чужой issuer/audience/kid,
+  ID-token, отозванный actor, duplicate membership, auditor deny,
+  SQL-like tenant values, DB failure, race revocation и stale abort.
+- [ ] Подтверждение фактическим CI на конечном SHA (не считать
+  VERIFIED, пока Actions не завершатся успешно).
+- [ ] **PROPOSED:** настоящий JWT→actor-store→PostgreSQL wire-protocol
+  end-to-end acceptance (2G.4), реальный OIDC issuer,
+  session replay/revocation across replicas, production pool/physical
+  connection discard, Core metadata source и публичный SaaS API.
+
+См. [TRUSTED_SQL_READ_BOUNDARY_V1.ru.md](TRUSTED_SQL_READ_BOUNDARY_V1.ru.md).

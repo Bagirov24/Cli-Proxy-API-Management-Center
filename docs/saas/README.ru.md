@@ -31,6 +31,7 @@
 | [SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md) | Временный HMAC-контекст транзакции и adversarial SQL-тесты |
 | [IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md) | Этап 2E: закреплённые JWT access-token ключи, SQL read boundary и проверки SQL injection |
 | [BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md) | Этап 2F: Bun PostgreSQL native SQL на временной базе, конкуренция и повторное использование соединений |
+| [TRUSTED_SQL_READ_BOUNDARY_V1.ru.md](TRUSTED_SQL_READ_BOUNDARY_V1.ru.md) | 2G.2: pinned JWT → actor directory → RBAC → signed SQL + RLS → safe metadata rows, без HTTP/live |
 
 ## Что добавлено в код
 
@@ -351,3 +352,20 @@ atomic physical discard, bounded network disconnect и корректность
 [CI](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38261137470),
 [Demo](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38261137532),
 [Browser](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38261137479) — SUCCESS.
+
+## Этап 2G.2 — server-only trusted identity → SQL scope
+
+Добавлен изолированный `trustedSqlReadBoundary.ts`: принимает
+**проверенный через pinned RSA API access-token** только через
+существующий verifier, определяет actor по server-held
+issuer+subject mapping и читает актуальные memberships до SQL.
+Самостоятельно создаёт scope, вызывает fixed parameterized SQL с
+HMAC/transaction-local role и проверяет actor/token/RBAC повторно
+после асинхронного чтения. Отозванные membership или actor mapping,
+смена роли и AbortSignal не возвращают stale rows.
+
+Строгие generic 401/403/404/503, secret-free ответы и SQL field
+allowlist. **Статус: IMPLEMENTED contract / SIMULATED unit tests**.
+Этот порт не является HTTP API, OIDC/SSO или production backend;
+реальная E2E PostgreSQL интеграция JWT→AuthZ→SQL остаётся PROPOSED.
+Подробнее: [TRUSTED_SQL_READ_BOUNDARY_V1.ru.md](TRUSTED_SQL_READ_BOUNDARY_V1.ru.md).
