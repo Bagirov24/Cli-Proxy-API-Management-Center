@@ -879,3 +879,29 @@ atomic revision increments. See
   monotonic production migration system.
 - [ ] **PROPOSED:** real OIDC/Vault/CPA/Gateway/egress/billing/public API
   and independently approved production release.
+
+## 2G.4d.7d — durable synthetic intent / mock ACK (staging only)
+
+- [x] Guarded migration 013 creates immutable intent with UUID
+  idempotency key in SAME transaction as signed audit Allow;
+  rollback removes both, replay preserves historic/terminal state.
+- [x] No mock dispatch until separate `reconciled_local` observation
+  commits; worker has NOLOGIN EXECUTE-only private capabilities.
+- [x] 1–16 bounded claims, 1–30s lease, `SKIP LOCKED`, immutable key,
+  generation/UUID fences, ACK rollback and terminal `mock_acked`.
+- [x] Three attempts then `retry_exhausted` with no false ACK.
+- [x] Independent physical PostgreSQL workers: forced backend crash
+  before claim COMMIT rolls back; after committed lease expiry
+  replay retains immutable key and denies stale acknowledgements.
+- [x] Real trusted Bun.SQL staging publication → COMMIT → local
+  observation → synthetic in-memory receiver: lost ACK, same key,
+  one receiver effect, no secrets/rows in public receipt.
+- [x] **VERIFIED** code SHA `6b0bf3189c544cce21ccdfbaf58b7b2f72ba3214`: [Main CI #38304607776](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607776) (1 829 PASS/0 FAIL),
+  [PostgreSQL16 #38304607719](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607719), [Demo #38304607709](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607709), [Chromium #38304607769](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607769); 4/4 SUCCESS.
+- [ ] **SPEC:** real HTTP/client transport ACK, persisted per-recipient
+  idempotency, payload protection, crash-safe COMMIT/delivery protocol,
+  real remote retry/dead letters/backpressure and worker identity.
+- [ ] **SPEC:** tamper-evident external audit, physical driver discard,
+  multi-process durable failover/monitoring, monotonic migration runner.
+- [ ] **PROPOSED:** production OIDC/Vault/CPA/Gateway/network egress,
+  billing/public API and separately approved production release.

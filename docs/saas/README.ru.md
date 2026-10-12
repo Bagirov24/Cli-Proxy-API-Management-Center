@@ -732,3 +732,20 @@ lease reclaim/fencing), [Demo #38302392314](https://github.com/Bagirov24/Cli-Pro
 
 `reconciled_local` не является подтверждением доставки HTTP и не
 устраняет gap «локальный handoff до неуспешного SQL COMMIT».
+
+## 2G.4d.7d — synthetic delivery intent и mock ACK
+
+[Post-COMMIT Synthetic Delivery](SYNTHETIC_POST_COMMIT_DELIVERY_V1.ru.md)
+расширяет disposable PG16 audit: отдельный immutable intent создаётся
+в той же транзакции, что signed Allow. Mock worker получает event ID,
+постоянный UUID idempotency key, lease generation и fencing token
+только после `reconciled_local`. При потере mock ACK повторная попытка
+использует тот же key: тестовый in-memory receiver не применяет эффект
+повторно. Три неуспешных попытки переводят событие в
+`retry_exhausted`, а не «доставлено».
+
+**IMPLEMENTED / VERIFIED** только synthetic: [Main CI #38304607776](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607776) (1,829 PASS / 0 FAIL, ESLint, TypeScript, Vite), [PostgreSQL16 #38304607719](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607719), [Demo #38304607709](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607709), [Chromium #38304607769](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607769) — **4/4 SUCCESS** on code SHA `6b0bf3189c544cce21ccdfbaf58b7b2f72ba3214`.
+
+**НЕ HTTP:** никакой payload не передаётся; mock ACK не доказывает
+удалённого получения, а local handoff до failed COMMIT по-прежнему
+является непреодолённым production-блокером.
