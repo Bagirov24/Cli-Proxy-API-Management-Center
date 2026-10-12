@@ -429,7 +429,6 @@ describe('Stage 2G.2 — trusted JWT -> actor -> AuthZ -> signed SQL (synthetic 
   });
 
   test('snapshot of request tenant, collection and limit survives caller mutation during SELECT', async () => {
-    let request!: TrustedSqlReadRequest;
     const h = harness({ onSelect() {
       const mutable = request as unknown as {
         tenantId: string; collection: string; limit: number;
@@ -438,7 +437,7 @@ describe('Stage 2G.2 — trusted JWT -> actor -> AuthZ -> signed SQL (synthetic 
       mutable.collection = 'accounts';
       mutable.limit = 100;
     } });
-    request = h.request(await accessToken(), { limit: 3 });
+    const request = h.request(await accessToken(), { limit: 3 });
     const result = await h.read(request);
     expect(result).toMatchObject({
       ok: true, status: 200, collection: 'projects', tenantId: 'demo-north',
