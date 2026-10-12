@@ -538,3 +538,15 @@ entrypoint повторно использует JWT→actor→RBAC и обе me
 каждый tenant, где есть membership actor. Это даёт атомарный
 actor-wide kill switch под существующим `FOR SHARE`, но не
 пер-токенный OIDC logout и не реальный production session store.
+
+## D-047 — audit outbox записывается только при подписанном PG Allow и не содержит ресурсы (2G.4d.6b)
+
+**IMPLEMENTED migration / CI PENDING; production SPEC.**
+
+Изолированный PostgreSQL `009` хранит minimal metadata
+actor/tenant/collection/correlation/revision после авторизованного
+`FOR SHARE` в SQL transaction. Reader не может напрямую просматривать
+или менять audit; rollback убирает staged events; duplicate correlation
+не превращается в второй Allow. Это устойчиво только после COMMIT,
+не означает доставки ответа. Atomic network publish/outbox,
+tamper-evidence, retention and external identity audit remain SPEC.

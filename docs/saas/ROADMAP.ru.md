@@ -777,3 +777,16 @@ atomic revision increments. See
 - [ ] **SPEC:** subject/token-scoped signed session identity, OIDC
   discovery/JWK rotation, persisted session/logout/replay controls.
 - [ ] **SPEC:** durable audit/outbox under signed PG publication lease.
+
+## 2G.4d.6b — signed audit outbox при локальной публикации
+
+- [x] Migration 009: private append-only outbox и SECURITY DEFINER
+  signed-authorized record function (no direct read/write reader grants).
+- [x] PostgreSQL SQL tests: forged tenant, wrong role, revoked actor,
+  duplicate correlation, atomic ROLLBACK and persistent COMMIT record.
+- [ ] TypeScript opt-in signed outbox write integrated inside publication
+  lease, after final DB gate and before local handoff.
+- [ ] Real ephemeral PG16 receipt-only E2E with durable outbox entry.
+- [ ] **VERIFIED** only after exact SHA CI.
+- [ ] **SPEC:** tamper-evident durable audit replication/retention,
+  guarantee for callback failure/commit uncertainty and real HTTP.

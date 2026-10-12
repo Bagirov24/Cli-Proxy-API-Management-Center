@@ -648,3 +648,16 @@ disposable PG16. Отзыв меняет тот же tenant revision, котор
 **IMPLEMENTED / CI PENDING.** Это не per-token OIDC session
 revocation: исходная HMAC scope пока подписывает actor+tenant, а не
 идентификатор отдельной сессии.
+
+## 2G.4d.6b — подписанный durable-on-COMMIT audit/outbox
+
+[Private publication audit outbox](SIGNED_PUBLICATION_OUTBOX_V1.ru.md)
+в migration 009 записывает только actor/tenant/collection/correlation/
+epoch без SQL rows, prompts, secrets и grant IDs. INSERT возможен
+исключительно через signed scope и текущую активную PostgreSQL
+actor/member role. Событие сохраняется после успешного SQL COMMIT
+и удаляется при ROLLBACK всей транзакции.
+
+**IMPLEMENTED / CI PENDING.** Транзакционная запись не доказывает
+фактическую доставку remote HTTP bytes и не создаёт production
+tamper-evident audit service.

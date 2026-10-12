@@ -12,6 +12,7 @@ on:
       - 'tests/sql/saas_authorization_coverage.test.sql'
       - 'tests/sql/saas_authorization_expiry.test.sql'
       - 'tests/sql/saas_actor_session_revision.test.sql'
+      - 'tests/sql/saas_publication_outbox.test.sql'
       - 'scripts/saas-staging/**'
       - 'src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts'
       - 'src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts'
@@ -185,6 +186,13 @@ jobs:
               exit 1
             }
           tail -n 3 /tmp/saas-actor-state-install.log
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/009_signed_publication_outbox_pilot.sql \
+            > /tmp/saas-outbox-install.log 2>&1 || {
+              tail -n 75 /tmp/saas-outbox-install.log
+              exit 1
+            }
+          tail -n 3 /tmp/saas-outbox-install.log
           # Synthetic RS256 keys are generated only in this Bun process.
           # Real wire SQL uses only saas_ci_runner, never the postgres login.
           timeout --signal=TERM --kill-after=5s 90s env \
@@ -269,6 +277,19 @@ jobs:
               exit 1
             }
           tail -n 4 /tmp/saas-actor-session-test.log
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_publication_outbox.test.sql \
+            > /tmp/saas-outbox-test.log 2>&1 || {
+              tail -n 90 /tmp/saas-outbox-test.log
+              exit 1
+            }
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/009_signed_publication_outbox_pilot.sql \
+            > /tmp/saas-outbox-replay.log 2>&1 || {
+              tail -n 90 /tmp/saas-outbox-replay.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-outbox-test.log
           timeout --signal=TERM --kill-after=5s 50s env \
             SAAS_EPHEMERAL_REVISION_CI=true \
             bash scripts/saas-staging/verify-revision-concurrency.sh
