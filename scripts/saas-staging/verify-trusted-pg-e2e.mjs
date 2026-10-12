@@ -161,6 +161,8 @@ function changeEphemeralFixture(action) {
     restoreNorth: "UPDATE saas_rls.tenants SET status='active' WHERE id='demo-north' AND status='suspended'",
     revokeNorth: "UPDATE saas_rls.memberships SET status='revoked' WHERE actor_id='actor-north' AND tenant_id='demo-north' AND status='active'",
     restoreNorthMembership: "UPDATE saas_rls.memberships SET status='active' WHERE actor_id='actor-north' AND tenant_id='demo-north' AND status='revoked'",
+    revokeNorthSession: "UPDATE saas_rls_private.actor_session_state SET status='revoked', revision=revision+1 WHERE actor_id='actor-north' AND status='active'",
+    restoreNorthSession: "UPDATE saas_rls_private.actor_session_state SET status='active', revision=revision+1 WHERE actor_id='actor-north' AND status='revoked'",
     disableSharedAccount: "UPDATE saas_rls.resource_grants SET status='disabled' WHERE id='grant-account' AND grantee_tenant_id='demo-north' AND status='active'",
     restoreSharedAccount: "UPDATE saas_rls.resource_grants SET status='active' WHERE id='grant-account' AND grantee_tenant_id='demo-north' AND status='disabled'",
     expireSharedAccountSoon: "UPDATE saas_rls.resource_grants SET expires_at=clock_timestamp()+interval '3500 milliseconds' WHERE id='grant-account' AND grantee_tenant_id='demo-north' AND status='active'",
@@ -546,6 +548,8 @@ try {
       label: 'tenant revoked after second metadata COMMIT' },
     { change: 'revokeNorth', restore: 'restoreNorthMembership',
       label: 'membership revoked before last signed revision' },
+    { change: 'revokeNorthSession', restore: 'restoreNorthSession',
+      label: 'authoritative PG actor-wide session revoked after metadata COMMIT' },
   ]) {
     driver.afterNthCommit(3, () => changeEphemeralFixture(scenario.change));
     try {

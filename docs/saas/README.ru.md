@@ -636,3 +636,15 @@ signed PostgreSQL `FOR SHARE`, дополнительный identity recheck и
 — 4/4 SUCCESS. Не является публичным HTTP endpoint; in-memory
 actor store, durable audit, remote receipt и production driver
 остаются открытыми security gates.
+
+## 2G.4d.6a — database actor-wide kill switch
+
+[Actor/session epoch pilot](AUTHORITATIVE_ACTOR_REVOCATION_V1.ru.md)
+добавляет закрытое состояние активной синтетической actor-сессии в
+disposable PG16. Отзыв меняет тот же tenant revision, который
+проверяет signed metadata и publication. Для actor, состоящего
+в нескольких tenants, инвалидация охватывает все memberships.
+
+**IMPLEMENTED / CI PENDING.** Это не per-token OIDC session
+revocation: исходная HMAC scope пока подписывает actor+tenant, а не
+идентификатор отдельной сессии.

@@ -526,3 +526,15 @@ entrypoint повторно использует JWT→actor→RBAC и обе me
 вне authoritative PG actor directory всё ещё гоняется с revoke,
 а TCP delivery после callback не доказана. См.
 [TRUSTED_PUBLICATION_LIFECYCLE_V1.ru.md](TRUSTED_PUBLICATION_LIFECYCLE_V1.ru.md).
+
+## D-046 — actor-wide session revoke обязан менять PostgreSQL tenant epoch (2G.4d.6a)
+
+**IMPLEMENTED staging-only / CI PENDING; production SPEC.**
+
+Подписанная роль+membership в PostgreSQL ещё не учитывала отзыв
+активности actor, если синтетический directory продолжал выдавать
+тот же actor ID. Private singleton `actor_session_state` теперь
+обязателен для `scope_membership_matches` и при изменении ревизирует
+каждый tenant, где есть membership actor. Это даёт атомарный
+actor-wide kill switch под существующим `FOR SHARE`, но не
+пер-токенный OIDC logout и не реальный production session store.

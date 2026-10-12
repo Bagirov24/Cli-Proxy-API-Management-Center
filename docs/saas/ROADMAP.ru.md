@@ -765,3 +765,15 @@ atomic revision increments. See
 - [ ] **PROPOSED:** public SaaS control API and production approvals.
 
 См. [TRUSTED_PUBLICATION_LIFECYCLE_V1.ru.md](TRUSTED_PUBLICATION_LIFECYCLE_V1.ru.md).
+
+## 2G.4d.6a — авторитетный actor-wide session gate
+
+- [x] Guarded PG16 migration 008: private actor session active/revoked
+  state, signed membership gate и tenant epoch fanout trigger.
+- [x] SQL тесты revocation, rollback, affected tenants и отсутствие
+  private SELECT/UPDATE для saas_ci_runner.
+- [x] Real PG16 after-second-COMMIT actor session kill-switch E2E.
+- [ ] **VERIFIED:** exact-SHA GitHub Actions.
+- [ ] **SPEC:** subject/token-scoped signed session identity, OIDC
+  discovery/JWK rotation, persisted session/logout/replay controls.
+- [ ] **SPEC:** durable audit/outbox under signed PG publication lease.
