@@ -67,6 +67,9 @@ export async function captureServerAuthorizationRevision(
       !SAFE_TENANT.test(scope.tenantId) ||
       typeof scope.role !== 'string' ||
       !SAFE_ACTOR.test(scope.correlationId) ||
+      (scope.tokenFingerprint !== undefined &&
+        (typeof scope.tokenFingerprint !== 'string' ||
+         !/^[0-9a-f]{64}$/.test(scope.tokenFingerprint))) ||
       typeof collection !== 'string' || !signal || signal.aborted) {
     throw new AuthorizationRevisionUnavailable();
   }
@@ -76,6 +79,8 @@ export async function captureServerAuthorizationRevision(
     const trustedScope = Object.freeze({
       actorId: scope.actorId, tenantId: scope.tenantId,
       role: scope.role, correlationId: scope.correlationId,
+      ...(scope.tokenFingerprint === undefined
+        ? {} : { tokenFingerprint: scope.tokenFingerprint }),
     });
     const raw = await source.readRevision(trustedScope, collection, signal);
     // Legacy string sources are SYNTHETIC test doubles. The PostgreSQL

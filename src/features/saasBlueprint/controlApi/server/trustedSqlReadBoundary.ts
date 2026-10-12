@@ -43,6 +43,12 @@ export interface TrustedSqlReadDependencies {
   readonly revisions?: ServerAuthorizationRevisionSource;
   /** Only explicit staging PG16 opt-in: migration 009 signed audit outbox. */
   readonly recordStagingOutbox?: boolean;
+  /**
+   * Stage 2G.4d.7a: STRICT opt-in for migration-010 fingerprint-enrolled
+   * synthetic sessions. No implicit fallback to actor-only PG scope.
+   * Requires the server-owned revision source for time-only expiry.
+   */
+  readonly requireTokenBoundSession?: boolean;
   /** Mandatory test/staging audit port; a failed write denies the response. */
   readonly audit: SecurityAuditRecorder;
   /** Trusted backend-generated only. Never use client correlation headers. */
@@ -192,6 +198,20 @@ function createTrustedSqlReadBoundaryEngine(
       const initialSession = await sessions.verify(accessToken);
       if (signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
       if (!initialSession) return finish(response(UNAUTHENTICATED), 'unauthenticated');
+      if (deps.requireTokenBoundSession === true && !deps.revisions) {
+        return finish(response(UNAVAILABLE), 'source-unavailable');
+      }
+      // Exact verified bearer fingerprint, NOT the untrusted JWT "jti"
+      // claim or a caller-provided session handle. It is only ever signed
+      // into PostgreSQL's private transaction scope, never returned.
+      const tokenFingerprint = deps.requireTokenBoundSession === true
+        ? Array.from(
+          new Uint8Array(await crypto.subtle.digest(
+            'SHA-256', new TextEncoder().encode(accessToken)
+          )), (byte) => byte.toString(16).padStart(2, '0')
+        ).join('')
+        : undefined;
+      if (signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
 
       const actor = await deps.actors.lookup(initialSession.actorId, signal);
       if (signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
@@ -213,6 +233,7 @@ function createTrustedSqlReadBoundaryEngine(
         tenantId: requestedTenant,
         role: allowed.membership.role,
         correlationId,
+        ...(tokenFingerprint === undefined ? {} : { tokenFingerprint }),
       };
       // Server-owned revision is captured only AFTER trusted identity/RBAC.
       // No user-provided revision participates in authorization.

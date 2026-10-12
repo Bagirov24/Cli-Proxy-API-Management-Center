@@ -130,7 +130,10 @@ function scopedIdentity(scope: AuthorizedReadScope): boolean {
   return /^[A-Za-z0-9_-]{1,128}$/.test(scope.actorId) &&
     /^[A-Za-z0-9_-]{1,64}$/.test(scope.tenantId) &&
     roles.includes(scope.role) &&
-    /^[A-Za-z0-9_-]{1,128}$/.test(scope.correlationId);
+    /^[A-Za-z0-9_-]{1,128}$/.test(scope.correlationId) &&
+    (scope.tokenFingerprint === undefined ||
+     (typeof scope.tokenFingerprint === 'string' &&
+      /^[0-9a-f]{64}$/.test(scope.tokenFingerprint)));
 }
 
 /** Only the trusted, pre-provisioned signer receives the HMAC key. */
@@ -147,8 +150,12 @@ export function createPinnedHmacScopeIssuer(key: CryptoKey): SignedTransactionIs
           expiry > 9_999_999_999) {
         throw new Error('Invalid signed-scope input');
       }
-      // Matches PostgreSQL concat_ws(chr(31), actor, tenant, txid, expiry).
-      const payload = [scope.actorId, scope.tenantId, txid, String(expiry)].join('\x1f');
+      // Migration 010 extends the HMAC ONLY when a VERIFIED token
+      // fingerprint exists. Legacy actor-only HMAC is rejected in PG
+      // permanently once this actor enrolls any token-bound session.
+      const fields = [scope.actorId, scope.tenantId, txid, String(expiry)];
+      if (scope.tokenFingerprint !== undefined) fields.push(scope.tokenFingerprint);
+      const payload = fields.join('\x1f');
       const digest = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
       return Array.from(new Uint8Array(digest), (byte) =>
         byte.toString(16).padStart(2, '0')).join('');
@@ -322,13 +329,16 @@ async function executeSignedScopedRead(
       const expiry = now + 60;
       const mac = await waitForAbort(issuer.sign(scope, txid, expiry), controller.signal);
       if (!/^[0-9a-f]{64}$/.test(mac)) throw new Error('Invalid signed scope');
-      const claims: readonly [string, string][] = [
+      const claims: [string, string][] = [
         ['saas.scope_actor', scope.actorId],
         ['saas.scope_tenant', scope.tenantId],
         ['saas.scope_txid', txid],
         ['saas.scope_expiry', String(expiry)],
         ['saas.scope_mac', mac],
       ];
+      if (scope.tokenFingerprint !== undefined) {
+        claims.push(['saas.scope_token_fingerprint', scope.tokenFingerprint]);
+      }
       for (const [name, value] of claims) {
         await query('SELECT set_config($1::text, $2::text, true)', [name, value]);
       }

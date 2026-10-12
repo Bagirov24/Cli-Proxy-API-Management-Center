@@ -148,6 +148,12 @@ export interface AuthorizedReadScope {
   readonly role: TenantRole;
   /** Server-generated correlation ID; never raw request text. */
   readonly correlationId: string;
+  /**
+   * Staging migration 010 opt-in. SHA-256 of the EXACT verified access
+   * token, produced by the server, never from JWT claims/HTTP params.
+   * No bearer token or fingerprint is permitted in a public response.
+   */
+  readonly tokenFingerprint?: string;
 }
 
 export interface ReadOnlyTenantMetadataAdapter {
