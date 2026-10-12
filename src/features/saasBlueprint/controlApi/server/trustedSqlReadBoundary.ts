@@ -41,6 +41,8 @@ export interface TrustedSqlReadDependencies {
    * behavior; production MUST NOT treat omission as revision enforcement.
    */
   readonly revisions?: ServerAuthorizationRevisionSource;
+  /** Only explicit staging PG16 opt-in: migration 009 signed audit outbox. */
+  readonly recordStagingOutbox?: boolean;
   /** Mandatory test/staging audit port; a failed write denies the response. */
   readonly audit: SecurityAuditRecorder;
   /** Trusted backend-generated only. Never use client correlation headers. */
@@ -305,6 +307,7 @@ function createTrustedSqlReadBoundaryEngine(
         };
         await withSignedScopedPublicationBarrier(deps.pool, deps.signer, {
           scope, collection: requestedCollection, baseline: initialRevision, signal,
+          recordStagingOutbox: deps.recordStagingOutbox === true,
           handoff: {
             async prepare(leaseSignal) {
               await assertTrustedActor(leaseSignal);
