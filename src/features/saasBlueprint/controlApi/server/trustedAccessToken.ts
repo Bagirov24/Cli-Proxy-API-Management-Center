@@ -8,6 +8,8 @@
 export interface VerifiedAccessIdentity {
   readonly issuer: string;
   readonly subject: string;
+  /** Trusted RS256 access-token exp (seconds), not caller-controlled. */
+  readonly expiresAtSeconds?: number;
 }
 
 export interface AccessTokenVerifier {
@@ -128,7 +130,10 @@ export function createPinnedAccessTokenVerifier(
           aud.every((item): item is string => typeof item === 'string') &&
           aud.includes(opts.audience) && claims.azp === opts.audience);
       if (!hasAudience) return null;
-      return { issuer: opts.issuer, subject: claims.sub as string };
+      return {
+        issuer: opts.issuer, subject: claims.sub as string,
+        expiresAtSeconds: claims.exp as number,
+      };
     },
   };
 }

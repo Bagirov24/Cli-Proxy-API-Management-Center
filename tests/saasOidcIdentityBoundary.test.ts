@@ -49,7 +49,7 @@ beforeAll(async () => {
 describe('pinned JWT identity verification (synthetic ephemeral public key)', () => {
   test('requires a correctly signed API access token', async () => {
     expect(await verifier().verifyAccessToken(await jwt())).toEqual({
-      issuer, subject: 'sub-north',
+      issuer, subject: 'sub-north', expiresAtSeconds: now + 120,
     });
     expect(await verifier().verifyAccessToken('invalid')).toBeNull();
     expect(await verifier().verifyAccessToken((await jwt()) + '.extra')).toBeNull();
