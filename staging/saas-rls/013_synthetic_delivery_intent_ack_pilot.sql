@@ -135,6 +135,7 @@ DECLARE selected RECORD;
 DECLARE token UUID;
 DECLARE next_generation BIGINT;
 DECLARE next_attempt INTEGER;
+DECLARE changed INTEGER;
 BEGIN
  IF max_events IS NULL OR max_events<1 OR max_events>16
     OR lease_seconds IS NULL OR lease_seconds<1 OR lease_seconds>30
@@ -159,9 +160,15 @@ BEGIN
           exhausted_at=clock_timestamp()
       WHERE s.event_id=selected.event_id AND s.status='leased'
         AND s.lease_until<=clock_timestamp() AND s.attempts=3;
-    INSERT INTO saas_rls_private.synthetic_delivery_history
-      (event_id,generation,action)
-    VALUES(selected.event_id,selected.generation,'retry_exhausted');
+    GET DIAGNOSTICS changed=ROW_COUNT;
+    -- ACK may have committed while this claimer waited for the state row.
+    -- Never write an "exhausted" history event unless THIS transaction
+    -- actually changed that exact state row to retry_exhausted.
+    IF changed=1 THEN
+      INSERT INTO saas_rls_private.synthetic_delivery_history
+        (event_id,generation,action)
+      VALUES(selected.event_id,selected.generation,'retry_exhausted');
+    END IF;
     CONTINUE;
   END IF;
   token:=gen_random_uuid();

@@ -64,6 +64,19 @@ delivery to any client**. All external receipt, recipient identity,
 durable receiver idempotency, signed ACK and replay protection are
 production SPEC.
 
+
+**Role/transaction caveat:** Same-transaction read-your-own-writes
+is possible for a PostgreSQL superuser. "After COMMIT" is established
+by separate committed writer and authenticated worker connections,
+not by magic SQL invisibility to an owner that deliberately impersonates
+roles inside one transaction. Production must enforce this process
+isolation and prevent any reader/caller from obtaining worker roles.
+
+**ACK/exhaustion race:** The exhaustion history entry is appended only
+when the current UPDATE actually commits the status transition; a
+concurrent ACK that wins the state-row lock cannot create both a mock
+success and a spurious `retry_exhausted` event.
+
 ## PostgreSQL16 + Bun acceptance
 
 - Signed audited source INSERT creates intent before COMMIT;
