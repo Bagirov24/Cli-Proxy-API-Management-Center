@@ -328,8 +328,10 @@ atomic physical discard, bounded network disconnect и корректность
   карантин этого пула; North/Orbit RLS-чтение только через **новый** пул;
 - серверный `statement_timeout` в транзакции, состояние failed
   transaction, подтверждённый `ROLLBACK` и очистка `SET LOCAL`;
-- настоящий `Bun.Query.cancel()` во время `pg_sleep`, отказ от
-  использования прежнего pool и проверка его shutdown;
+- negative capability probe `Bun.Query.cancel()` во время `pg_sleep`:
+  если SQL не завершился cancellation error в пределах deadline,
+  **не считать отмену работоспособной**; обязательный карантин
+  пула без его повторной выдачи клиенту;
 - новая **независимая** `SQL`-инстанция после остановки тестовых pools
   с North/Orbit isolation.
 

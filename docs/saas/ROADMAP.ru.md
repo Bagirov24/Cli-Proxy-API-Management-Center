@@ -385,6 +385,12 @@ cache invalidation и серверная интеграция остаются *
   нельзя считать безопасно восстановленным; тест исправлен на quarantine
   и запуск tenant reads только из новой инстанции.
   [Failed probe #38259910402](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38259910402).
+- [x] В отдельном PG16 CI Bun native `Query.cancel()` при
+  выполняющемся `pg_sleep` **не завершился за 2,5 секунды**:
+  [failed probe #38260251602](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38260251602).
+  Это отрицательный результат относительно bounded cancel, не PASS.
+  В обновлённом тесте исход классифицируется явно, блокируются
+  новые выдачи из старого pool; требуется его физический shutdown.
 - [ ] Atomic physical `discard(connection)` для Bun 1.3.14 —
   **НЕ подтверждён**. Нельзя использовать `reserved.release()` для
   возврата повреждённого соединения в действующий multi-tenant pool.

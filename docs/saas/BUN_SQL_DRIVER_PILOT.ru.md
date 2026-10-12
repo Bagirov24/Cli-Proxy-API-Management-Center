@@ -149,9 +149,13 @@ ephemeral PG16 (2G.1b).
    `SELECT pg_sleep(2)`: запрет продолжать aborted transaction до
    подтверждённого `ROLLBACK`; проверка role/GUC reset.
 3. `Query.cancel()` во время выполняющегося SQL в отдельном пуле:
-   дождаться реальной PostgreSQL/Bun cancellation error, не принять
-   один только истёкший JS timer как доказательство отмены. После
-   эксперимента весь pool закрывается.
+   классифицировать *реальную ошибку отмены*, обычный success после
+   `cancel()` и неограниченное ожидание **раздельно**. Только
+   cancellation error в пределах 2,5 секунды означает подтверждённую
+   native cancellation. Остальные исходы печатаются как **DRIVER
+   LIMITATION**, никому не выдаётся SQL-результат. Тестовый `pg_sleep(4)`
+   ожидается до завершения (максимум 7 секунд); затем pool должен
+   пройти quarantine + forced shutdown и перестать принимать резервы.
 4. Создаётся совершенно новый pool, выполняются независимые
    North/Orbit signed RLS reads. Старый quarantined pool не
    разблокируется.
