@@ -204,3 +204,12 @@ passes this **negative proof**, showing the failure is detectable in
 tests but NOT recoverable by a committed-event-only reconciliation
 worker. **Remote delivery, client ACK and commit/delivery atomicity
 remain SPEC / NOT PRODUCTION-READY.**
+
+## 014 durable receiver pilot is NOT a production release gate
+
+**IMPLEMENTED / VERIFIED in ephemeral PostgreSQL16 only** on code SHA
+`a8eabe5ecc0ccbd42437bb73c6ee58286166c86d`: [PG16 #38307286153](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38307286153).
+Local receiver effect/receipt is committed as one row; repeated key
+returns the original receipt; synthetic fenced ACK verifies that row.
+Real transport, payload durability, remote receiver identity, production
+retry operations and the pre-COMMIT handoff gap remain **OPEN**.

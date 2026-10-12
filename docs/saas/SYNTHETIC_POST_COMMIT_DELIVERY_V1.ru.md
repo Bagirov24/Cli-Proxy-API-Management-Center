@@ -159,7 +159,7 @@ and [Chromium #38305618724](https://github.com/Bagirov24/Cli-Proxy-API-Managemen
 
 ## 014: durable LOCAL synthetic receiver ledger (additional pilot)
 
-**IMPLEMENTED, awaiting independent CI verification on the new HEAD:**
+**IMPLEMENTED / VERIFIED on code SHA a8eabe5 (staging only):**
 `014_synthetic_receiver_ledger_pilot.sql` adds a guarded, append-only
 PostgreSQL16 `synthetic_receiver_effects` ledger with exactly one row per
 immutable 013 event/key. In this **test receiver only**, inserting the
@@ -178,10 +178,18 @@ unchanged for compatibility with its existing synthetic tests; it is
 receiver process restart because it lives in disposable PostgreSQL,
 not an in-memory Map. PG16 acceptance additionally checks rollback,
 ACK loss/retry, stale and forged ACK, terminal state, ACL and migration
-replay. Do not mark this addition VERIFIED until CI completes on its SHA.
+replay. The referenced PostgreSQL16 CI completed SUCCESS.
 
 **Critical boundary:** a PostgreSQL receiver-local atomic row is NOT a
 remote recipient transaction; it proves neither real network delivery
 nor exactly-once effects at an arbitrary client. No real payload,
 network bytes, tenant rows, credentials or HTTP endpoints are added.
 Pre-COMMIT synchronous local handoff remains an unsolved blocker.
+
+**014 VERIFIED after GitHub Actions:** on code SHA
+`a8eabe5ecc0ccbd42437bb73c6ee58286166c86d`, [PG16 #38307286153](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38307286153),
+[Main CI #38307286415](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38307286415),
+[Demo #38307286039](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38307286039),
+[Chromium #38307286115](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38307286115)
+all completed SUCCESS. The following documentation-only commit must be
+independently verified on its own SHA before claiming final CI green.

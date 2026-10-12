@@ -910,3 +910,11 @@ atomic revision increments. See
   PostgreSQL ROLLBACK persists while 009 audit/013 intent disappear.
   This proves the old synchronous handoff gap remains OPEN;
   [PG16 #38305618718](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38305618718).
+
+- [x] **2G.4d.7d durable synthetic receiver (014), VERIFIED PG16**:
+  receiver-local atomic effect/receipt, retry deduplication after process
+  restart, guarded NOLOGIN API, sender receipt/fence ACK and migration replay;
+  [PG16 #38307286153](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38307286153) on `a8eabe5`.
+- [ ] **STILL SPEC/PROPOSED:** external receiver authorization,
+  durable remote payload, real transport/ACK, pre-COMMIT handoff fix,
+  unknown-outcome operations and production release gate.

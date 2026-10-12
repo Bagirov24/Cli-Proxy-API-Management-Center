@@ -718,3 +718,15 @@ dead-letter sink, secure scheduler, backpressure и операторская
 worker не видит отсутствующий intent. Production должен заново
 спроектировать транспортный контракт и durable message payload;
 отсутствие события НЕ доказывает отсутствие байтов у клиента.
+
+## D-061 — локальная durable идемпотентность не равна сетевой exactly-once
+
+014 хранит единственный синтетический receiver effect и receipt в одной
+транзакции disposable PostgreSQL. Receiver NOLOGIN допускается только
+через SECURITY DEFINER; повтор key возвращает сохранённый receipt без
+повторного локального эффекта. Worker 013 может записать усиленный mock
+ACK только с matching durable receipt и актуальным fence. Старый 013
+key-only mock ACK сохранён для обратной совместимости тестов.
+**VERIFIED:** [PG16 #38307286153](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38307286153) на `a8eabe5`.
+**DECISION:** никакой вывод об exactly-once network delivery и никакое
+ослабление pre-COMMIT blocker из этого не следуют.

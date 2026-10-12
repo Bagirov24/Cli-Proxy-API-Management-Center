@@ -749,3 +749,12 @@ lease reclaim/fencing), [Demo #38302392314](https://github.com/Bagirov24/Cli-Pro
 **НЕ HTTP:** никакой payload не передаётся; mock ACK не доказывает
 удалённого получения, а local handoff до failed COMMIT по-прежнему
 является непреодолённым production-блокером.
+
+## Follow-up 2G.4d.7d: durable LOCAL synthetic receiver
+
+**IMPLEMENTED / VERIFIED (staging only):** migration 014 adds a private
+transactional receiver effect/receipt ledger. Repeated synthetic claims
+with the same immutable key reuse the first committed receipt; they do
+not re-apply the local test effect. [PG16 #38307286153](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38307286153) on SHA `a8eabe5ecc0ccbd42437bb73c6ee58286166c86d`.
+See [receiver proof](SYNTHETIC_POST_COMMIT_DELIVERY_V1.ru.md).
+**NOT** real HTTP or client exactly-once delivery.

@@ -126,3 +126,11 @@ privileges, leases, attempt histories and terminal statuses. A
 HTTP delivery, externally durable remote receipt or real response
 commit. Details:
 [SYNTHETIC_POST_COMMIT_DELIVERY_V1.ru.md](SYNTHETIC_POST_COMMIT_DELIVERY_V1.ru.md).
+
+## 014 separate receiver-local persistence, not audit delivery
+
+014 adds a private synthetic receiver effect/receipt row following 013.
+It does not change the meaning or SQL schema of 012's
+`reconciled_local`, nor provide a real transport or client ACK.
+A duplicate LOCAL receiver request sees its first committed receipt,
+not a second logical effect. VERIFIED on `a8eabe5` in [PG16 #38307286153](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38307286153).
