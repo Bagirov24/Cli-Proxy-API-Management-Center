@@ -13,6 +13,7 @@ on:
       - 'tests/sql/saas_authorization_expiry.test.sql'
       - 'tests/sql/saas_actor_session_revision.test.sql'
       - 'tests/sql/saas_publication_outbox.test.sql'
+      - 'tests/sql/saas_token_fingerprint_scope.test.sql'
       - 'scripts/saas-staging/**'
       - 'src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts'
       - 'src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts'
@@ -193,6 +194,13 @@ jobs:
               exit 1
             }
           tail -n 3 /tmp/saas-outbox-install.log
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/010_token_fingerprint_scope_pilot.sql \
+            > /tmp/saas-token-install.log 2>&1 || {
+              tail -n 100 /tmp/saas-token-install.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-token-install.log
           # Synthetic RS256 keys are generated only in this Bun process.
           # Real wire SQL uses only saas_ci_runner, never the postgres login.
           timeout --signal=TERM --kill-after=5s 90s env \
@@ -290,6 +298,19 @@ jobs:
               exit 1
             }
           tail -n 4 /tmp/saas-outbox-test.log
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_token_fingerprint_scope.test.sql \
+            > /tmp/saas-token-test.log 2>&1 || {
+              tail -n 100 /tmp/saas-token-test.log
+              exit 1
+            }
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/010_token_fingerprint_scope_pilot.sql \
+            > /tmp/saas-token-replay.log 2>&1 || {
+              tail -n 100 /tmp/saas-token-replay.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-token-test.log
           timeout --signal=TERM --kill-after=5s 50s env \
             SAAS_EPHEMERAL_REVISION_CI=true \
             bash scripts/saas-staging/verify-revision-concurrency.sh

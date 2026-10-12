@@ -31,7 +31,7 @@ REVOKE ALL ON saas_rls_private.actor_token_sessions FROM PUBLIC,saas_rls_reader;
 
 CREATE INDEX IF NOT EXISTS actor_token_sessions_actor_idx
   ON saas_rls_private.actor_token_sessions(actor_id);
-ALTER INDEX saas_rls_private.actor_token_sessions_actor_idx OWNER TO saas_rls_owner;
+-- Index ownership follows the private table in PostgreSQL.
 
 CREATE OR REPLACE FUNCTION saas_rls_private.revise_actor_token_sessions()
 RETURNS TRIGGER LANGUAGE plpgsql VOLATILE SECURITY DEFINER
