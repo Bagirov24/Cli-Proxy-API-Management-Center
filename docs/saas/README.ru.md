@@ -324,8 +324,8 @@ atomic physical discard, bounded network disconnect и корректность
 
 Добавлен строго изолированный раздел в `scripts/saas-staging/verify-bun-postgres.mjs`.
 В GitHub Actions на *временном* PG16 запускаются:
-- отмена резервирования при исчерпанном `max=1` и проверка
-  следующего North/Orbit RLS-чтения;
+- отмена резервирования при исчерпанном `max=1`, немедленный
+  карантин этого пула; North/Orbit RLS-чтение только через **новый** пул;
 - серверный `statement_timeout` в транзакции, состояние failed
   transaction, подтверждённый `ROLLBACK` и очистка `SET LOCAL`;
 - настоящий `Bun.Query.cancel()` во время `pg_sleep`, отказ от

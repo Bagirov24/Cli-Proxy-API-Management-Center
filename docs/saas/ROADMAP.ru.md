@@ -380,6 +380,11 @@ cache invalidation и серверная интеграция остаются *
   подтверждённого `ROLLBACK`, `SQL.close()` и создания нового пула.
 - [ ] Результаты этого инкремента подтверждены финальным GitHub Actions
   run (не проставлять VERIFIED до SUCCESS на текущем SHA).
+- [x] При первом native CI после отмены `reserve({signal})` повторное
+  чтение из **того же** Bun-пула закончилось отказом, поэтому такой пул
+  нельзя считать безопасно восстановленным; тест исправлен на quarantine
+  и запуск tenant reads только из новой инстанции.
+  [Failed probe #38259910402](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38259910402).
 - [ ] Atomic physical `discard(connection)` для Bun 1.3.14 —
   **НЕ подтверждён**. Нельзя использовать `reserved.release()` для
   возврата повреждённого соединения в действующий multi-tenant pool.

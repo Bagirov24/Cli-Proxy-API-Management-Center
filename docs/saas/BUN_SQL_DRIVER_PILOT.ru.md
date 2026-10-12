@@ -142,8 +142,9 @@ ephemeral PG16 (2G.1b).
 
 Протокол новых native проверок:
 1. `max=1`, одна reserved connection занята; ожидание второго
-   `reserve({signal})` отменяется. После освобождения первой connection
-   другой tenant проходит через *новую* подписанную транзакцию и RLS.
+   `reserve({signal})` отменяется. Старый pool переводится в карантин:
+   дальнейшие tenant reads на нём не разрешены; другой tenant допускается
+   только на *новом* pool c новой подписанной транзакцией и RLS.
 2. `BEGIN` + **server-side** `SET LOCAL statement_timeout` +
    `SELECT pg_sleep(2)`: запрет продолжать aborted transaction до
    подтверждённого `ROLLBACK`; проверка role/GUC reset.
