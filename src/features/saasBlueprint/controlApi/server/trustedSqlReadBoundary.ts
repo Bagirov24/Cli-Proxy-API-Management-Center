@@ -10,7 +10,7 @@ import type {
 } from '../contracts';
 import {
   CONTROL_READ_SELECT_SQL, readSignedScopedMetadata,
-  ScopedSqlAuthorizationDenied,
+  withSignedScopedPublicationBarrier, ScopedSqlAuthorizationDenied,
   type ScopedSqlPool, type SignedTransactionIssuer, type SqlRow,
 } from './signedSqlBoundary';
 import {
@@ -93,6 +93,31 @@ const UNAVAILABLE = {
   error: { code: 'SOURCE_UNAVAILABLE', message: 'Service unavailable' },
 } as const;
 
+/** Only a server-injected local sink, not a request/HTTP route handler. */
+export interface TrustedLocalPublicationPayload {
+  readonly correlationId: string;
+  readonly tenantId: string;
+  readonly collection: ControlCollection;
+  readonly rows: readonly SqlRow[];
+}
+export interface TrustedLocalPublicationSink {
+  /** PRIVATE stage only; must not emit bytes until returned sync commit. */
+  stage(
+    payload: Readonly<TrustedLocalPublicationPayload>,
+    signal: AbortSignal
+  ): Promise<() => void>;
+}
+
+export type TrustedSqlPublishedResult =
+  | Exclude<TrustedSqlReadResult, { readonly ok: true }>
+  | {
+    readonly ok: true;
+    readonly status: 200;
+    readonly correlationId: string;
+    readonly source: 'staging-local-publication';
+    readonly published: true;
+  };
+
 const SAFE_ACTOR = /^[A-Za-z0-9_-]{1,128}$/;
 const SAFE_TENANT = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -102,7 +127,10 @@ const SAFE_TENANT = /^[A-Za-z0-9_-]{1,64}$/;
  * JWT replay within its valid lifetime is NOT prevented by this module;
  * production requires a server-side session/revocation strategy.
  */
-export function createTrustedSqlReadBoundary(deps: TrustedSqlReadDependencies) {
+function createTrustedSqlReadBoundaryEngine(
+  deps: TrustedSqlReadDependencies,
+  publisher?: TrustedLocalPublicationSink
+) {
   const sessions = createVerifiedSubjectSessionBridge(deps.tokens, deps.actorDirectory);
 
   return async function read(request: TrustedSqlReadRequest): Promise<TrustedSqlReadResult> {
@@ -242,6 +270,68 @@ export function createTrustedSqlReadBoundary(deps: TrustedSqlReadDependencies) {
         );
         if (signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
       }
+      if (publisher) {
+        // This special entrypoint never returns SQL rows to its caller.
+        // A committed PostgreSQL writer changes epoch; the original
+        // pre-read baseline must still match UNDER a FOR SHARE lease.
+        if (!revisionSource || initialRevision === null) {
+          return finish(response(UNAVAILABLE), 'source-unavailable');
+        }
+        const payload: TrustedLocalPublicationPayload = Object.freeze({
+          correlationId, tenantId: scope.tenantId, collection: requestedCollection,
+          rows: Object.freeze(rows.map(row => Object.freeze({ ...row }))),
+        });
+        // Check the real identity+server actor AGAIN inside the signed lease,
+        // once before and once after asynchronous transport staging. A future
+        // production actor store must version its changes in the same DB.
+        const assertTrustedActor = async (leaseSignal: AbortSignal) => {
+          const verified = await sessions.verify(accessToken);
+          if (leaseSignal.aborted || !verified ||
+              verified.actorId !== scope.actorId) {
+            throw new AuthorizationRevisionChanged();
+          }
+          const fresh = await deps.actors.lookup(verified.actorId, leaseSignal);
+          if (leaseSignal.aborted || !fresh || fresh.id !== scope.actorId ||
+              !Array.isArray(fresh.memberships) ||
+              JSON.stringify(fresh.memberships) !== originalMemberships) {
+            throw new AuthorizationRevisionChanged();
+          }
+          const permission = authorizeTenantRead(
+            fresh, requestedTenant, requestedCollection
+          );
+          if (!permission.allowed || permission.membership.role !== scope.role) {
+            throw new AuthorizationRevisionChanged();
+          }
+        };
+        await withSignedScopedPublicationBarrier(deps.pool, deps.signer, {
+          scope, collection: requestedCollection, baseline: initialRevision, signal,
+          handoff: {
+            async prepare(leaseSignal) {
+              await assertTrustedActor(leaseSignal);
+              const commit = await publisher.stage(payload, leaseSignal);
+              await assertTrustedActor(leaseSignal);
+              return commit;
+            },
+            beforeCommit() {
+              // Fail-closed audit is immediately BEFORE local handoff, with
+              // no intervening await; an audit exception suppresses commit.
+              // It records read authorization, NOT remote delivery.
+              deps.audit.record({
+                correlationId, actorId: scope.actorId, tenantId: scope.tenantId,
+                collection: requestedCollection, result: 'allow',
+                reason: 'read-allowed',
+              });
+            },
+          },
+        });
+        // Audit already succeeded before handoff. Return no SQL bytes to
+        // the published-mode caller and DO NOT record a duplicate Allow.
+        return {
+          ok: true, status: 200, source: 'staging-signed-rls',
+          correlationId, tenantId: scope.tenantId, collection: requestedCollection,
+          rows: [],
+        };
+      }
       return finish({
         ok: true, status: 200, source: 'staging-signed-rls', correlationId,
         tenantId: scope.tenantId, collection: requestedCollection, rows,
@@ -262,5 +352,40 @@ export function createTrustedSqlReadBoundary(deps: TrustedSqlReadDependencies) {
       // No SQL/driver, JWT, identity directory or sink details escape.
       return finish(response(UNAVAILABLE), 'source-unavailable');
     }
+  };
+}
+
+/** Original read-only staging path: no publication, unchanged response. */
+export function createTrustedSqlReadBoundary(deps: TrustedSqlReadDependencies) {
+  return createTrustedSqlReadBoundaryEngine(deps);
+}
+
+/**
+ * 2G.4d.5b: receipt-only synthetic publication entrypoint. Requires a
+ * server-owned revision source and local-only staging sink. The request
+ * supplies only access token, tenant, collection, signal and bounded limit.
+ * Verified identity/RBAC, sanitized rows, initial epoch and audit remain
+ * inside this module; neither raw rows nor a claimed actor/role/revision
+ * is returned to the caller. NOT a production HTTP transport.
+ */
+export function createTrustedSqlPublishedBoundary(
+  deps: TrustedSqlReadDependencies & {
+    readonly revisions: ServerAuthorizationRevisionSource;
+  },
+  publisher: TrustedLocalPublicationSink
+) {
+  if (!deps?.revisions || !publisher || typeof publisher.stage !== 'function') {
+    throw new Error('Invalid staging publication dependency');
+  }
+  const run = createTrustedSqlReadBoundaryEngine(deps, publisher);
+  return async function publish(
+    request: TrustedSqlReadRequest
+  ): Promise<TrustedSqlPublishedResult> {
+    const result = await run(request);
+    if (!result.ok) return result;
+    return Object.freeze({
+      ok: true, status: 200, source: 'staging-local-publication',
+      correlationId: result.correlationId, published: true,
+    });
   };
 }
