@@ -1083,8 +1083,8 @@ try {
     const values=outcome.split('|');
     assert.equal(values.length,2);
     assert.match(values[0],/^[0-9a-f-]{36}$/);
-    assert.ok(values[1]==='t'||values[1]==='f');
-    return {receipt:values[0],appliedNow:values[1]==='t'};
+    assert.ok(values[1]==='true'||values[1]==='false');
+    return {receipt:values[0],appliedNow:values[1]==='true'};
   };
   const markDurableReceipt=(lease,receipt)=>{
     assert.match(receipt,/^[0-9a-f-]{36}$/);

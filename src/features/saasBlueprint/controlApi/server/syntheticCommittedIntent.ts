@@ -18,6 +18,10 @@ import {
 } from './trustedSqlReadBoundary';
 import type { ServerAuthorizationRevisionSource } from './authorizationRevision';
 
+// Scoped to this server-only module: the Vite TS build does not include
+// Node global typings; the browser has no process and therefore fails closed.
+declare const process: { readonly env: Readonly<Record<string, string | undefined>> };
+
 export type SyntheticCommittedIntentResult =
   | Exclude<TrustedSqlPublishedResult, { readonly ok: true }>
   | {
@@ -39,7 +43,8 @@ export function createTrustedSyntheticCommittedIntentBoundary(
     readonly revisions: ServerAuthorizationRevisionSource;
   }
 ): (request: TrustedSqlReadRequest) => Promise<SyntheticCommittedIntentResult> {
-  if (process.env.GITHUB_ACTIONS !== 'true' ||
+  if (typeof process === 'undefined' ||
+      process.env.GITHUB_ACTIONS !== 'true' ||
       process.env.SAAS_EPHEMERAL_E2E_CI !== 'true' ||
       process.env.PGHOST !== '127.0.0.1' ||
       process.env.PGDATABASE !== 'saas_ephemeral_test' ||
