@@ -918,3 +918,18 @@ atomic revision increments. See
 - [ ] **STILL SPEC/PROPOSED:** external receiver authorization,
   durable remote payload, real transport/ACK, pre-COMMIT handoff fix,
   unknown-outcome operations and production release gate.
+
+## 2G.4d.7e — Synthetic committed-intent-only boundary
+
+- [x] **IMPLEMENTED:** отдельный staging-only server entrypoint,
+  zero pre-COMMIT synthetic handoff, committed 009 audit/013 intent,
+  downstream 012/013/014 worker.
+- [x] **TEST CODE:** реальные PG16 injected pre-COMMIT ROLLBACK
+  и потеря COMMIT reply после успешного PostgreSQL COMMIT;
+  независимое восстановление committed intent.
+- [ ] **SPEC:** durable producer operation ID for unknown outcome,
+  request retry dedup, payload queue, revocation-at-dispatch.
+- [ ] **PROPOSED:** externally authenticated transport/ACK,
+  production control plane/release.
+
+**VERIFIED on code commit `fa895296a6ce4062687d0ad0af77f26114d4ef03`:** [PG16 #38309259713](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259713), [Main CI #38309259929](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259929), [Demo #38309259856](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259856), [Chromium #38309259696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259696) — all 4 SUCCESS. The final documentation commit requires its own independent Actions results; code verification does not imply production readiness.

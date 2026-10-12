@@ -134,3 +134,15 @@ It does not change the meaning or SQL schema of 012's
 `reconciled_local`, nor provide a real transport or client ACK.
 A duplicate LOCAL receiver request sees its first committed receipt,
 not a second logical effect. VERIFIED on `a8eabe5` in [PG16 #38307286153](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38307286153).
+
+## 2G.4d.7e staging-only committed intent mode
+
+Новый event-only путь 2G.4d.7e не изменяет миграцию 012:
+`reconciled_local` всё ещё означает исключительно
+durable локальное наблюдение committed 009 audit.
+Это prerequisite для 013 synthetic dispatch, а не
+доказательство HTTP response delivery. Sender может
+потерять COMMIT reply; отдельный worker позже найдёт
+закоммиченный intent без повторного запроса.
+
+**VERIFIED on code commit `fa895296a6ce4062687d0ad0af77f26114d4ef03`:** [PG16 #38309259713](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259713), [Main CI #38309259929](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259929), [Demo #38309259856](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259856), [Chromium #38309259696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259696) — all 4 SUCCESS. The final documentation commit requires its own independent Actions results; code verification does not imply production readiness.

@@ -758,3 +758,16 @@ with the same immutable key reuse the first committed receipt; they do
 not re-apply the local test effect. [PG16 #38307286153](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38307286153) on SHA `a8eabe5ecc0ccbd42437bb73c6ee58286166c86d`.
 See [receiver proof](SYNTHETIC_POST_COMMIT_DELIVERY_V1.ru.md).
 **NOT** real HTTP or client exactly-once delivery.
+
+## 2G.4d.7e — отдельный event-only post-COMMIT протокол
+
+**IMPLEMENTED, staging only:** новый
+`syntheticCommittedIntent.ts` не принимает local handoff callback
+и передаёт worker только ранее закоммиченный 009/013 intent,
+без пользовательских SQL rows, JWT или response payload.
+При неизвестном ответе `COMMIT` возвращается 503, а не ложная
+гарантия отсутствия события. См.
+[контракт 2G.4d.7e](COMMITTED_INTENT_ONLY_V1.ru.md).
+Старый synchronous pre-COMMIT handoff остаётся production blocker.
+
+**VERIFIED on code commit `fa895296a6ce4062687d0ad0af77f26114d4ef03`:** [PG16 #38309259713](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259713), [Main CI #38309259929](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259929), [Demo #38309259856](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259856), [Chromium #38309259696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259696) — all 4 SUCCESS. The final documentation commit requires its own independent Actions results; code verification does not imply production readiness.

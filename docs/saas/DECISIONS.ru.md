@@ -730,3 +730,22 @@ key-only mock ACK сохранён для обратной совместимо�
 **VERIFIED:** [PG16 #38307286153](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38307286153) на `a8eabe5`.
 **DECISION:** никакой вывод об exactly-once network delivery и никакое
 ослабление pre-COMMIT blocker из этого не следуют.
+
+## D-062 — не смешивать COMMIT намерения с внешним effect/ACK
+
+В Stage 2G.4d.7e отдельный `syntheticCommittedIntent.ts`
+использует старую signed-SQL проверку и 009/013 outbox, но
+преднамеренно **не вызывает** прикладной callback до COMMIT.
+Новый успешный результат сообщает только об уже подтверждённом
+PostgreSQL COMMIT; `externalReceipt=not_attested`.
+Если PostgreSQL закоммитил событие, но ответ COMMIT был потерян,
+результат для producer остаётся **unknown / 503**, не false/failure
+и не HTTP success. Recovery идёт через независимый staging worker,
+не через повторный пользовательский request.
+
+Это отдельный opt-in пилот. Контракт старого pre-COMMIT
+`createTrustedSqlPublishedBoundary` не модифицирован,
+его unsafe network semantics не считаются исправленными.
+Реальная durable producer idempotency и внешние ACK — SPEC.
+
+**VERIFIED on code commit `fa895296a6ce4062687d0ad0af77f26114d4ef03`:** [PG16 #38309259713](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259713), [Main CI #38309259929](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259929), [Demo #38309259856](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259856), [Chromium #38309259696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259696) — all 4 SUCCESS. The final documentation commit requires its own independent Actions results; code verification does not imply production readiness.

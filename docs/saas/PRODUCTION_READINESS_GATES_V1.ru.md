@@ -213,3 +213,17 @@ Local receiver effect/receipt is committed as one row; repeated key
 returns the original receipt; synthetic fenced ACK verifies that row.
 Real transport, payload durability, remote receiver identity, production
 retry operations and the pre-COMMIT handoff gap remain **OPEN**.
+
+## 2G.4d.7e opt-in commit-only event pilot — production gate OPEN
+
+Новый staging-only entrypoint не исполняет локальную передачу
+перед COMMIT, но защищает только **свой event-only путь**.
+Никакой real payload, remote delivery и production wiring нет.
+Отдельные реальные PG16 fault injections тестируют
+pre-COMMIT ROLLBACK (нет durable intent) и неизвестный producer
+outcome после успешного COMMIT (событие есть, 503 возвращён).
+Создание второго логического события при caller retry ещё
+не исключено. Legacy synchronous handoff и production transport
+по-прежнему требуют нового решения и release/security approvals.
+
+**VERIFIED on code commit `fa895296a6ce4062687d0ad0af77f26114d4ef03`:** [PG16 #38309259713](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259713), [Main CI #38309259929](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259929), [Demo #38309259856](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259856), [Chromium #38309259696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259696) — all 4 SUCCESS. The final documentation commit requires its own independent Actions results; code verification does not imply production readiness.

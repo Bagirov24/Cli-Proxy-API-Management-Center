@@ -193,3 +193,16 @@ Pre-COMMIT synchronous local handoff remains an unsolved blocker.
 [Chromium #38307286115](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38307286115)
 all completed SUCCESS. The following documentation-only commit must be
 independently verified on its own SHA before claiming final CI green.
+
+## Stage 2G.4d.7e: intent-only trusted publication (separate path)
+
+The previous signed local publication still has a pre-COMMIT
+handoff hazard. The new opt-in `syntheticCommittedIntent.ts`
+injects only an inert pre-COMMIT callback; the separate 013/014
+receiver worker runs after a committed event has been observed.
+Loss of a producer COMMIT response returns an UNKNOWN 503 even
+when the event exists, and worker recovery proceeds on the
+same durable idempotency key. **No external delivery is claimed.**
+Read [the exact contract](COMMITTED_INTENT_ONLY_V1.ru.md).
+
+**VERIFIED on code commit `fa895296a6ce4062687d0ad0af77f26114d4ef03`:** [PG16 #38309259713](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259713), [Main CI #38309259929](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259929), [Demo #38309259856](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259856), [Chromium #38309259696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259696) — all 4 SUCCESS. The final documentation commit requires its own independent Actions results; code verification does not imply production readiness.
