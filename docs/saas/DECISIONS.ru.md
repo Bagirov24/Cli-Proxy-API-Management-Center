@@ -352,7 +352,9 @@ physical discard SQL соединения. Suspended tenant activity gate
 
 ## D-036 — видимость пустых строк не означает разрешённый SQL scope
 
-**2G.4b: IMPLEMENTED in isolated CI, verification pending.** В staging
+**2G.4b: IMPLEMENTED / VERIFIED в isolated PG16 CI
+([#38272959201](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38272959201),
+SHA `12a3b5b`); production-согласование revocation — PROPOSED.** В staging
 SQL boundary **нельзя** считать активный запрос разрешённым только
 потому, что PostgreSQL RLS вернул пустой набор. До/после SELECT
 обязателен signed DB read gate: active tenant, active membership,

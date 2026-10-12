@@ -1,6 +1,7 @@
 # SaaS Blueprint B — Stage 2G.4b: подписанная проверка статуса tenant и membership
 
-**Статус: IMPLEMENTED STAGING-ONLY, CI PENDING.** Не является production
+**Статус: IMPLEMENTED / VERIFIED только в ephemeral PG16 CI на кодовом
+SHA `12a3b5ba2c9e32786773e369eb1b80195b75e4d8`.** Не является production
 authentication, OIDC, публичным HTTP API или готовым backend. Все тестовые
 данные и миграции относятся только к disposable PostgreSQL 16 в GitHub
 Actions и отдельным синтетическим JWT/actor-store. Railway, CLIProxyAPI
@@ -99,3 +100,30 @@ metadata reads и не видит signing secret в БД.
 [TRUSTED_SQL_READ_BOUNDARY_V1.ru.md](TRUSTED_SQL_READ_BOUNDARY_V1.ru.md),
 [BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md)
 и [SECURITY_AUDIT_V1.ru.md](SECURITY_AUDIT_V1.ru.md).
+
+## Подтверждение GitHub Actions
+
+На SHA `12a3b5ba2c9e32786773e369eb1b80195b75e4d8` 4/4 SUCCESS:
+
+- [Основной CI #38272959097](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38272959097):
+  **1 763 Bun unit-теста PASS / 0 FAIL**, ESLint, TypeScript,
+  Vite default-off **3 305,72 KB**.
+- [Ephemeral PG16 #38272959201](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38272959201):
+  **SUCCESS**. В логах подтверждены `PASS: staging-only signed membership
+  role read gate installed` и `PASS: suspended tenant, DB-revoked member
+  and stale role deny 404 before output`. E2E PG16 — отдельный workflow,
+  **не входит в 1 763 unit-теста**.
+- [SaaS Demo #38272959212](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38272959212):
+  **SUCCESS**, opt-in HTML **3 386,51 KB**.
+- [Chromium QA #38272959125](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38272959125):
+  **SUCCESS**, synthetic browser QA.
+
+Первый кодовый SHA `bd25b0c` дал **1 763 passing unit-теста и
+успешный PG16**, но основной CI отклонил нарушение ESLint
+`preserve-caught-error`. Исправлено в `12a3b5b`: никакая исходная
+SQL exception не прикрепляется к `Error.cause` и не протекает
+через публичное сообщение. Полный повторный CI прошёл успешно.
+
+**VERIFIED только staging DB-authoritative gate**, не атомарная
+гарантия отзыва прав между SQL/actor-store, не физический discard,
+не real OIDC и не deployment.

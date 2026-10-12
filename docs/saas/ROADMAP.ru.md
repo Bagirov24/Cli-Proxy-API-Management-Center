@@ -525,8 +525,14 @@ reuse повреждённого пула.
 - [x] Adversarial unit и actual PostgreSQL CI probes: suspended tenant,
   revoked DB membership, role mismatch, deny-after-SELECT, healthy
   rollback/reuse, malformed SQL gate.
-- [ ] Финальный commit SHA и 4/4 GitHub Actions SUCCESS — до
-  подтверждения CI **IMPLEMENTED, NOT VERIFIED**.
+- [x] 4/4 GitHub Actions SUCCESS для кода SHA
+  `12a3b5ba2c9e32786773e369eb1b80195b75e4d8`:
+  [Main CI #38272959097](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38272959097)
+  (1763 tests, 0 failures, lint/TS/Vite),
+  [PG16 E2E #38272959201](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38272959201),
+  [Demo #38272959212](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38272959212),
+  [Browser #38272959125](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38272959125).
+  **VERIFIED staging read gate; НЕ atomic post-COMMIT revocation**.
 - [ ] PROPOSED: атомарная revocation consistency между actor directory
   и DB после второго gate/COMMIT, production OIDC, физический
   connection discard, durable audit, public API/data plane.

@@ -145,4 +145,7 @@ DB `tenant-auditor`. Два fixed SQL read gates до/после metadata
 SELECT возвращают explicit generic 404 вместо `200 []` без раскрытия
 tenant/resource IDs. Полный протокол и ограничения consistency:
 [TENANT_DB_AUTHZ_GATE_V1.ru.md](TENANT_DB_AUTHZ_GATE_V1.ru.md).
-**Только staging CI, пока не VERIFIED**.
+**VERIFIED в staging-only PG16 #38272959201**
+([Actions](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38272959201),
+кодовый SHA `12a3b5ba2c9e32786773e369eb1b80195b75e4d8`),
+не production tenant/session coherence.

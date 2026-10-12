@@ -180,3 +180,9 @@ exact role). Он превращается в generic `404 NOT_FOUND` и без�
 audit reason `authorization-changed` без tenant ID. Не путать с
 неисправностью PostgreSQL (generic 503 + quarantine).
 Подробнее: [TENANT_DB_AUTHZ_GATE_V1.ru.md](TENANT_DB_AUTHZ_GATE_V1.ru.md).
+
+**2G.4b SQL gate VERIFIED:** [ephemeral PG16 CI #38272959201](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38272959201)
+подтвердил suspended tenant, revoked DB membership, stale role
+и tenantless generic 404. Синтетический actor mapping остаётся
+неатомарным с PostgreSQL; двойной SQL gate не закрывает race после
+COMMIT. Подробности: [TENANT_DB_AUTHZ_GATE_V1.ru.md](TENANT_DB_AUTHZ_GATE_V1.ru.md).

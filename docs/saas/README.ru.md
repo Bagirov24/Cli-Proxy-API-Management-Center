@@ -440,6 +440,11 @@ PostgreSQL. Отрицательный результат до/после SELECT
 только для временной `saas_ephemeral_test` и запускается CI-отдельно,
 без пути к Railway. Проверяются suspended tenant, DB-revoked actor,
 stale server role, RLS и повторное использование исправного пула.
-**Статус: IMPLEMENTED / NOT VERIFIED до GitHub Actions**; механизм не
+**Статус: IMPLEMENTED / VERIFIED для staging PG16 на
+`12a3b5ba2c9e32786773e369eb1b80195b75e4d8`**
+([CI #38272959097](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38272959097),
+[PG16 #38272959201](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38272959201),
+[Demo #38272959212](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38272959212),
+[Browser #38272959125](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38272959125)); механизм не
 устраняет атомарную race window после SQL/COMMIT и не является
 production OIDC, real accounts либо сетевым enforcement.
