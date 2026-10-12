@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { SQL } from 'bun';
 import { createPinnedAccessTokenVerifier } from
   '../../src/features/saasBlueprint/controlApi/server/trustedAccessToken.ts';
-import { createTrustedSqlReadBoundary } from
+import { createTrustedSqlReadBoundary, createTrustedSqlPublishedBoundary } from
   '../../src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts';
 import { createPinnedHmacScopeIssuer, CONTROL_READ_SELECT_SQL, SCOPED_READ_GATE_SQL,
   SCOPED_AUTHORIZATION_REVISION_SQL, SCOPED_PUBLICATION_BARRIER_SQL,
@@ -249,8 +249,8 @@ const sink = createSyntheticAuditBuffer(128);
 const audit = createSecurityAuditRecorder(sink, { classification: 'staging' });
 let nextCorrelation = 0;
 
-function createRead(pool, selectedAudit = audit, revisions = undefined) {
-  return createTrustedSqlReadBoundary({
+function createTrustedDependencies(pool, selectedAudit = audit, revisions = undefined) {
+  return {
     tokens: verifier,
     actorDirectory: {
       async resolveActorId(identity) {
@@ -265,7 +265,13 @@ function createRead(pool, selectedAudit = audit, revisions = undefined) {
     },
     pool, signer, audit: selectedAudit, revisions,
     newCorrelationId: () => 'ci-e2e-' + (++nextCorrelation),
-  });
+  };
+}
+
+function createRead(pool, selectedAudit = audit, revisions = undefined) {
+  return createTrustedSqlReadBoundary(
+    createTrustedDependencies(pool, selectedAudit, revisions)
+  );
 }
 
 function request(accessToken, tenantId, collection = 'projects', options = {}) {
@@ -683,6 +689,53 @@ try {
     'Orbit independent after completed publication revoke'
   ), ['orbit-project']);
   console.info('PASS: real PG16 signed local publication precedes revoke COMMIT; stale epoch cannot republish');
+
+  // Stage 2G.4d.5b: a receipt-only API, where the actor/role/scope and
+  // revision baseline are minted INSIDE trusted JWT->actor->RBAC. Only the
+  // server-injected sink can stage local sanitized rows; no raw metadata
+  // is returned to the caller, and audit must precede synchronous handoff.
+  const trustedPublished = [];
+  const publishRead = createTrustedSqlPublishedBoundary(
+    createTrustedDependencies(driver, audit,
+      createSignedPgAuthorizationRevisionSource(driver, signer)),
+    {
+      async stage(payload, signal) {
+        assert.equal(signal.aborted, false);
+        assert.equal(payload.tenantId, 'demo-north');
+        assert.equal(payload.collection, 'projects');
+        assert.deepEqual(payload.rows.map(row => row.id), ['north-project']);
+        assert.equal(JSON.stringify(payload).includes('token_secret'), false);
+        assert.equal(trustedPublished.length, 0, 'Private staging never emits data');
+        const eventCount = sink.snapshot().length;
+        return () => {
+          assert.equal(sink.snapshot().length, eventCount + 1,
+            'Fail-closed audit must succeed BEFORE local handoff');
+          trustedPublished.push(payload.rows.map(row => row.id).join(','));
+        };
+      },
+    }
+  );
+  const publicationReceipt = await publishRead(
+    request(north, 'demo-north', 'projects', { limit: 1 })
+  );
+  assert.deepEqual(publicationReceipt.ok, true);
+  assert.equal(publicationReceipt.status, 200);
+  assert.equal(publicationReceipt.published, true);
+  assert.equal('rows' in publicationReceipt, false);
+  assert.equal('tenantId' in publicationReceipt, false);
+  assert.equal(JSON.stringify(publicationReceipt).includes('north-project'), false);
+  assert.deepEqual(trustedPublished, ['north-project']);
+  assertAudit(publicationReceipt, {
+    reason: 'read-allowed', actorId: 'actor-north', tenantId: 'demo-north',
+  });
+  const wrongTenantReceipt = await publishRead(
+    request(north, 'demo-orbit', 'projects')
+  );
+  assert.equal(wrongTenantReceipt.status, 404);
+  assert.equal('rows' in wrongTenantReceipt, false);
+  assert.deepEqual(trustedPublished, ['north-project']);
+  assert.equal(driver.stats().poisoned, false);
+  console.info('PASS: trusted JWT/actor/RBAC/audit -> signed local publication yields receipt only');
 
   const brokenAudit = createSecurityAuditRecorder({
     write() { throw new Error('HIDDEN_TEST_ONLY_REFRESH_TOKEN'); },

@@ -18,6 +18,7 @@ import {
 import {
   createTrustedSqlReadBoundary, createTrustedSqlPublishedBoundary,
   type TrustedLocalPublicationSink, type TrustedSqlReadRequest,
+  type TrustedSqlReadDependencies,
 } from '../src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary';
 import type {
   ServerAuthorizationRevisionSource,
@@ -140,7 +141,7 @@ function harness(options: TestHarnessOptions = {}) {
     issuer, audience, publicKeys: new Map([['synthetic-key', rsa.publicKey]]),
     nowSeconds: () => now,
   });
-  const deps = {
+  const deps: TrustedSqlReadDependencies = {
     tokens: verifier,
     actorDirectory: {
       async resolveActorId(identity) {
