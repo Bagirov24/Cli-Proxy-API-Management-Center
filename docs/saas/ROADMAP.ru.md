@@ -856,3 +856,26 @@ atomic revision increments. See
   reconciliation and reliable HTTP acknowledgement delivery.
 - [ ] **PROPOSED:** Vault/CPA/Gateway, enforced network egress,
   billing and production security/release approval.
+
+## 2G.4d.7c — fenced recovery of committed LOCAL audit (ephemeral only)
+
+- [x] Migration 012: private one-row-per-committed-event reconciliation
+  state, append-only attempts history, least-privileged NOLOGIN role.
+- [x] Bounded `FOR UPDATE SKIP LOCKED` claim, lease expiry reclaim,
+  monotonic generation and random UUID fencing to deny stale ACKs.
+- [x] Atomic `reconciled_local` commit, terminal idempotence,
+  cancellation/ROLLBACK and migration replay preservation.
+- [x] Physical PG worker crash before claim COMMIT and retry after
+  committed lease expiry, with second concurrent worker.
+- [x] Real non-superuser signed Bun.SQL publication E2E confirms
+  committed event can be observed without SQL rows or lease in receipt.
+- [x] **VERIFIED** code SHA `1aeeb218a68ca7f0c8094d51551802205b60f224`: [Main #38302392363](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392363)
+  (1 829 PASS), [PG16 #38302392290](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392290), [Demo #38302392314](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392314), [Chromium #38302392437](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392437), 4/4 SUCCESS.
+- [ ] **SPEC:** external HTTP transport/client ACK protocol, idempotent
+  remote delivery, safe recovery when local handoff happened but
+  PostgreSQL COMMIT failed, dead letters and backpressure.
+- [ ] **SPEC:** tamper-evident replicated audit, worker credentials,
+  retention/SLO, physical driver discard, multi-instance failover and
+  monotonic production migration system.
+- [ ] **PROPOSED:** real OIDC/Vault/CPA/Gateway/egress/billing/public API
+  and independently approved production release.

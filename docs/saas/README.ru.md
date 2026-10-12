@@ -712,3 +712,23 @@ tenant epoch и запрещает даже ранее активные токе
 `cade8751232b8deff40143c1ed31a8ac800194a1`: [Main CI #38300085289](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085289) (1 829 PASS / 0 FAIL), [PostgreSQL16 #38300085282](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085282), [Demo #38300085311](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085311),
 [Chromium #38300085300](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085300) — **4/4 SUCCESS**. Это не production OIDC, не реальный
 session manager и не HTTP delivery protocol.
+
+## 2G.4d.7c — восстановление локального audit/outbox после сбоев
+
+[Committed Local Audit Reconciliation](LOCAL_AUDIT_RECONCILIATION_V1.ru.md)
+добавляет staging-only PostgreSQL механизм после signed audit COMMIT:
+закрытая NOLOGIN роль, атомарный claim со `SKIP LOCKED`, короткая
+lease, fencing UUID+generation, re-claim после crash и terminal
+`reconciled_local` со вторым append-only журналом. Реальный Bun.SQL
+E2E проверяет receipt-only publish → COMMIT → local audit observation;
+два PG процесса подтверждают rollback незакоммиченного claim при
+завершении backend, затем re-claim и защиту от stale ACK.
+
+**IMPLEMENTED / VERIFIED** только ephemeral PG16:
+[Main #38302392363](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392363) (1,829 Bun PASS, 0 FAIL; ESLint/TypeScript/Vite),
+[PG16 #38302392290](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392290) (real Bun.SQL signed publication, PG16 crash/concurrency, rollback,
+lease reclaim/fencing), [Demo #38302392314](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392314), [Chromium #38302392437](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392437) — **4/4 SUCCESS** on code SHA
+`1aeeb218a68ca7f0c8094d51551802205b60f224`.
+
+`reconciled_local` не является подтверждением доставки HTTP и не
+устраняет gap «локальный handoff до неуспешного SQL COMMIT».
