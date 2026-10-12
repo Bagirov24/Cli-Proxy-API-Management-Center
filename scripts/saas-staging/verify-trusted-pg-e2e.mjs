@@ -159,6 +159,9 @@ function changeEphemeralFixture(action) {
     restoreNorthMembership: "UPDATE saas_rls.memberships SET status='active' WHERE actor_id='actor-north' AND tenant_id='demo-north' AND status='revoked'",
     disableSharedAccount: "UPDATE saas_rls.resource_grants SET status='disabled' WHERE id='grant-account' AND grantee_tenant_id='demo-north' AND status='active'",
     restoreSharedAccount: "UPDATE saas_rls.resource_grants SET status='active' WHERE id='grant-account' AND grantee_tenant_id='demo-north' AND status='disabled'",
+    expireSharedAccountSoon: "UPDATE saas_rls.resource_grants SET expires_at=clock_timestamp()+interval '3500 milliseconds' WHERE id='grant-account' AND grantee_tenant_id='demo-north' AND status='active'",
+    restoreSharedAccountExpiry: "UPDATE saas_rls.resource_grants SET expires_at=NULL WHERE id='grant-account' AND grantee_tenant_id='demo-north'",
+    waitWithoutAuthorizationWrite: "SELECT pg_sleep(4.2)",
   };
   if (!Object.prototype.hasOwnProperty.call(statements, action)) {
     throw new Error('Unrecognized staging-only fixture mutation');
@@ -170,6 +173,18 @@ function changeEphemeralFixture(action) {
     { stdout: 'ignore', stderr: 'ignore' }
   );
   assert.equal(outcome.exitCode, 0, 'Disposable PG16 fixture mutation failed');
+}
+
+function readEphemeralNorthEpoch() {
+  const outcome = Bun.spawnSync(
+    ['psql', '-X', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-c',
+      "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'"],
+    { stderr: 'ignore' }
+  );
+  assert.equal(outcome.exitCode, 0, 'Private disposable epoch unavailable');
+  const revision = Buffer.from(outcome.stdout).toString('utf8').trim();
+  assert.match(revision, /^[1-9][0-9]*$/);
+  return revision;
 }
 
 const issuer = 'https://synthetic-staging-issuer.example.test/oauth';
@@ -547,6 +562,35 @@ try {
   }
   assert.equal(driver.stats().discarded, 0);
   console.info('PASS: real PG16 signed revision detects after-second-COMMIT grant/tenant/member revoke');
+
+  // A grant expires because TIME advances, not because a writer commits.
+  // Both project SELECTs remain identical and the stored epoch remains
+  // byte-for-byte unchanged between initial and final attestation.
+  changeEphemeralFixture('expireSharedAccountSoon');
+  const beforeExpiryEpoch = readEphemeralNorthEpoch();
+  try {
+    driver.afterNthCommit(3, () => {
+      changeEphemeralFixture('waitWithoutAuthorizationWrite');
+    });
+    const timedOutGrant = await revisionGuardedRead(
+      request(north, 'demo-north', 'projects', { limit: 1 })
+    );
+    assert.equal(timedOutGrant.status, 404);
+    assert.equal('rows' in timedOutGrant, false);
+    assertAudit(timedOutGrant, {
+      reason: 'authorization-changed', actorId: 'actor-north', tenantId: null,
+    });
+    assert.equal(readEphemeralNorthEpoch(), beforeExpiryEpoch,
+      'grant elapsed time MUST NOT increment the stored SQL epoch');
+    assert.equal(driver.stats().poisoned, false);
+  } finally {
+    changeEphemeralFixture('restoreSharedAccountExpiry');
+  }
+  assert.deepEqual(visibleIds(
+    await revisionGuardedRead(request(orbit, 'demo-orbit', 'projects')),
+    'Orbit unaffected by North clock-only grant expiry'
+  ), ['orbit-project']);
+  console.info('PASS: real PG16 clock-only grant expiry denies unchanged rows and unchanged epoch');
 
   const brokenAudit = createSecurityAuditRecorder({
     write() { throw new Error('HIDDEN_TEST_ONLY_REFRESH_TOKEN'); },

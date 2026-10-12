@@ -21,9 +21,12 @@ export interface ServerAuthorizationRevisionSource {
 }
 
 declare const authorizationRevisionBrand: unique symbol;
-export type ServerAuthorizationRevision = string & {
+export type ServerAuthorizationRevision = Readonly<{
+  readonly value: string;
+  /** Earliest future active grant expiry, conservatively floored to ms. */
+  readonly notAfterMs: number | null;
   readonly [authorizationRevisionBrand]: true;
-};
+}>;
 
 export class AuthorizationRevisionChanged extends Error {
   constructor() {
@@ -74,16 +77,34 @@ export async function captureServerAuthorizationRevision(
       actorId: scope.actorId, tenantId: scope.tenantId,
       role: scope.role, correlationId: scope.correlationId,
     });
-    const revision = await source.readRevision(trustedScope, collection, signal);
-    // PostgreSQL BIGINT is represented as canonical decimal text; do not
-    // round 64-bit revisions through JavaScript Number.
-    if (signal.aborted || typeof revision !== 'string' ||
-        !REVISION_PATTERN.test(revision) || BigInt(revision) > MAX_INT64) {
-      throw new Error('Invalid revision attestation');
+    const raw = await source.readRevision(trustedScope, collection, signal);
+    // Legacy string sources are SYNTHETIC test doubles. The PostgreSQL
+    // adapter returns BOTH epoch and next grant-expiry deadline.
+    const candidate = typeof raw === 'string'
+      ? { revision: raw, notAfterMs: null } : raw;
+    if (signal.aborted || !candidate || typeof candidate !== 'object' ||
+        Array.isArray(candidate)) throw new Error('Missing revision attestation');
+    const entry = candidate as { revision?: unknown; notAfterMs?: unknown };
+    const epoch = entry.revision;
+    const until = entry.notAfterMs;
+    // PostgreSQL BIGINT must remain canonical decimal TEXT, never Number.
+    if (typeof epoch !== 'string' || !REVISION_PATTERN.test(epoch) ||
+        BigInt(epoch) > MAX_INT64 ||
+        (until !== null &&
+          (typeof until !== 'string' || !/^[1-9][0-9]{0,15}$/.test(until) ||
+           !Number.isSafeInteger(Number(until))))) {
+      throw new Error('Malformed revision or expiry cutoff');
     }
-    return revision as ServerAuthorizationRevision;
+    const attestation = Object.freeze({
+      value: epoch, notAfterMs: until === null ? null : Number(until),
+    }) as ServerAuthorizationRevision;
+    if (isAuthorizationRevisionExpiredAt(attestation, Date.now())) {
+      throw new AuthorizationRevisionChanged();
+    }
+    return attestation;
   } catch (error) {
-    if (error instanceof AuthorizationRevisionDenied) throw error;
+    if (error instanceof AuthorizationRevisionDenied ||
+        error instanceof AuthorizationRevisionChanged) throw error;
     // Invalid/missing/failed storage is unavailable, never an Allow.
     throw new AuthorizationRevisionUnavailable();
   }
@@ -99,5 +120,18 @@ export async function assertServerAuthorizationRevision(
   const current = await captureServerAuthorizationRevision(
     source, scope, collection, signal
   );
-  if (current !== baseline) throw new AuthorizationRevisionChanged();
+  if (current.value !== baseline.value ||
+      current.notAfterMs !== baseline.notAfterMs ||
+      isAuthorizationRevisionExpiredAt(baseline, Date.now())) {
+    throw new AuthorizationRevisionChanged();
+  }
+}
+
+/** Explicit clock check after last await, without leaking expiry to caller. */
+export function isAuthorizationRevisionExpiredAt(
+  value: Readonly<Pick<ServerAuthorizationRevision, 'notAfterMs'>>,
+  nowMs: number
+): boolean {
+  return value.notAfterMs !== null &&
+    (!Number.isSafeInteger(nowMs) || nowMs >= value.notAfterMs);
 }

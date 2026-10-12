@@ -1,3 +1,4 @@
+import { isAuthorizationRevisionExpiredAt } from '../src/features/saasBlueprint/controlApi/server/authorizationRevision';
 import { beforeAll, describe, expect, test } from 'bun:test';
 import {
   createSecurityAuditRecorder, createSyntheticAuditBuffer,
@@ -759,5 +760,70 @@ describe('Stage 2G.4d — opt-in server-owned revision guard (SYNTHETIC)', () =>
     expect(h.auditEvents()).toMatchObject([{
       reason: 'authorization-changed', tenantId: null,
     }]);
+  });
+});
+
+describe('Stage 2G.4d.4b — synthetic clock-only grant expiration', () => {
+  test('same epoch with deadline crossed while metadata is in flight gives 404', async () => {
+    const expiration = Date.now() + 60_000;
+    const rev = syntheticRevision({
+      revision: '7', notAfterMs: String(expiration),
+    });
+    const h = harness({ revisions: rev.source, onCommit(count) {
+      if (count === 1) rev.set({ revision: '7', notAfterMs: null });
+    } });
+    const result = await h.read(h.request(await accessToken()));
+    expect(result).toMatchObject({ ok: false, status: 404 });
+    expect(h.auditEvents()).toMatchObject([{
+      result: 'deny', reason: 'authorization-changed', tenantId: null,
+    }]);
+    expect(JSON.stringify(result)).not.toContain(String(expiration));
+    expect(h.quarantines).toEqual([]);
+  });
+
+  test('same epoch and unchanged deadline can Allow before expiry', async () => {
+    const rev = syntheticRevision({
+      revision: '7', notAfterMs: String(Date.now() + 60_000),
+    });
+    const h = harness({ revisions: rev.source });
+    expect(await h.read(h.request(await accessToken()))).toMatchObject({
+      ok: true, status: 200,
+    });
+  });
+
+  test('past deadline denies 404 BEFORE first metadata SQL', async () => {
+    const rev = syntheticRevision({
+      revision: '7', notAfterMs: String(Date.now() - 1000),
+    });
+    const h = harness({ revisions: rev.source });
+    expect(await h.read(h.request(await accessToken()))).toMatchObject({
+      ok: false, status: 404,
+    });
+    expect(h.acquired).toBe(0);
+    expect(h.auditEvents()).toMatchObject([{
+      result: 'deny', reason: 'authorization-changed', tenantId: null,
+    }]);
+  });
+
+  test('malformed trusted deadline is unavailable 503 before SQL', async () => {
+    for (const invalid of [undefined, 12345, '07', '9007199254740993']) {
+      const rev = syntheticRevision({ revision: '7', notAfterMs: invalid });
+      const h = harness({ revisions: rev.source });
+      expect(await h.read(h.request(await accessToken()))).toMatchObject({
+        ok: false, status: 503,
+      });
+      expect(h.acquired).toBe(0);
+    }
+  });
+
+  test('deadline comparison fails closed at exact millisecond', () => {
+    expect(isAuthorizationRevisionExpiredAt(
+      { notAfterMs: 1800000000000 }, 1799999999999)).toBe(false);
+    expect(isAuthorizationRevisionExpiredAt(
+      { notAfterMs: 1800000000000 }, 1800000000000)).toBe(true);
+    expect(isAuthorizationRevisionExpiredAt(
+      { notAfterMs: null }, 1800000000000)).toBe(false);
+    expect(isAuthorizationRevisionExpiredAt(
+      { notAfterMs: 1800000000000 }, Number.NaN)).toBe(true);
   });
 });

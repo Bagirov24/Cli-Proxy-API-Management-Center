@@ -664,3 +664,16 @@ atomic revision increments. See
 - [ ] **PROPOSED:** atomic read/revoke/response completion barrier.
 
 См. [AUTHORIZATION_REVISION_COVERAGE_V1.ru.md](AUTHORIZATION_REVISION_COVERAGE_V1.ru.md).
+
+## Этап 2G.4d.4b — grant expiry без write-event
+
+- [x] Private signed `authorized_revision_state` возвращает epoch и
+  раннюю будущую границу expiration, не раскрывая grants.
+- [x] Trusted TS boundary валидирует и сравнивает оба значения,
+  проверяет серверные часы перед Allow; expiry → generic 404,
+  malformed SQL → generic 503/quarantine.
+- [x] Synthetic + real ephemeral PostgreSQL E2E: expiration по времени
+  при одинаковых LIMITed metadata rows и неизменном raw tenant epoch.
+- [ ] **VERIFIED** только после точного GitHub CI SHA.
+- [ ] **SPEC/PROPOSED:** revocation/response linearization,
+  clock-skew/multi-instance policies и production driver.

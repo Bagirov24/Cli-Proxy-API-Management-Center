@@ -56,7 +56,14 @@ export const SCOPED_READ_GATE_SQL =
  * supply a trusted server-created scope, never actor/role from a request.
  */
 export const SCOPED_AUTHORIZATION_REVISION_SQL =
-  'SELECT saas_rls.authorized_revision($1::text, $2::text, $3::text, $4::text) AS revision';
+  'SELECT revision, not_after_ms FROM saas_rls.authorized_revision_state(' +
+  '$1::text, $2::text, $3::text, $4::text)';
+
+/** A DB-signed epoch with the next cutoff for any active expiring grant. */
+export interface ScopedSqlRevisionState {
+  readonly revision: string;
+  readonly notAfterMs: string | null;
+}
 
 /** Safe generic denial: never attach tenant, actor, resource or PG details. */
 export class ScopedSqlAuthorizationDenied extends Error {
@@ -320,15 +327,20 @@ async function executeSignedScopedRead(
             throw new Error('Malformed revision attestation');
           }
           const revision = result.rows[0].revision;
+          const deadline = result.rows[0].not_after_ms;
           if (revision === null) {
             denied = true;
             safe = [];
           } else if (typeof revision !== 'string' ||
                      !/^[1-9][0-9]{0,18}$/.test(revision) ||
-                     BigInt(revision) > 9_223_372_036_854_775_807n) {
-            throw new Error('Malformed revision value');
+                     BigInt(revision) > 9_223_372_036_854_775_807n ||
+                     (deadline !== null &&
+                       (typeof deadline !== 'string' ||
+                        !/^[1-9][0-9]{0,15}$/.test(deadline) ||
+                        !Number.isSafeInteger(Number(deadline))))) {
+            throw new Error('Malformed revision/expiry attestation');
           } else {
-            safe = [{ revision }];
+            safe = [{ revision, not_after_ms: deadline }];
           }
         } else {
           safe = result.rows.map((item) => {
@@ -419,8 +431,11 @@ export async function readSignedScopedAuthorizationRevision(
   issuer: SignedTransactionIssuer,
   request: ScopedSqlRead,
   nowSeconds: () => number = () => Math.floor(Date.now() / 1000)
-): Promise<string> {
+): Promise<ScopedSqlRevisionState> {
   const rows = await executeSignedScopedRead(pool, issuer, request, 'revision', nowSeconds);
-  // Validated inside the transaction, before COMMIT, never from raw SQL.
-  return rows[0].revision as string;
+  // Both values validated inside the signed transaction before COMMIT.
+  return {
+    revision: rows[0].revision as string,
+    notAfterMs: rows[0].not_after_ms as string | null,
+  };
 }

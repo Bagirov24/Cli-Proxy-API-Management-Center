@@ -21,7 +21,7 @@ function harness(rows: readonly SqlRow[] = [
     name: 'North Project', status: 'active', hidden_token: 'NEVER_RETURN' },
 ], gateAnswers: readonly boolean[] = [true, true]) {
   let gateIndex = 0;
-  let revisionRows: readonly SqlRow[] = [{ revision: '7' }];
+  let revisionRows: readonly SqlRow[] = [{ revision: '7', not_after_ms: null }];
   const calls: Call[] = [];
   const releases: boolean[] = [];
   const quarantines: string[] = [];
@@ -350,7 +350,7 @@ describe('Stage 2G.4d.3 — signed PostgreSQL revision attestation (fake pool)',
     const revision = await readSignedScopedAuthorizationRevision(h.pool, signer, {
       scope, collection: 'projects',
     }, () => now);
-    expect(revision).toBe('7');
+    expect(revision).toEqual({ revision: '7', notAfterMs: null });
     expect(h.calls.filter(x => x.sql === SCOPED_AUTHORIZATION_REVISION_SQL))
       .toEqual([{ sql: SCOPED_AUTHORIZATION_REVISION_SQL,
         params: ['demo-north', 'actor-north', 'tenant-admin', 'projects'] }]);
@@ -379,7 +379,7 @@ describe('Stage 2G.4d.3 — signed PostgreSQL revision attestation (fake pool)',
 
   test('signed SQL NULL is a generic denial, not a revision zero or Allow', async () => {
     const h = harness();
-    h.setRevisionRows([{ revision: null }]);
+    h.setRevisionRows([{ revision: null, not_after_ms: null }]);
     await expect(readSignedScopedAuthorizationRevision(h.pool, signer, {
       scope, collection: 'projects',
     }, () => now)).rejects.toBeInstanceOf(ScopedSqlAuthorizationDenied);
@@ -394,6 +394,11 @@ describe('Stage 2G.4d.3 — signed PostgreSQL revision attestation (fake pool)',
       [{ revision: '9223372036854775808' }],
       [{ revision: '7' }, { revision: '8' }],
       [{ revision: '7; DROP TABLE sensitive' }],
+      [{ revision: '7', not_after_ms: undefined }],
+      [{ revision: '7', not_after_ms: 42 }],
+      [{ revision: '7', not_after_ms: '07' }],
+      [{ revision: '7', not_after_ms: '9007199254740993' }],
+      [{ revision: '7', not_after_ms: '-1' }],
     ]) {
       const h = harness();
       h.setRevisionRows(rows);
@@ -439,5 +444,30 @@ describe('Stage 2G.4d.3 — signed PostgreSQL revision attestation (fake pool)',
       scope, collection: '__proto__' as ControlCollection,
     }, () => now)).rejects.toThrow();
     expect(h.calls).toEqual([]);
+  });
+});
+
+describe('Stage 2G.4d.4b — signed next-grant-expiry clock guard', () => {
+  test('accepts a canonical server-only deadline without displaying it', async () => {
+    const h = harness();
+    h.setRevisionRows([{ revision: '42', not_after_ms: '1890000000000' }]);
+    const attestation = await readSignedScopedAuthorizationRevision(h.pool, signer, {
+      scope, collection: 'accounts',
+    }, () => now);
+    expect(attestation).toEqual({ revision: '42', notAfterMs: '1890000000000' });
+    expect(h.calls.find(x => x.sql === SCOPED_AUTHORIZATION_REVISION_SQL)?.params)
+      .toEqual(['demo-north', 'actor-north', 'tenant-admin', 'accounts']);
+    expect(h.quarantines).toEqual([]);
+    expect(h.releases).toEqual([false]);
+  });
+
+  test('missing expiry column is a malformed DB result, not an Allow', async () => {
+    const h = harness();
+    h.setRevisionRows([{ revision: '42' }]);
+    await expect(readSignedScopedAuthorizationRevision(h.pool, signer, {
+      scope, collection: 'projects',
+    }, () => now)).rejects.toThrow('Scoped metadata unavailable');
+    expect(h.quarantines).toEqual(['read-failed']);
+    expect(h.releases).toEqual([true]);
   });
 });

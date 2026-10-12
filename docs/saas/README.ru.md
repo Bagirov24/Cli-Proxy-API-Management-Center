@@ -550,3 +550,16 @@ Pool→Account связи инвалидирует оба затронутых t
 **IMPLEMENTED, CI PENDING.** Истечение grants только от хода времени,
 финальный revocation/response barrier и production driver остаются
 отдельными задачами.
+
+## Этап 2G.4d.4b — expiry без SQL write
+
+[Signed grant-expiry guard](AUTHORIZATION_EXPIRY_GUARD_V1.ru.md)
+закрывает окно, в котором grant истекает по времени, но PostgreSQL
+триггеры не повышают revision. Миграция 006 подписанно возвращает
+ближайшую deadline активного гранта; server-only guard сравнивает
+epoch и deadline и fail-closed при переходе через неё. Добавлены
+реальные ephemeral PG16 tests с неизменным SQL epoch и
+проверками no-secret/no-IDOR.
+
+**IMPLEMENTED / CI PENDING**, production revocation/HTTP barrier
+по-прежнему не доказан.

@@ -464,3 +464,16 @@ Grant/status trigger в 004 недостаточен, если link/route/projec
 Избыточная инвалидация безопаснее пропущенного revocation.
 Истечение `expires_at` по времени без SQL-изменения всё ещё требует
 отдельного временного guard. Production HTTP linearization не доказана.
+
+## D-042 — время истечения grant должно быть отдельной частью auth state (2G.4d.4b)
+
+**IMPLEMENTED staging-only / CI PENDING; production SPEC.**
+
+PostgreSQL triggers не происходят в момент `expires_at`, поэтому
+одного monotonic tenant epoch недостаточно. Signed DB state содержит
+tenant epoch и ближайшую будущую границу истечения независимо выданных
+grants; финальный guard сравнивает обе величины и текущие серверные
+часы. NULL deadline означает отсутствие будущих сроков на текущий
+DB snapshot, а не бесконечную авторизацию. Expiry → 404 +
+tenantless audit; malformed SQL → 503/quarantine. Для production
+всё ещё нужен надёжный clock authority и revocation barrier.
