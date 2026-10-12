@@ -280,8 +280,9 @@ production Bun pool, не оправдывают silent fallback и не вед�
 
 ## D-033 — только server-held identity и двойная AuthZ-проверка (2G.2)
 
-**Статус: IMPLEMENTED isolated contract / SIMULATED tests,
-настоящий SaaS backend — PROPOSED.**
+**Статус: IMPLEMENTED isolated contract / VERIFIED synthetic tests
+([CI #38263480676](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38263480676),
+SHA `2ceb572`); настоящий SaaS backend — PROPOSED.**
 
 Pinned JWT API access-token с `typ=at+jwt` и pinned issuer/kid/audience
 не предоставляет полномочий через role/tenant/actor claims. Internal

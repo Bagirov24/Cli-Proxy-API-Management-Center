@@ -1,8 +1,9 @@
 # Этап 2G.2 — Trusted Identity → AuthZ → Signed SQL Boundary (RU)
 
-> **Статус: IMPLEMENTED как изолированный server-only contract;**
-> **SIMULATED** для JWT/actor-store и fake SQL-port. Статус VERIFIED
-> присваивается только после GitHub Actions на конкретном SHA.
+> **Статус: IMPLEMENTED contract / VERIFIED на синтетических unit-тестах**
+> после [GitHub CI #38263480676](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38263480676)
+> для SHA `2ceb5727faf60efb7eabf90557470c14c5d0f2b1`;
+> JWT/actor-store/fake SQL-port всё ещё SIMULATED.
 > Это **НЕ production authentication, не OIDC и не HTTP endpoint**.
 
 ## Цель
@@ -111,3 +112,23 @@ pipeline через настоящий драйвер**.
 [IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md),
 [AUTHZ_RBAC_V1.ru.md](AUTHZ_RBAC_V1.ru.md),
 [STAGING_POSTGRES_RLS_V1.ru.md](STAGING_POSTGRES_RLS_V1.ru.md).
+
+## Фактическая проверка 2G.2
+
+На commit `2ceb5727faf60efb7eabf90557470c14c5d0f2b1`:
+
+- [Основной CI #38263480676](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38263480676):
+  **SUCCESS**; 1 745 Bun тестов, 0 ошибок, ESLint, TypeScript
+  и default-off Vite build; `dist/index.html` **3 305,72 KB**,
+  неизменно относительно 2G.1b.
+- [Ephemeral PG16 #38263480684](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38263480684):
+  **SUCCESS** для существующего signed RLS/native-driver CI.
+  **Не** является E2E исполнением нового JWT pipeline в PostgreSQL.
+- [Demo #38263480798](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38263480798):
+  **SUCCESS**, opt-in HTML **3 386,51 KB**.
+- [Browser QA #38263480692](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38263480692):
+  **SUCCESS**, синтетический SaaS UI.
+
+Первый CI SHA `16e1529` имел **2 ESLint prefer-const ошибки**
+после успешных 1 745 unit-тестов. Они исправлены в
+`2ceb572`, затем выполнен полный повторный CI.

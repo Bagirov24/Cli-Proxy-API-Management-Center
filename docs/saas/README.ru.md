@@ -365,7 +365,9 @@ HMAC/transaction-local role и проверяет actor/token/RBAC повтор�
 смена роли и AbortSignal не возвращают stale rows.
 
 Строгие generic 401/403/404/503, secret-free ответы и SQL field
-allowlist. **Статус: IMPLEMENTED contract / SIMULATED unit tests**.
+allowlist. **Статус: IMPLEMENTED contract / VERIFIED synthetic unit tests**
+([CI #38263480676](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38263480676)
+на SHA `2ceb5727faf60efb7eabf90557470c14c5d0f2b1`).
 Этот порт не является HTTP API, OIDC/SSO или production backend;
 реальная E2E PostgreSQL интеграция JWT→AuthZ→SQL остаётся PROPOSED.
 Подробнее: [TRUSTED_SQL_READ_BOUNDARY_V1.ru.md](TRUSTED_SQL_READ_BOUNDARY_V1.ru.md).

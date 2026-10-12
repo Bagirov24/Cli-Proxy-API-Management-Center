@@ -432,8 +432,15 @@ reuse повреждённого пула.
   spoofed headers/JWT claims, чужой issuer/audience/kid,
   ID-token, отозванный actor, duplicate membership, auditor deny,
   SQL-like tenant values, DB failure, race revocation и stale abort.
-- [ ] Подтверждение фактическим CI на конечном SHA (не считать
-  VERIFIED, пока Actions не завершатся успешно).
+- [x] Подтверждено 4/4 GitHub Actions для кода SHA
+  `2ceb5727faf60efb7eabf90557470c14c5d0f2b1`:
+  [CI](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38263480676)
+  (1 745 тестов, 0 fail, lint/tsc/build),
+  [PG16](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38263480684),
+  [Demo](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38263480798),
+  [Chromium](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38263480692).
+  Статус VERIFIED относится к isolated contracts и synthetic tests,
+  НЕ к real OIDC → SQL integration.
 - [ ] **PROPOSED:** настоящий JWT→actor-store→PostgreSQL wire-protocol
   end-to-end acceptance (2G.4), реальный OIDC issuer,
   session replay/revocation across replicas, production pool/physical
