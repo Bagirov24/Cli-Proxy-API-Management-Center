@@ -79,6 +79,18 @@ SELECT revision AS epoch_before_revoke FROM
  saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north' \gset
 UPDATE saas_rls_private.actor_token_sessions SET status='revoked'
  WHERE fingerprint=repeat('a',64);
+DO $revoked_cannot_reactivate$
+DECLARE rejected BOOLEAN:=FALSE;
+BEGIN
+ BEGIN
+   UPDATE saas_rls_private.actor_token_sessions SET status='active'
+    WHERE fingerprint=repeat('a',64);
+ EXCEPTION WHEN OTHERS THEN rejected:=TRUE;
+ END;
+ PERFORM saas_rls_test.assert_true(rejected,
+   'A previously revoked fingerprint must not change back to active');
+END
+$revoked_cannot_reactivate$;
 SELECT saas_rls_test.assert_true(
  (SELECT revision=(:'epoch_before_revoke')::BIGINT+1
   FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'),
@@ -102,6 +114,19 @@ RESET ROLE;
 UPDATE saas_rls_private.actor_token_sessions
  SET expires_at=statement_timestamp()+interval '850 milliseconds'
  WHERE fingerprint=repeat('b',64);
+DO $ttl_no_extension$
+DECLARE rejected BOOLEAN:=FALSE;
+BEGIN
+ BEGIN
+   UPDATE saas_rls_private.actor_token_sessions
+   SET expires_at=statement_timestamp()+interval '3 minutes'
+   WHERE fingerprint=repeat('b',64);
+ EXCEPTION WHEN OTHERS THEN rejected:=TRUE;
+ END;
+ PERFORM saas_rls_test.assert_true(rejected,
+   'Enrolled token expiry cannot be extended by UPDATE');
+END
+$ttl_no_extension$;
 SELECT revision AS expiry_epoch FROM
  saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north' \gset
 SELECT saas_rls_test.issue_bound_scope('actor-bound-sql','demo-north',repeat('b',64),120);
@@ -120,6 +145,20 @@ SELECT saas_rls_test.assert_true(
  'Clock-only token expiry must not advance raw revision');
 
 DELETE FROM saas_rls_private.actor_token_sessions WHERE actor_id='actor-bound-sql';
+DO $fingerprint_no_reuse$
+DECLARE rejected BOOLEAN:=FALSE;
+BEGIN
+ BEGIN
+   INSERT INTO saas_rls_private.actor_token_sessions
+     (fingerprint,actor_id,status,expires_at)
+   VALUES (repeat('a',64),'actor-bound-sql','active',
+           statement_timestamp()+interval '2 minutes');
+ EXCEPTION WHEN OTHERS THEN rejected:=TRUE;
+ END;
+ PERFORM saas_rls_test.assert_true(rejected,
+  'DELETE+INSERT cannot resurrect an already used fingerprint');
+END
+$fingerprint_no_reuse$;
 SELECT saas_rls_test.issue_scope('actor-bound-sql','demo-north',120);
 SET LOCAL ROLE saas_rls_reader;
 SELECT saas_rls_test.assert_true(saas_rls.scope_tenant() IS NULL,
@@ -137,6 +176,8 @@ SELECT saas_rls_test.assert_true(saas_rls.scope_tenant() IS NULL,
 RESET ROLE;
 SELECT saas_rls_test.assert_true(
  (SELECT COUNT(*)=1 FROM saas_rls_private.token_bound_actor_tombstones
+  WHERE actor_id='actor-bound-sql') AND
+ (SELECT COUNT(*)=2 FROM saas_rls_private.token_fingerprint_tombstones
   WHERE actor_id='actor-bound-sql') AND
  NOT has_table_privilege('saas_rls_reader','saas_rls_private.actor_token_sessions','SELECT')
  AND NOT has_table_privilege('saas_ci_runner','saas_rls_private.actor_token_sessions','INSERT')

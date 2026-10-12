@@ -42,6 +42,19 @@ CREATE TABLE IF NOT EXISTS saas_rls_private.actor_token_sessions (
 ALTER TABLE saas_rls_private.actor_token_sessions OWNER TO saas_rls_owner;
 REVOKE ALL ON saas_rls_private.actor_token_sessions FROM PUBLIC,saas_rls_reader;
 
+-- A spent fingerprint must NEVER be reassigned or resurrected, including
+-- DELETE + INSERT. This is a private enrollment history, not an audit stream.
+CREATE TABLE IF NOT EXISTS saas_rls_private.token_fingerprint_tombstones (
+  fingerprint TEXT PRIMARY KEY CHECK (fingerprint ~ '^[0-9a-f]{64}$'),
+  actor_id TEXT NOT NULL CHECK (actor_id ~ '^[A-Za-z0-9_-]{1,128}$')
+);
+ALTER TABLE saas_rls_private.token_fingerprint_tombstones OWNER TO saas_rls_owner;
+REVOKE ALL ON saas_rls_private.token_fingerprint_tombstones
+ FROM PUBLIC,saas_rls_reader;
+INSERT INTO saas_rls_private.token_fingerprint_tombstones(fingerprint,actor_id)
+  SELECT fingerprint,actor_id FROM saas_rls_private.actor_token_sessions
+ON CONFLICT (fingerprint) DO NOTHING;
+
 CREATE INDEX IF NOT EXISTS actor_token_sessions_actor_idx
   ON saas_rls_private.actor_token_sessions(actor_id);
 -- Index ownership follows the private table in PostgreSQL.
@@ -57,6 +70,12 @@ BEGIN
        NEW.actor_id IS DISTINCT FROM OLD.actor_id THEN
       RAISE EXCEPTION 'Moving token identity between actors is forbidden';
     END IF;
+    IF OLD.status='revoked' AND NEW.status<>'revoked' THEN
+      RAISE EXCEPTION 'Revoked token fingerprint may not be reactivated';
+    END IF;
+    IF NEW.expires_at>OLD.expires_at THEN
+      RAISE EXCEPTION 'Token fingerprint expiry may not be extended';
+    END IF;
     IF NEW IS NOT DISTINCT FROM OLD THEN RETURN NULL; END IF;
   END IF;
   affected_actor := CASE WHEN TG_OP='DELETE' THEN OLD.actor_id ELSE NEW.actor_id END;
@@ -70,6 +89,12 @@ BEGIN
     ) THEN
       RAISE EXCEPTION 'Unknown actor for token fingerprint enrollment';
     END IF;
+    IF EXISTS (SELECT 1 FROM saas_rls_private.token_fingerprint_tombstones
+               WHERE fingerprint=NEW.fingerprint) THEN
+      RAISE EXCEPTION 'Previously used fingerprint cannot be re-enrolled';
+    END IF;
+    INSERT INTO saas_rls_private.token_fingerprint_tombstones(fingerprint,actor_id)
+      VALUES (NEW.fingerprint,affected_actor);
     INSERT INTO saas_rls_private.token_bound_actor_tombstones(actor_id)
       VALUES (affected_actor) ON CONFLICT (actor_id) DO NOTHING;
   END IF;
@@ -201,6 +226,8 @@ BEGIN
         'saas_rls_private.actor_token_sessions','INSERT')
    OR has_table_privilege('saas_rls_reader',
         'saas_rls_private.token_bound_actor_tombstones','SELECT')
+   OR has_table_privilege('saas_ci_runner',
+        'saas_rls_private.token_fingerprint_tombstones','SELECT')
    OR has_table_privilege('saas_rls_reader',
         'saas_rls_private.actor_session_state','UPDATE')
    OR has_function_privilege('saas_rls_reader',
