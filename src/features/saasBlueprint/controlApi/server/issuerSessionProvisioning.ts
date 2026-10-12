@@ -50,8 +50,12 @@ function verifiedIssuer(issuer: string): boolean {
   } catch { return false; }
 }
 function safeSubject(subject: string): boolean {
-  return subject.length >= 1 && subject.length <= 256 &&
-    !/[\x00-\x1f\x7f]/.test(subject);
+  if (subject.length < 1 || subject.length > 256) return false;
+  for (let i = 0; i < subject.length; i += 1) {
+    const code = subject.charCodeAt(i);
+    if (code < 32 || code === 127) return false;
+  }
+  return true;
 }
 
 /**
