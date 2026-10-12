@@ -741,3 +741,58 @@ describe('Stage 2G.4d.6b — signed durable-on-COMMIT audit pilot (fake SQL)', (
     expect(h.calls.some(x => x.sql === SCOPED_PUBLICATION_OUTBOX_SQL)).toBe(false);
   });
 });
+
+describe('Stage 2G.4d.7a — per-token fingerprint HMAC (no live database)', () => {
+  test('same actor/tenant with different verified bearer fingerprints signs different MACs', async () => {
+    const base = await signer.sign(scope, '123456789', now + 60);
+    const fpA = 'a'.repeat(64);
+    const fpB = 'b'.repeat(64);
+    const a = await signer.sign({ ...scope, tokenFingerprint: fpA }, '123456789', now + 60);
+    const b = await signer.sign({ ...scope, tokenFingerprint: fpB }, '123456789', now + 60);
+    expect(base).toMatch(/^[0-9a-f]{64}$/);
+    expect(a).toMatch(/^[0-9a-f]{64}$/);
+    expect(a).not.toBe(b);
+    expect(a).not.toBe(base);
+    expect(b).not.toBe(base);
+  });
+
+  test('strictly bound SQL transaction sends sixth LOCAL GUC, never interpolates fingerprint', async () => {
+    const h = harness();
+    const fp = 'f'.repeat(64);
+    await readSignedScopedMetadata(h.pool, signer, {
+      scope: { ...scope, tokenFingerprint: fp }, collection: 'projects',
+    }, () => now);
+    const sets = h.calls.filter(x => x.sql.startsWith('SELECT set_config'));
+    expect(sets).toHaveLength(6);
+    expect(sets.at(-1)?.params).toEqual(['saas.scope_token_fingerprint', fp]);
+    expect(h.calls.map(x => x.sql).join(' ')).not.toContain(fp);
+    expect(h.releases).toEqual([false]);
+  });
+
+  test('malformed fingerprint denied before ANY SQL acquisition', async () => {
+    const h = harness();
+    for (const bad of ['a', 'A'.repeat(64), 'z'.repeat(64),
+      'f'.repeat(65), 17, null]) {
+      await expect(readSignedScopedMetadata(h.pool, signer, {
+        scope: { ...scope, tokenFingerprint: bad as string },
+        collection: 'projects',
+      }, () => now)).rejects.toThrow('Invalid scoped read');
+    }
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test('server revision capture freezes same verified fingerprint over asynchronous read', async () => {
+    const fp = 'e'.repeat(64);
+    let received: unknown;
+    const result = await captureServerAuthorizationRevision({
+      async readRevision(trusted) {
+        received = trusted;
+        return { revision: '8', notAfterMs: null };
+      },
+    }, { ...scope, tokenFingerprint: fp }, 'projects',
+    new AbortController().signal);
+    expect(result.value).toBe('8');
+    expect(received).toMatchObject({ ...scope, tokenFingerprint: fp });
+    expect(Object.isFrozen(received)).toBe(true);
+  });
+});

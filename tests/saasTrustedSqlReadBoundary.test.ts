@@ -72,6 +72,7 @@ interface TestHarnessOptions {
   readonly onActorLookup?: (count: number) => void;
   readonly publisher?: TrustedLocalPublicationSink;
   readonly recordStagingOutbox?: boolean;
+  readonly requireTokenBoundSession?: boolean;
 }
 
 function harness(options: TestHarnessOptions = {}) {
@@ -162,6 +163,7 @@ function harness(options: TestHarnessOptions = {}) {
     },
     pool, signer, audit, revisions: options.revisions,
     recordStagingOutbox: options.recordStagingOutbox,
+    requireTokenBoundSession: options.requireTokenBoundSession,
     newCorrelationId: () => correlationId,
   };
   const read = createTrustedSqlReadBoundary(deps);
@@ -1029,5 +1031,66 @@ describe('2G.4d.6b — receipt-only signed PG outbox gate', () => {
     expect(h.queries.filter(q => q.sql === SCOPED_PUBLICATION_OUTBOX_SQL))
       .toHaveLength(0);
     expect(h.acquired).toBe(0);
+  });
+});
+
+describe('Stage 2G.4d.7a — strict bearer fingerprint in trusted publication', () => {
+  test('only SHA-256 of verified signed bearer enters PG scope, never client jti or receipt', async () => {
+    const captures: string[] = [];
+    const source: ServerAuthorizationRevisionSource = {
+      async readRevision(scope) {
+        if (scope.tokenFingerprint) captures.push(scope.tokenFingerprint);
+        return { revision: '7', notAfterMs: null };
+      },
+    };
+    let handoffs = 0;
+    const h = harness({
+      requireTokenBoundSession: true,
+      revisions: source,
+      recordStagingOutbox: true,
+      publisher: { async stage() { return () => { handoffs++; }; } },
+    });
+    const bearer = await accessToken({
+      jti: 'UNTRUSTED_JTI_NEVER_USE_AS_DB_KEY',
+      actorId: 'forged-actor', role: 'tenant-owner',
+    });
+    const fingerprint = Array.from(
+      new Uint8Array(await crypto.subtle.digest(
+        'SHA-256', new TextEncoder().encode(bearer))),
+      b => b.toString(16).padStart(2,'0')
+    ).join('');
+    const result = await h.published!(h.request(bearer));
+    expect(result).toMatchObject({ ok: true, status: 200, published: true });
+    expect(handoffs).toBe(1);
+    expect(captures).toEqual([fingerprint, fingerprint]);
+    const boundSets = h.queries.filter(q =>
+      q.sql.includes('set_config') &&
+      q.params[0] === 'saas.scope_token_fingerprint');
+    expect(boundSets).toHaveLength(3);
+    expect(boundSets.every(q => q.params[1] === fingerprint)).toBe(true);
+    expect(JSON.stringify(result)).not.toContain(fingerprint);
+    expect(JSON.stringify(result)).not.toContain('UNTRUSTED_JTI');
+    expect(JSON.stringify(h.auditEvents())).not.toContain(fingerprint);
+    expect(h.released).toEqual([false,false,false]);
+  });
+
+  test('strict opt-in without server revision source denies before SQL', async () => {
+    const h = harness({ requireTokenBoundSession: true });
+    const result = await h.read(h.request(await accessToken()));
+    expect(result).toMatchObject({ ok: false, status: 503 });
+    expect(h.acquired).toBe(0);
+    expect(h.auditEvents()).toMatchObject([{ result: 'error', tenantId: null }]);
+  });
+
+  test('invalid JWT in strict mode never enters signed DB scope', async () => {
+    const h = harness({
+      requireTokenBoundSession: true,
+      publisher: { async stage() { throw Error('NEVER_STAGE'); } },
+    });
+    const forged = (await accessToken()).replace(/.$/, 'X');
+    const response = await h.published!(h.request(forged));
+    expect(response).toMatchObject({ ok: false, status: 401 });
+    expect(h.acquired).toBe(0);
+    expect(h.queries).toHaveLength(0);
   });
 });
