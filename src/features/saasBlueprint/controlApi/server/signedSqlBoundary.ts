@@ -74,6 +74,9 @@ export interface ScopedSqlRevisionState {
 /** prepare MUST stage data privately. Only synchronous commit may hand off. */
 export interface ScopedPublicationHandoff {
   prepare(signal: AbortSignal): Promise<() => void>;
+  /** Mandatory audit can run synchronously AFTER all DB/expiry gates,
+   * immediately before the local atomic handoff. Never return a Promise. */
+  beforeCommit?: () => void;
 }
 
 /** Server-owned only; baseline comes from verified capture, never JWT/UI. */
@@ -397,6 +400,13 @@ async function executeSignedScopedRead(
               denied = true;
             }
             if (!denied) {
+              // Synchronous audit is the final fail-closed prepublication
+              // check. A rejected audit cannot leak any staged payload.
+              const audited: unknown = publication.handoff.beforeCommit?.();
+              if (audited !== undefined) {
+                throw new Error('Asynchronous publication audit unsupported');
+              }
+              if (controller.signal.aborted) throw new Error('Publication aborted');
               // Only a synchronous, atomic LOCAL handoff is admissible.
               // Remote transport receipts cannot be proven by this module.
               const completion: unknown = commit();
