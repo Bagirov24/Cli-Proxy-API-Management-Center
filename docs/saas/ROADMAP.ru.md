@@ -832,3 +832,27 @@ atomic revision increments. See
   physical connection discard, token-specific audit correlation.
 - [ ] **SPEC/PROPOSED:** crash-safe bounded HTTP/outbox delivery,
   tamper-evident audit, Vault, CPA/Gateway, egress and billing.
+
+## 2G.4d.7b — issuer/subject anchored session lifecycle
+
+- [x] Guarded migration 011: immutable issuer+subject/actor directory,
+  permanent issuer-bound tombstone, isolated NOLOGIN bootstrap/provisioner
+  function capabilities and signed RLS subject-status revalidation.
+- [x] Server-only verified RS256 bearer provisioning port uses verified
+  token expiry, exact signed JWT SHA-256, double-checks actor directory,
+  never trusts `jti`/actor/role claims or logs bearer.
+- [x] SQL + real PG16 non-superuser E2E: A revoke, B continues; then
+  subject revoke denies B with token row still individually active;
+  immutable identity/ACLs, rollback and no forged audit Allow.
+- [x] Multi-process PG16 signed read/publication FOR SHARE vs
+  issuer-subject revoke COMMIT; unchanged epoch until earlier COMMIT.
+- [x] **VERIFIED** code SHA `cade8751232b8deff40143c1ed31a8ac800194a1`: [Main CI #38300085289](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085289) (1 829 PASS),
+  [PostgreSQL16 #38300085282](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085282), [Demo #38300085311](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085311), [Chromium #38300085300](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085300) — 4/4 SUCCESS.
+- [ ] **SPEC:** issuer-controlled production enrollment/logout/rotation,
+  secure provisioning credentials, session ownership across instances.
+- [ ] **SPEC:** production monotonic migration registry and tested
+  failover/rollback; never replay 010 after 011.
+- [ ] **SPEC:** token/subject-specific tamper-evident audit/outbox
+  reconciliation and reliable HTTP acknowledgement delivery.
+- [ ] **PROPOSED:** Vault/CPA/Gateway, enforced network egress,
+  billing and production security/release approval.

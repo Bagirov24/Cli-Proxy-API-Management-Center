@@ -699,3 +699,16 @@ Signed audit/outbox в migration 009 сохраняет минимальное r
 [Demo](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38296991833),
 [Chromium](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38296991887).
 Не является production OIDC/session manager или HTTP receipt.
+
+## 2G.4d.7b — закрытый issuer/subject session provisioning (staging)
+
+[Issuer Session Enrollment](ISSUER_SESSION_ENROLLMENT_V1.ru.md)
+добавляет неизменяемый trusted `issuer+subject→actor` в disposable
+PG16 и раздельные NOLOGIN-роли для bootstrap личности и регистрации
+подписанного JWT fingerprint. Отзыв subject транзакционно меняет
+tenant epoch и запрещает даже ранее активные токены через signed RLS.
+
+**IMPLEMENTED / VERIFIED** только synthetic/ephemeral на code SHA
+`cade8751232b8deff40143c1ed31a8ac800194a1`: [Main CI #38300085289](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085289) (1 829 PASS / 0 FAIL), [PostgreSQL16 #38300085282](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085282), [Demo #38300085311](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085311),
+[Chromium #38300085300](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085300) — **4/4 SUCCESS**. Это не production OIDC, не реальный
+session manager и не HTTP delivery protocol.
