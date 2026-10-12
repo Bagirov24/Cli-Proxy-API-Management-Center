@@ -319,3 +319,21 @@ AbortSignal на каждый SQL-вызов и ограниченное ожи�
 production-pool: встроенный Bun.SQL 1.3.14 пока не доказал независимый
 atomic physical discard, bounded network disconnect и корректность
 повторного использования после отмены. См. [BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md).
+
+## Этап 2G.1b — native Bun SQL fault probes (STAGING / CI-gated)
+
+Добавлен строго изолированный раздел в `scripts/saas-staging/verify-bun-postgres.mjs`.
+В GitHub Actions на *временном* PG16 запускаются:
+- отмена резервирования при исчерпанном `max=1` и проверка
+  следующего North/Orbit RLS-чтения;
+- серверный `statement_timeout` в транзакции, состояние failed
+  transaction, подтверждённый `ROLLBACK` и очистка `SET LOCAL`;
+- настоящий `Bun.Query.cancel()` во время `pg_sleep`, отказ от
+  использования прежнего pool и проверка его shutdown;
+- новая **независимая** `SQL`-инстанция после остановки тестовых pools
+  с North/Orbit isolation.
+
+Проверка `pg_sleep` выполняется только в защищённом CI-тесте, не входит
+в SQL allowlist и не открывает пользователю произвольный SQL. Нельзя
+интерпретировать восстановление **нового** пула как успешный recycle
+повреждённого connection. См. [BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md).

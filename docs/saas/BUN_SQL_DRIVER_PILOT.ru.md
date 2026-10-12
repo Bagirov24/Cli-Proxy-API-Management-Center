@@ -132,3 +132,49 @@ atomic `discard(connection)`; сценарии реальных сетевых �
 **PROPOSED**, несмотря на synthetic adversarial regression tests.
 Production адаптер обязан подтвердить quarantine и своевременное
 физическое закрытие транспортного соединения отдельно.
+
+## Дополнение 2G.1b — native отмена и controlled pool replacement
+
+**Испытание staging-only, итоговый статус определяется по CI на
+конкретном commit.** Для первого bounded security инкремента добавлены
+adversarial unit-тесты (2G.1) и fault-probes Bun.SQL 1.3.14 с настоящим
+ephemeral PG16 (2G.1b).
+
+Протокол новых native проверок:
+1. `max=1`, одна reserved connection занята; ожидание второго
+   `reserve({signal})` отменяется. После освобождения первой connection
+   другой tenant проходит через *новую* подписанную транзакцию и RLS.
+2. `BEGIN` + **server-side** `SET LOCAL statement_timeout` +
+   `SELECT pg_sleep(2)`: запрет продолжать aborted transaction до
+   подтверждённого `ROLLBACK`; проверка role/GUC reset.
+3. `Query.cancel()` во время выполняющегося SQL в отдельном пуле:
+   дождаться реальной PostgreSQL/Bun cancellation error, не принять
+   один только истёкший JS timer как доказательство отмены. После
+   эксперимента весь pool закрывается.
+4. Создаётся совершенно новый pool, выполняются независимые
+   North/Orbit signed RLS reads. Старый quarantined pool не
+   разблокируется.
+5. Для тестовых шагов установлены индивидуальные deadline и внешний
+   GitHub Actions `timeout --kill-after`. **Это проверка timeout
+   процесса, а не гарантированное физическое отключение сокета
+   в произвольной неисправной библиотеке.**
+
+### Сравнение возможных драйверов (выбор production НЕ сделан)
+
+| Вариант | Подтверждённый интерфейс | Неразрешённый риск |
+| --- | --- | --- |
+| Bun.SQL 1.3.14 | `reserve({signal})`, `Query.cancel()`, `ReservedSQL.release()`, `SQL.close({timeout})` | `release()` возвращает connection; атомарный **individual discard не подтверждён**; наблюдалось зависание `ReservedSQL.close()` + закрытие пула |
+| node-postgres (`pg.Pool`) | Документированный `client.release(true)` удаляет отдельный client, вместо его возврата | Отдельно проверить query cancellation, pool starvation, TLS/network split, async `end()` и фактический multi-tenant RLS reset |
+| Postgres.js | `reserve().release()` и `sql.end({timeout})` | Нужен проверенный per-client forced discard; само завершение всего pool не заменяет независимого delete |
+
+Документация интерфейсов:
+- [Bun ReservedSQL](https://bun.com/reference/bun/ReservedSQL).
+- [node-postgres pooling](https://node-postgres.com/apis/pool).
+- [Postgres.js README](https://github.com/porsager/postgres#connection-pooling).
+
+**Решение:** не подключать новый SQL-драйвер и не выдавать Bun
+native close/cancel за production-гарантии до независимого
+adversarial acceptance, включая отключение network и отказ rollback.
+Любой fail-closed quarantine блокирует дальнейшие выдачи из
+повреждённого pool; восстановление только через отдельно созданный
+pool при доказанной очистке/уничтожении старого.

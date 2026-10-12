@@ -366,9 +366,31 @@ cache invalidation и серверная интеграция остаются *
   и отбрасывание поздно полученного соединения.
 - [x] Synthetic adversarial tests: бесконечный SELECT, зависшие
   ROLLBACK/release, поздний reserve, success/reuse без карантина.
-- [ ] Подтверждённый в CI SHA 2G.1 и Bun PostgreSQL integration.
+- [x] Подтверждённый 4/4 CI SHA 2G.1: `4f83d3d93671679777bcc39a0fcc9c960e2a7b0d`.
 - [ ] Production-grade atomic connection discard, independent cancel,
   tested pool retry/recovery after network split: **PROPOSED**.
 
 Важно: quarantine-hook закрывает *весь* одноразовый тестовый pool,
 но не доказывает готовность SQL transport к production.
+
+## Этап 2G.1b — native Bun.SQL fault experiments
+
+- [x] Добавлен изолированный протокол испытаний реальных Bun.SQL
+  `reserve({ signal })`, `Query.cancel()`, `statement_timeout`,
+  подтверждённого `ROLLBACK`, `SQL.close()` и создания нового пула.
+- [ ] Результаты этого инкремента подтверждены финальным GitHub Actions
+  run (не проставлять VERIFIED до SUCCESS на текущем SHA).
+- [ ] Atomic physical `discard(connection)` для Bun 1.3.14 —
+  **НЕ подтверждён**. Нельзя использовать `reserved.release()` для
+  возврата повреждённого соединения в действующий multi-tenant pool.
+- [ ] Протестированный в изоляции альтернативный driver с гарантированным
+  удалением отдельной connection, cancellation и network-failure recovery.
+  Кандидат: `pg.Pool` с документированным `client.release(true)` —
+  только **PROPOSED**, ещё не подключён.
+
+**Уточнение 2G.1:** четыре workflow предыдущего инкремента
+на `4f83d3d93671679777bcc39a0fcc9c960e2a7b0d` завершились SUCCESS:
+[CI](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38088983986),
+[PostgreSQL](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38088984062),
+[Demo](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38088983972),
+[Browser](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38088983952).

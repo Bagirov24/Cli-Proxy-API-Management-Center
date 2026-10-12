@@ -255,3 +255,160 @@ try {
 }
 
 console.info('PASS: stage 2F genuine Bun PostgreSQL driver integration (ephemeral database only)');
+
+// Stage 2G.1b: real wire-protocol fault probes on the DISPOSABLE CI database.
+// These probe-only SQL statements are never accepted by the SaaS SELECT
+// allowlist, never run against Core/Railway, and never use client SQL input.
+function withProbeDeadline(pending, ms, step) {
+  let timer;
+  return Promise.race([
+    pending,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Probe deadline exceeded: ' + step)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+function cancelledByPostgres(error) {
+  const code = String(error?.code ?? '');
+  const message = String(error?.message ?? '');
+  // A client-side Promise.race deadline is NOT proof of SQL cancellation.
+  return code === '57014' || code === 'ERR_POSTGRES_QUERY_CANCELLED' ||
+    /query (was )?cancelled|canceling statement|cancelling statement|statement timeout/i.test(message);
+}
+
+console.info('STEP: native Bun reserve wait abort with max=1');
+const waitingDb = nativeSql(1);
+let heldReservation;
+try {
+  heldReservation = await withProbeDeadline(waitingDb.reserve(), 2500, 'initial reserve');
+  const controller = new AbortController();
+  const waiting = assert.rejects(
+    withProbeDeadline(waitingDb.reserve({ signal: controller.signal }), 2500, 'waiting reserve')
+  );
+  controller.abort();
+  await waiting;
+  assert.equal(controller.signal.aborted, true);
+  // A cancelled waiter must not steal the reserved connection or prevent a
+  // fresh tenant-scoped read after the rightful holder releases it.
+  const heldCheck = await heldReservation.unsafe(
+    'SELECT current_user::text AS role_name'
+  );
+  assert.equal(heldCheck[0].role_name, 'saas_ci_runner');
+  heldReservation.release();
+  heldReservation = undefined;
+  const waitingDriver = createBoundedDriver(waitingDb);
+  assert.deepEqual((await read(waitingDriver, 'actor-north', 'demo-north', 'projects'))
+    .map(row => row.id), ['north-project']);
+  assert.deepEqual((await read(waitingDriver, 'actor-orbit', 'demo-orbit', 'projects'))
+    .map(row => row.id), ['orbit-project']);
+  assert.equal(waitingDriver.stats().poisoned, false);
+  console.info('PASS: timed/cancelled pool acquire did not transfer a tenant scope');
+} finally {
+  heldReservation?.release();
+  await withProbeDeadline(waitingDb.close({ timeout: 2 }), 3000, 'wait pool close');
+}
+
+// PostgreSQL server-side statement_timeout is a distinct safety boundary
+// from a JS AbortSignal: a server-error leaves an open transaction aborted.
+// Recover only after a confirmed ROLLBACK, and inspect transaction-local state.
+console.info('STEP: server-side PostgreSQL statement_timeout + confirmed ROLLBACK');
+const statementDb = nativeSql(1);
+let statementReservation;
+try {
+  statementReservation = await withProbeDeadline(statementDb.reserve(), 2500, 'statement reserve');
+  await statementReservation.unsafe('BEGIN');
+  await statementReservation.unsafe("SET LOCAL statement_timeout = '150ms'");
+  await assert.rejects(
+    withProbeDeadline(statementReservation.unsafe('SELECT pg_sleep(2)').execute(),
+      2400, 'statement_timeout'),
+    cancelledByPostgres
+  );
+  await assert.rejects(
+    statementReservation.unsafe('SELECT 1').execute(),
+    error => String(error?.code ?? '') === '25P02' ||
+      /current transaction is aborted/i.test(String(error?.message ?? ''))
+  );
+  await withProbeDeadline(statementReservation.unsafe('ROLLBACK').execute(),
+    1500, 'confirmed ROLLBACK');
+  const reset = await statementReservation.unsafe(
+    "SELECT current_user::text AS db_role, " +
+    "coalesce(current_setting('saas.scope_actor',true),'') AS actor, " +
+    "coalesce(current_setting('saas.scope_mac',true),'') AS mac"
+  );
+  assert.equal(reset[0].db_role, 'saas_ci_runner');
+  assert.equal(reset[0].actor, '');
+  assert.equal(reset[0].mac, '');
+  statementReservation.release();
+  statementReservation = undefined;
+  const afterRollback = createBoundedDriver(statementDb);
+  assert.deepEqual((await read(afterRollback, 'actor-orbit', 'demo-orbit', 'projects'))
+    .map(row => row.id), ['orbit-project']);
+  assert.equal(afterRollback.stats().discarded, 0);
+  console.info('PASS: PG statement timeout rejected; confirmed ROLLBACK clears scope');
+} finally {
+  statementReservation?.release();
+  await withProbeDeadline(statementDb.close({ timeout: 2 }), 3000, 'statement pool close');
+}
+
+// Bun.Query.cancel() operates on a query already executing on the wire.
+// The reserved connection is NEVER offered to a second tenant after this
+// experiment. Close the entire isolated pool; no per-connection discard API.
+console.info('STEP: real Bun query.cancel() on active pg_sleep');
+const cancellationDb = nativeSql(1);
+let cancellationReservation;
+try {
+  cancellationReservation = await withProbeDeadline(cancellationDb.reserve(),
+    2500, 'cancel reserve');
+  const sleeping = cancellationReservation.unsafe('SELECT pg_sleep(4)').execute();
+  let cancellationIssued = false;
+  const cancellationTimer = setTimeout(() => {
+    cancellationIssued = true;
+    sleeping.cancel();
+  }, 150);
+  try {
+    await assert.rejects(
+      withProbeDeadline(sleeping, 2500, 'native query.cancel'),
+      cancelledByPostgres
+    );
+  } finally {
+    clearTimeout(cancellationTimer);
+  }
+  assert.equal(cancellationIssued, true);
+  cancellationReservation.release();
+  cancellationReservation = undefined;
+  await withProbeDeadline(cancellationDb.close({ timeout: 0 }),
+    3000, 'cancelled pool shutdown');
+  await assert.rejects(withProbeDeadline(cancellationDb.reserve(), 1500,
+    'no reuse of closed cancellation pool'));
+  console.info('PASS: active pg_sleep cancelled and entire disposable pool shut down');
+} finally {
+  if (cancellationReservation) {
+    cancellationReservation.release();
+    await withProbeDeadline(cancellationDb.close({ timeout: 0 }),
+      3000, 'cancel pool final shutdown');
+  }
+}
+
+// Whole-pool quarantine is a terminal state, not automatic recovery.
+// A separately CONSTRUCTED clean pool is the only recovery path exercised.
+console.info('STEP: freshly constructed pool after retired error/cancel pools');
+const replacementDb = nativeSql(1);
+const replacementDriver = createBoundedDriver(replacementDb);
+try {
+  for (const [actor, tenant, expectedId] of [
+    ['actor-orbit', 'demo-orbit', 'orbit-project'],
+    ['actor-north', 'demo-north', 'north-project'],
+  ]) {
+    assert.deepEqual((await read(replacementDriver, actor, tenant, 'projects'))
+      .map(row => row.id), [expectedId]);
+  }
+  assert.deepEqual(replacementDriver.stats(), {
+    discarded: 0, completed: 2, poisoned: false,
+  });
+  console.info('PASS: independently constructed new pool has isolated RLS scope');
+} finally {
+  await withProbeDeadline(replacementDb.close({ timeout: 2 }),
+    3000, 'replacement pool close');
+}
+console.info('PASS: stage 2G.1b live Bun fault probes on ephemeral PostgreSQL only');

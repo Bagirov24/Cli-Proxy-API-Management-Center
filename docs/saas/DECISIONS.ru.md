@@ -244,3 +244,21 @@ role и HMAC key из временной DB; запрет запуска в Rail
 конкуренции и connection cleanup должно пройти CI и review.
 См. [BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md).
 
+
+## D-032 — pool poison не равен physical discard (2G / STAGING)
+
+Нельзя считать `Promise.race` SQL timeout гарантированным запросом
+PostgreSQL CANCEL или завершением сетевого соединения. В 2G.1
+введён синхронный `quarantine`, чтобы ни один следующий tenant не
+получил потенциально повреждённый shared pool, и отдельный
+bounded cleanup; на Bun.SQL 1.3.14 весь тестовый pool закрывается
+вместо недостаточно доказанного per-connection discard.
+
+В 2G.1b на временном PG16 проверяем native `reserve`-abort,
+query cancellation, серверный statement_timeout/rollback и чтение
+через новый пул. **Даже успешный CI не заменяет** испытания
+физического уничтожения отдельно повреждённой connection и
+восстановления после network split. По документации `pg.Pool`
+предоставляет `client.release(true)` как явный путь удаления
+соединения; это кандидат на отдельный backend experiment,
+**PROPOSED, без добавления dependency или runtime endpoint**.
