@@ -547,7 +547,11 @@ Pool→Account связи инвалидирует оба затронутых t
 откатывает и метаданные, и epoch. Защита остаётся в disposable PG16,
 без нового public API или Core/Gateway.
 
-**IMPLEMENTED, CI PENDING.** Истечение grants только от хода времени,
+**IMPLEMENTED / VERIFIED** в ephemeral PostgreSQL на SHA `9458db06a86cb0d355937292ce135a89f1926f96`:
+[PG16 #38287715026](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38287715026), [CI #38287714993](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38287714993),
+[Demo #38287714981](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38287714981),
+[Browser #38287715064](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38287715064)
+— 4/4 SUCCESS. Истечение grants только от хода времени,
 финальный revocation/response barrier и production driver остаются
 отдельными задачами.
 
@@ -561,7 +565,12 @@ epoch и deadline и fail-closed при переходе через неё. До
 реальные ephemeral PG16 tests с неизменным SQL epoch и
 проверками no-secret/no-IDOR.
 
-**IMPLEMENTED / CI PENDING**, production revocation/HTTP barrier
+**IMPLEMENTED / VERIFIED** на SHA `f0a35b8433e057fae466974e744f48523243ef62`: [PG16 #38288157880](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38288157880),
+[CI #38288157690](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38288157690)
+(1 792 tests PASS, 0 fail),
+[Demo #38288157863](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38288157863),
+[Browser #38288157720](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38288157720)
+— 4/4 SUCCESS; production revocation/HTTP barrier
 по-прежнему не доказан.
 
 ## Этап 2G.4d.4c — cooperative SQL publication barrier
@@ -573,6 +582,20 @@ epoch и deadline и fail-closed при переходе через неё. До
 этой транзакции. Проверяется через независимые реальные sessions и
 третьего наблюдателя.
 
-**IMPLEMENTED / CI PENDING.** Это не HTTP response-send механизм:
+**IMPLEMENTED / VERIFIED** для кооперативного PG16 barrier, SHA `9696e280cfee9c6ecd8475fd48afd10113632060`:
+[PG16 #38288803851](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38288803851) (normal reader COMMIT and forced reader-backend termination),
+[CI #38288803787](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38288803787)
+(1 792 tests PASS), [Demo #38288803789](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38288803789),
+[Browser #38288803822](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38288803822)
+— 4/4 SUCCESS. Это не HTTP response-send механизм:
 функция не внедрена в live read handler, а сетевые доставки и
 slow-client/crash semantics остаются SPEC.
+
+## Где проходит граница «полностью реализовано»
+
+См. [Production readiness gates](PRODUCTION_READINESS_GATES_V1.ru.md):
+staging PostgreSQL authorization contract пока **не равен**
+готовому SaaS, OIDC, сетевому enforcement, billing или durable audit.
+Эта feature-ветка не выдаёт новые production endpoints и не меняет
+Core/Gateway/Railway. Отдельные approvals, security review и
+production-hardening необходимы до любых live credentials.

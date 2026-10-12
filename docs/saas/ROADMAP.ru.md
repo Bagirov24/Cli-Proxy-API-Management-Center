@@ -658,8 +658,10 @@ atomic revision increments. See
   grantee tenants, в том числе независимо выданных Pool/Account.
 - [x] SQL adversarial tests: no-op UPDATE, UPDATE/INSERT/DELETE, tenant
   fan-out, rollback atomicity и cross-tenant signed scope.
-- [ ] **VERIFIED** после GitHub Actions на точном SHA.
-- [ ] **SPEC:** time-only expiry без SQL writer trigger, deadlock/crash
+- [x] **VERIFIED** на `9458db06a86cb0d355937292ce135a89f1926f96` ([PG16 #38287715026](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38287715026), Main CI, Demo, Browser — 4/4 SUCCESS).
+- [x] Time-only expiry закрыт следующим отдельным staging-этапом 2G.4d.4b;
+  это не production clock authority.
+- [ ] **SPEC:** multi-instance/crash/deadlock, deadlock/crash
   retry tests, multi-instance correctness.
 - [ ] **PROPOSED:** atomic read/revoke/response completion barrier.
 
@@ -674,7 +676,8 @@ atomic revision increments. See
   malformed SQL → generic 503/quarantine.
 - [x] Synthetic + real ephemeral PostgreSQL E2E: expiration по времени
   при одинаковых LIMITed metadata rows и неизменном raw tenant epoch.
-- [ ] **VERIFIED** только после точного GitHub CI SHA.
+- [x] **VERIFIED** на `f0a35b8433e057fae466974e744f48523243ef62` ([PG16 #38288157880](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38288157880), Main CI 1 792 tests PASS,
+  Demo и Browser — 4/4 SUCCESS).
 - [ ] **SPEC/PROPOSED:** revocation/response linearization,
   clock-skew/multi-instance policies и production driver.
 
@@ -687,8 +690,30 @@ atomic revision increments. See
   незафиксированное изменение и North/Orbit изолированы.
 - [x] SQL denial tests: unsigned, cross-tenant, role mismatch,
   paused tenant, audit-only forbidden collection.
-- [ ] **VERIFIED** после exact-SHA GitHub Actions.
+- [x] **VERIFIED** на `9696e280cfee9c6ecd8475fd48afd10113632060` ([PG16 #38288803851](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38288803851), Main CI 1 792 tests PASS,
+  Demo и Chromium — 4/4 SUCCESS); доказана задержка revoke COMMIT
+  и recovery после termination reader backend, но не HTTP delivery.
 - [ ] **SPEC:** управляемый bounded publication/transport lifecycle,
   cancellation/crash recovery, persistence and multi-instance tests.
 - [ ] **PROPOSED:** production decision that defines the HTTP
   revocation completion point, backpressure and acceptable in-flight reads.
+
+## Выполнение полного SaaS Blueprint (Definition of Done)
+
+- [ ] Реальный server-side identity/session/OIDC, safe token replay/rotation,
+  account directory и issuer/JWK management.
+- [ ] Формальный revocation completion API + bounded publication lifecycle,
+  транспортные cancel/crash/backpressure tests и доказанный порядок ответа.
+- [ ] Production SQL connection eviction, multi-instance transactions,
+  retry/deadlock tests, backup/recovery/migration rollback.
+- [ ] Durable redacted/tamper-evident audit и retention.
+- [ ] Tenant-scoped management APIs, vault, BYOK/BYOA approved flows,
+  proper CPA/Gateway isolation and client-side backend authorization.
+- [ ] Network egress firewall/SSRF/DNS/IPv6/proxy/VPN enforcement;
+  per-request trace, usage and billing correctness.
+- [ ] Consent/approval for separately scoped production rollout, canary,
+  operational SLOs/monitoring and security acceptance.
+
+Текущие стадии 2G.4d.4a/b/c verified только в disposable CI;
+это НЕ green light для release. См.
+[PRODUCTION_READINESS_GATES_V1.ru.md](PRODUCTION_READINESS_GATES_V1.ru.md).

@@ -1,6 +1,8 @@
 # Stage 2G.4d.4a — полное покрытие metadata-dependent tenant revision в PG16 (pilot)
 
-**IMPLEMENTED staging-only SQL; VERIFIED only after Actions on exact SHA.**
+**IMPLEMENTED / VERIFIED** in disposable PG16, code SHA `9458db06a86cb0d355937292ce135a89f1926f96`:
+[PG16 #38287715026](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38287715026) and [Main CI #38287714993](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38287714993).
+Demo and Chromium Actions also SUCCESS; no production endorsement.
 No Railway, Core, Gateway, live AI traffic, SaaS HTTP or real credentials.
 
 Prior 004 covered tenant status, membership role/status, independent

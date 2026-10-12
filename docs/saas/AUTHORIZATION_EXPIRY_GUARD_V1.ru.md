@@ -1,6 +1,8 @@
 # Stage 2G.4d.4b — clock-only grant expiry: signed next-deadline attestation
 
-**Staging-only pilot; IMPLEMENTED code, CI verification pending.**
+**IMPLEMENTED / VERIFIED** only in disposable PG16 on code SHA `f0a35b8433e057fae466974e744f48523243ef62`:
+[PG16 #38288157880](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38288157880), [Main CI #38288157690](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38288157690)
+(1,792 tests PASS, 0 fail), Demo and Browser SUCCESS.
 Requires disposable migrations 001..006, pinned synthetic keys and non-superuser SQL.
 No production OIDC, Core/CPA, Gateway, Railway, HTTP or real credentials.
 

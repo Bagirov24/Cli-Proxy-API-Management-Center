@@ -454,7 +454,8 @@ connection и многоинстансовый invalidate остаются от�
 
 ## D-041 — metadata projection и links обязаны инвалидировать tenant epoch (2G.4d.4a)
 
-**IMPLEMENTED staging-only; CI PENDING / production SPEC.**
+**IMPLEMENTED / VERIFIED** только в disposable PG16, SHA `9458db06a86cb0d355937292ce135a89f1926f96`
+([PG16 #38287715026](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38287715026)); production SPEC.
 
 Grant/status trigger в 004 недостаточен, если link/route/project/app/key
 изменяется между двумя одинаковыми LIMITed metadata reads. 005
@@ -467,7 +468,8 @@ Grant/status trigger в 004 недостаточен, если link/route/projec
 
 ## D-042 — время истечения grant должно быть отдельной частью auth state (2G.4d.4b)
 
-**IMPLEMENTED staging-only / CI PENDING; production SPEC.**
+**IMPLEMENTED / VERIFIED** в disposable PG16, SHA `f0a35b8433e057fae466974e744f48523243ef62`
+([PG16 #38288157880](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38288157880)); production SPEC.
 
 PostgreSQL triggers не происходят в момент `expires_at`, поэтому
 одного monotonic tenant epoch недостаточно. Signed DB state содержит
@@ -480,7 +482,8 @@ tenantless audit; malformed SQL → 503/quarantine. Для production
 
 ## D-043 — PostgreSQL `FOR SHARE` задаёт лишь кооперативный DB barrier, не гарантию доставки HTTP (2G.4d.4c)
 
-**IMPLEMENTED staging-only / CI PENDING; production SPEC/PROPOSED.**
+**IMPLEMENTED / VERIFIED** в disposable PG16, SHA `9696e280cfee9c6ecd8475fd48afd10113632060`
+([PG16 #38288803851](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38288803851)); production SPEC/PROPOSED.
 
 Читающая signed DB транзакция получает `FOR SHARE` на private
 tenant epoch после актуального RBAC и повторно проверяет полномочия.

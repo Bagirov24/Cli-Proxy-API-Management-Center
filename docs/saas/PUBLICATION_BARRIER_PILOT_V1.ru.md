@@ -1,6 +1,9 @@
 # Stage 2G.4d.4c — кооперативный publication barrier: PostgreSQL proof
 
-**Staging-only IMPLEMENTED; VERIFIED only on exact GitHub Actions SHA.**
+**Staging-only IMPLEMENTED / VERIFIED** on code SHA `9696e280cfee9c6ecd8475fd48afd10113632060`:
+[PG16 #38288803851](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38288803851) and [Main CI #38288803787](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38288803787)
+(1,792 tests PASS, 0 fail); Demo/Browser also SUCCESS.
+The PostgreSQL proof includes forced backend termination/rollback.
 This is a database *ordering experiment*, NOT a production HTTP
 revocation-delivery guarantee.
 
