@@ -2,11 +2,15 @@ import { beforeAll, describe, expect, test } from 'bun:test';
 import {
   createPinnedHmacScopeIssuer, readSignedScopedMetadata,
   readSignedScopedAuthorizationRevision, SCOPED_AUTHORIZATION_REVISION_SQL,
+  SCOPED_PUBLICATION_BARRIER_SQL, withSignedScopedPublicationBarrier,
   SCOPED_READ_GATE_SQL, ScopedSqlAuthorizationDenied,
   type ScopedSqlConnection, type ScopedSqlPool, type SignedTransactionIssuer,
   type SqlRow, type SqlValue,
 } from '../src/features/saasBlueprint/controlApi/server/signedSqlBoundary';
 import type { AuthorizedReadScope, ControlCollection } from '../src/features/saasBlueprint/controlApi/contracts';
+import {
+  captureServerAuthorizationRevision,
+} from '../src/features/saasBlueprint/controlApi/server/authorizationRevision';
 
 const scope: AuthorizedReadScope = {
   actorId: 'actor-north', tenantId: 'demo-north', role: 'tenant-admin',
@@ -22,6 +26,7 @@ function harness(rows: readonly SqlRow[] = [
 ], gateAnswers: readonly boolean[] = [true, true]) {
   let gateIndex = 0;
   let revisionRows: readonly SqlRow[] = [{ revision: '7', not_after_ms: null }];
+  let barrierRows: readonly SqlRow[] = [{ revision: '7' }];
   const calls: Call[] = [];
   const releases: boolean[] = [];
   const quarantines: string[] = [];
@@ -39,6 +44,7 @@ function harness(rows: readonly SqlRow[] = [
         return { rows: [{ allowed: gateAnswers[gateIndex++] ?? true }] };
       }
       if (sql === SCOPED_AUTHORIZATION_REVISION_SQL) return { rows: revisionRows };
+      if (sql === SCOPED_PUBLICATION_BARRIER_SQL) return { rows: barrierRows };
       if (sql.startsWith('SELECT id, ')) return { rows };
       return { rows: [] };
     },
@@ -51,7 +57,8 @@ function harness(rows: readonly SqlRow[] = [
   return { calls, releases, quarantines, pool,
     failWhen: (sql: string) => { failAt = sql; },
     onQuery: (fn: (sql: string) => void) => { afterCall = fn; },
-    setRevisionRows: (items: readonly SqlRow[]) => { revisionRows = items; } };
+    setRevisionRows: (items: readonly SqlRow[]) => { revisionRows = items; },
+    setBarrierRows: (items: readonly SqlRow[]) => { barrierRows = items; } };
 }
 
 beforeAll(async () => {
@@ -469,5 +476,187 @@ describe('Stage 2G.4d.4b — signed next-grant-expiry clock guard', () => {
     }, () => now)).rejects.toThrow('Scoped metadata unavailable');
     expect(h.quarantines).toEqual(['read-failed']);
     expect(h.releases).toEqual([true]);
+  });
+});
+
+/** Branded baseline can be captured ONLY after a trusted scope is derived. */
+async function pubBaseline(revision = '7', until: string | null = null) {
+  return captureServerAuthorizationRevision({
+    async readRevision() { return { revision, notAfterMs: until }; },
+  }, scope, 'projects', new AbortController().signal);
+}
+
+describe('Stage 2G.4d.5a — bounded signed publication (synthetic local handoff)', () => {
+  test('holds signed FOR SHARE throughout private prepare and synchronous handoff', async () => {
+    const h = harness();
+    const baseline = await pubBaseline();
+    const events: string[] = [];
+    h.onQuery(sql => { if (sql === 'COMMIT') events.push('sql:COMMIT'); });
+    await withSignedScopedPublicationBarrier(h.pool, signer, {
+      scope, collection: 'projects', baseline, timeoutMs: 500,
+      handoff: {
+        async prepare(signal) {
+          expect(signal.aborted).toBe(false);
+          expect(h.calls.filter(q => q.sql === SCOPED_PUBLICATION_BARRIER_SQL))
+            .toHaveLength(1);
+          events.push('stage:private');
+          await Promise.resolve();
+          return () => { events.push('handoff:local'); };
+        },
+      },
+    }, () => now);
+    expect(events).toEqual(['stage:private', 'handoff:local', 'sql:COMMIT']);
+    expect(h.calls.filter(q => q.sql === SCOPED_PUBLICATION_BARRIER_SQL))
+      .toEqual([{ sql: SCOPED_PUBLICATION_BARRIER_SQL,
+        params: ['demo-north', 'actor-north', 'tenant-admin', 'projects'] }]);
+    expect(h.calls.filter(q => q.sql === SCOPED_READ_GATE_SQL)).toHaveLength(2);
+    expect(h.calls.filter(q => q.sql.startsWith('SELECT set_config'))).toHaveLength(5);
+    expect(h.calls.filter(q => q.sql === SCOPED_AUTHORIZATION_REVISION_SQL))
+      .toHaveLength(1);
+    expect(h.calls.filter(q => q.sql.startsWith('SELECT id, '))).toHaveLength(0);
+    expect(h.releases).toEqual([false]);
+    expect(h.quarantines).toEqual([]);
+  });
+
+  test('revision drift after metadata read is 404 before preparing any bytes', async () => {
+    const h = harness();
+    const baseline = await pubBaseline('8');
+    let prepared = false;
+    await expect(withSignedScopedPublicationBarrier(h.pool, signer, {
+      scope, collection: 'projects', baseline,
+      handoff: { async prepare() { prepared = true; return () => {}; } },
+    }, () => now)).rejects.toBeInstanceOf(ScopedSqlAuthorizationDenied);
+    expect(prepared).toBe(false);
+    expect(h.calls.at(-1)?.sql).toBe('ROLLBACK');
+    expect(h.releases).toEqual([false]);
+    expect(h.quarantines).toEqual([]);
+  });
+
+  test('DB NULL/foreign signed barrier is 404, not a staging callback', async () => {
+    const h = harness();
+    h.setBarrierRows([{ revision: null }]);
+    const baseline = await pubBaseline();
+    await expect(withSignedScopedPublicationBarrier(h.pool, signer, {
+      scope, collection: 'projects', baseline,
+      handoff: { async prepare() { throw new Error('MUST_NOT_PREPARE'); } },
+    }, () => now)).rejects.toBeInstanceOf(ScopedSqlAuthorizationDenied);
+    expect(h.calls.at(-1)?.sql).toBe('ROLLBACK');
+    expect(h.releases).toEqual([false]);
+  });
+
+  test('same epoch with changed grant deadline is a safe 404, no handoff', async () => {
+    const h = harness();
+    h.setRevisionRows([{ revision: '7', not_after_ms: null }]);
+    const baseline = await pubBaseline('7', String(Date.now() + 60_000));
+    await expect(withSignedScopedPublicationBarrier(h.pool, signer, {
+      scope, collection: 'projects', baseline,
+      handoff: { async prepare() { throw new Error('MUST_NOT_PREPARE'); } },
+    }, () => now)).rejects.toBeInstanceOf(ScopedSqlAuthorizationDenied);
+    expect(h.quarantines).toEqual([]);
+    expect(h.releases).toEqual([false]);
+  });
+
+  test('malformed signed lock/expiry SQL result quarantines physical reservation', async () => {
+    const baseline = await pubBaseline();
+    for (const malformedLock of [[], [{ revision: 7 }], [{ revision: '07' }],
+      [{ revision: '7' }, { revision: '7' }]]) {
+      const h = harness();
+      h.setBarrierRows(malformedLock);
+      await expect(withSignedScopedPublicationBarrier(h.pool, signer, {
+        scope, collection: 'projects', baseline,
+        handoff: { async prepare() { throw new Error('NEVER'); } },
+      }, () => now)).rejects.toThrow('Scoped metadata unavailable');
+      expect(h.quarantines).toEqual(['read-failed']);
+      expect(h.releases).toEqual([true]);
+    }
+    const h = harness();
+    h.setRevisionRows([{ revision: '7', not_after_ms: undefined }]);
+    await expect(withSignedScopedPublicationBarrier(h.pool, signer, {
+      scope, collection: 'projects', baseline,
+      handoff: { async prepare() { throw new Error('NEVER'); } },
+    }, () => now)).rejects.toThrow('Scoped metadata unavailable');
+    expect(h.quarantines).toEqual(['read-failed']);
+    expect(h.releases).toEqual([true]);
+  });
+
+  test('DB gate changed after staging denies without executing local handoff', async () => {
+    const h = harness(undefined, [true, false]);
+    const baseline = await pubBaseline();
+    let committed = false;
+    await expect(withSignedScopedPublicationBarrier(h.pool, signer, {
+      scope, collection: 'projects', baseline,
+      handoff: { async prepare() { return () => { committed = true; }; } },
+    }, () => now)).rejects.toBeInstanceOf(ScopedSqlAuthorizationDenied);
+    expect(committed).toBe(false);
+    expect(h.calls.at(-1)?.sql).toBe('ROLLBACK');
+    expect(h.releases).toEqual([false]);
+  });
+
+  test('cancellation during prepare fails closed and never invokes a late commit', async () => {
+    const controller = new AbortController();
+    const h = harness();
+    const baseline = await pubBaseline();
+    let commitCalls = 0;
+    let resolvePrepare!: (fn: () => void) => void;
+    const wait = new Promise<() => void>(r => { resolvePrepare = r; });
+    let started!: () => void;
+    const staged = new Promise<void>(r => { started = r; });
+    const pending = withSignedScopedPublicationBarrier(h.pool, signer, {
+      scope, collection: 'projects', baseline, signal: controller.signal,
+      handoff: { prepare() { started(); return wait; } },
+    }, () => now);
+    await staged;
+    controller.abort();
+    await expect(pending).rejects.toThrow('Scoped metadata unavailable');
+    resolvePrepare(() => { commitCalls++; });
+    await Promise.resolve();
+    expect(commitCalls).toBe(0);
+    expect(h.quarantines).toEqual(['read-failed']);
+    expect(h.releases).toEqual([true]);
+    expect(h.calls.some(q => q.sql === 'COMMIT')).toBe(false);
+  });
+
+  test('hung private prepare is bounded even when it ignores its AbortSignal', async () => {
+    const h = harness();
+    const baseline = await pubBaseline();
+    await expect(withSignedScopedPublicationBarrier(h.pool, signer, {
+      scope, collection: 'projects', baseline, timeoutMs: 30, cleanupTimeoutMs: 30,
+      handoff: { async prepare() { return new Promise(() => {}); } },
+    }, () => now)).rejects.toThrow('Scoped metadata unavailable');
+    expect(h.calls.some(q => q.sql === 'COMMIT')).toBe(false);
+    expect(h.quarantines).toEqual(['read-failed']);
+    expect(h.releases).toEqual([true]);
+  });
+
+  test('client-like forged baseline/collection denied BEFORE SQL connection', async () => {
+    const h = harness();
+    const baseline = await pubBaseline();
+    for (const request of [
+      { scope, collection: '__proto__' as ControlCollection, baseline },
+      { scope: { ...scope, tenantId: 'demo-orbit;--' }, collection: 'projects' as const, baseline },
+      { scope, collection: 'projects' as const, baseline: { value: '07', notAfterMs: null } },
+    ]) {
+      await expect(withSignedScopedPublicationBarrier(h.pool, signer, {
+        ...request, handoff: { async prepare() { return () => {}; } },
+      } as Parameters<typeof withSignedScopedPublicationBarrier>[2], () => now))
+        .rejects.toThrow();
+    }
+    expect(h.calls).toEqual([]);
+  });
+
+  test('invalid prepare result or rejected local handoff cannot be Allow', async () => {
+    const baseline = await pubBaseline();
+    for (const behavior of [
+      async () => 1,
+      async () => { throw new Error('PRIVATE_STAGED_BYTES'); },
+    ]) {
+      const h = harness();
+      await expect(withSignedScopedPublicationBarrier(h.pool, signer, {
+        scope, collection: 'projects', baseline,
+        handoff: { prepare: behavior as never },
+      }, () => now)).rejects.toThrow('Scoped metadata unavailable');
+      expect(h.calls.some(q => q.sql === 'COMMIT')).toBe(false);
+      expect(h.quarantines).toEqual(['read-failed']);
+    }
   });
 });
