@@ -13,6 +13,7 @@ import {
 import {
   createPinnedHmacScopeIssuer, CONTROL_READ_SELECT_SQL, SCOPED_READ_GATE_SQL,
   SCOPED_AUTHORIZATION_REVISION_SQL, SCOPED_PUBLICATION_BARRIER_SQL,
+  SCOPED_PUBLICATION_OUTBOX_SQL,
   type ScopedSqlPool, type SignedTransactionIssuer, type SqlValue,
 } from '../src/features/saasBlueprint/controlApi/server/signedSqlBoundary';
 import {
@@ -70,6 +71,7 @@ interface TestHarnessOptions {
   readonly onCommit?: (count: number) => Promise<void> | void;
   readonly onActorLookup?: (count: number) => void;
   readonly publisher?: TrustedLocalPublicationSink;
+  readonly recordStagingOutbox?: boolean;
 }
 
 function harness(options: TestHarnessOptions = {}) {
@@ -121,6 +123,9 @@ function harness(options: TestHarnessOptions = {}) {
           if (sql === SCOPED_AUTHORIZATION_REVISION_SQL) {
             return { rows: [{ revision: '7', not_after_ms: null }] };
           }
+          if (sql === SCOPED_PUBLICATION_OUTBOX_SQL) {
+            return { rows: [{ recorded: true }] };
+          }
           if (sql.startsWith('SELECT id, ')) {
             await options.onSelect?.();
             if (options.failSelect) throw new Error('DB_PASSWORD_NEVER_LOG');
@@ -156,6 +161,7 @@ function harness(options: TestHarnessOptions = {}) {
       },
     },
     pool, signer, audit, revisions: options.revisions,
+    recordStagingOutbox: options.recordStagingOutbox,
     newCorrelationId: () => correlationId,
   };
   const read = createTrustedSqlReadBoundary(deps);
@@ -982,5 +988,46 @@ describe('Stage 2G.4d.5b — trusted actor to receipt-only local publication', (
     expect(h.auditEvents()).toMatchObject([{
       result: 'error', reason: 'request-cancelled', tenantId: null,
     }]);
+  });
+});
+
+describe('2G.4d.6b — receipt-only signed PG outbox gate', () => {
+  test('minimal durable event is inserted before synchronous audit and receipt', async () => {
+    const seen: string[] = [];
+    const h = harness({
+      recordStagingOutbox: true,
+      publisher: { async stage() {
+        return () => {
+          const written = h.queries.filter(q =>
+            q.sql === SCOPED_PUBLICATION_OUTBOX_SQL);
+          expect(written).toHaveLength(1);
+          expect(written[0].params).toEqual([
+            'demo-north','actor-north','tenant-viewer','projects',correlationId,
+          ]);
+          expect(h.auditEvents()).toHaveLength(1);
+          seen.push('local');
+        };
+      } },
+    });
+    const result = await h.published!(h.request(await accessToken()));
+    expect(result).toMatchObject({ ok: true, published: true, status: 200 });
+    expect(seen).toEqual(['local']);
+    expect('rows' in result).toBe(false);
+    expect('tenantId' in result).toBe(false);
+    expect(h.released).toEqual([false, false, false]);
+  });
+
+  test('unauthorized tenant never even attempts the signed audit outbox', async () => {
+    const h = harness({
+      recordStagingOutbox: true,
+      publisher: { async stage() { throw new Error('Never stage'); } },
+    });
+    const result = await h.published!(h.request(await accessToken(), {
+      tenantId: 'demo-orbit',
+    }));
+    expect(result).toMatchObject({ ok:false, status:404 });
+    expect(h.queries.filter(q => q.sql === SCOPED_PUBLICATION_OUTBOX_SQL))
+      .toHaveLength(0);
+    expect(h.acquired).toBe(0);
   });
 });

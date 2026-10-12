@@ -11,7 +11,7 @@ import { createTrustedSqlReadBoundary, createTrustedSqlPublishedBoundary } from
   '../../src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts';
 import { createPinnedHmacScopeIssuer, CONTROL_READ_SELECT_SQL, SCOPED_READ_GATE_SQL,
   SCOPED_AUTHORIZATION_REVISION_SQL, SCOPED_PUBLICATION_BARRIER_SQL,
-  withSignedScopedPublicationBarrier } from
+  SCOPED_PUBLICATION_OUTBOX_SQL, withSignedScopedPublicationBarrier } from
   '../../src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts';
 import { createSecurityAuditRecorder, createSyntheticAuditBuffer } from
   '../../src/features/saasBlueprint/controlApi/server/securityAudit.ts';
@@ -67,7 +67,8 @@ function safeStatement(sql, params) {
      SELECTS.has(sql) && params.length === 2 ||
      sql === SCOPED_READ_GATE_SQL && params.length === 4 ||
      sql === SCOPED_AUTHORIZATION_REVISION_SQL && params.length === 4 ||
-     sql === SCOPED_PUBLICATION_BARRIER_SQL && params.length === 4);
+     sql === SCOPED_PUBLICATION_BARRIER_SQL && params.length === 4 ||
+     sql === SCOPED_PUBLICATION_OUTBOX_SQL && params.length === 5);
 }
 
 /** A disposable adapter, NOT proof of per-connection Bun discard safety. */
@@ -180,6 +181,18 @@ function changeEphemeralFixture(action) {
     { stdout: 'ignore', stderr: 'ignore' }
   );
   assert.equal(outcome.exitCode, 0, 'Disposable PG16 fixture mutation failed');
+}
+
+function readPrivateOutboxCount() {
+  const result = Bun.spawnSync(
+    ['psql', '-X', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-c',
+      'SELECT COUNT(*) FROM saas_rls_private.local_publication_audit_outbox'],
+    { stderr: 'ignore' }
+  );
+  assert.equal(result.exitCode, 0, 'Ephemeral private audit unavailable');
+  const raw = Buffer.from(result.stdout).toString('utf8').trim();
+  assert.match(raw, /^[0-9]+$/);
+  return Number(raw);
 }
 
 function readEphemeralNorthEpoch() {
@@ -699,9 +712,11 @@ try {
   // server-injected sink can stage local sanitized rows; no raw metadata
   // is returned to the caller, and audit must precede synchronous handoff.
   const trustedPublished = [];
+  const outboxBefore = readPrivateOutboxCount();
   const publishRead = createTrustedSqlPublishedBoundary(
-    createTrustedDependencies(driver, audit,
+    { ...createTrustedDependencies(driver, audit,
       createSignedPgAuthorizationRevisionSource(driver, signer)),
+      recordStagingOutbox: true },
     {
       async stage(payload, signal) {
         assert.equal(signal.aborted, false);
@@ -729,6 +744,8 @@ try {
   assert.equal('tenantId' in publicationReceipt, false);
   assert.equal(JSON.stringify(publicationReceipt).includes('north-project'), false);
   assert.deepEqual(trustedPublished, ['north-project']);
+  assert.equal(readPrivateOutboxCount(), outboxBefore + 1,
+    'Signed audit outbox must persist only after successful COMMIT');
   assertAudit(publicationReceipt, {
     reason: 'read-allowed', actorId: 'actor-north', tenantId: 'demo-north',
   });
@@ -738,8 +755,10 @@ try {
   assert.equal(wrongTenantReceipt.status, 404);
   assert.equal('rows' in wrongTenantReceipt, false);
   assert.deepEqual(trustedPublished, ['north-project']);
+  assert.equal(readPrivateOutboxCount(), outboxBefore + 1,
+    'Cross-tenant refusal must not insert a fake Allow event');
   assert.equal(driver.stats().poisoned, false);
-  console.info('PASS: trusted JWT/actor/RBAC/audit -> signed local publication yields receipt only');
+  console.info('PASS: signed PG16 durable-on-COMMIT outbox and receipt-only trusted publication');
 
   const brokenAudit = createSecurityAuditRecorder({
     write() { throw new Error('HIDDEN_TEST_ONLY_REFRESH_TOKEN'); },

@@ -2,7 +2,8 @@ import { beforeAll, describe, expect, test } from 'bun:test';
 import {
   createPinnedHmacScopeIssuer, readSignedScopedMetadata,
   readSignedScopedAuthorizationRevision, SCOPED_AUTHORIZATION_REVISION_SQL,
-  SCOPED_PUBLICATION_BARRIER_SQL, withSignedScopedPublicationBarrier,
+  SCOPED_PUBLICATION_BARRIER_SQL, SCOPED_PUBLICATION_OUTBOX_SQL,
+  withSignedScopedPublicationBarrier,
   SCOPED_READ_GATE_SQL, ScopedSqlAuthorizationDenied,
   type ScopedSqlConnection, type ScopedSqlPool, type SignedTransactionIssuer,
   type SqlRow, type SqlValue,
@@ -27,6 +28,7 @@ function harness(rows: readonly SqlRow[] = [
   let gateIndex = 0;
   let revisionRows: readonly SqlRow[] = [{ revision: '7', not_after_ms: null }];
   let barrierRows: readonly SqlRow[] = [{ revision: '7' }];
+  let outboxRows: readonly SqlRow[] = [{ recorded: true }];
   const calls: Call[] = [];
   const releases: boolean[] = [];
   const quarantines: string[] = [];
@@ -45,6 +47,7 @@ function harness(rows: readonly SqlRow[] = [
       }
       if (sql === SCOPED_AUTHORIZATION_REVISION_SQL) return { rows: revisionRows };
       if (sql === SCOPED_PUBLICATION_BARRIER_SQL) return { rows: barrierRows };
+      if (sql === SCOPED_PUBLICATION_OUTBOX_SQL) return { rows: outboxRows };
       if (sql.startsWith('SELECT id, ')) return { rows };
       return { rows: [] };
     },
@@ -58,7 +61,8 @@ function harness(rows: readonly SqlRow[] = [
     failWhen: (sql: string) => { failAt = sql; },
     onQuery: (fn: (sql: string) => void) => { afterCall = fn; },
     setRevisionRows: (items: readonly SqlRow[]) => { revisionRows = items; },
-    setBarrierRows: (items: readonly SqlRow[]) => { barrierRows = items; } };
+    setBarrierRows: (items: readonly SqlRow[]) => { barrierRows = items; },
+    setOutboxRows: (items: readonly SqlRow[]) => { outboxRows = items; } };
 }
 
 beforeAll(async () => {
@@ -658,5 +662,82 @@ describe('Stage 2G.4d.5a — bounded signed publication (synthetic local handoff
       expect(h.calls.some(q => q.sql === 'COMMIT')).toBe(false);
       expect(h.quarantines).toEqual(['read-failed']);
     }
+  });
+});
+
+describe('Stage 2G.4d.6b — signed durable-on-COMMIT audit pilot (fake SQL)', () => {
+  test('fixed parameterized append happens AFTER DB gates, BEFORE local handoff', async () => {
+    const h = harness();
+    const baseline = await pubBaseline();
+    const events: string[] = [];
+    h.onQuery(sql => {
+      if (sql === SCOPED_PUBLICATION_OUTBOX_SQL) events.push('sql:audit-pending');
+      if (sql === 'COMMIT') events.push('sql:COMMIT');
+    });
+    await withSignedScopedPublicationBarrier(h.pool, signer, {
+      scope, collection: 'projects', baseline, recordStagingOutbox: true,
+      handoff: { async prepare() {
+        events.push('private:stage');
+        return () => { events.push('local:handoff'); };
+      } },
+    }, () => now);
+    expect(events).toEqual([
+      'private:stage', 'sql:audit-pending', 'local:handoff', 'sql:COMMIT',
+    ]);
+    expect(h.calls.filter(x => x.sql === SCOPED_PUBLICATION_OUTBOX_SQL))
+      .toEqual([{ sql: SCOPED_PUBLICATION_OUTBOX_SQL,
+        params: ['demo-north','actor-north','tenant-admin','projects','server-trace'] }]);
+    expect(h.quarantines).toEqual([]);
+    expect(h.releases).toEqual([false]);
+  });
+
+  test('revoked DB actor/outbox denial rolls back WITHOUT handoff or Allow', async () => {
+    const h = harness();
+    h.setOutboxRows([{ recorded: false }]);
+    const baseline = await pubBaseline();
+    let published = false;
+    await expect(withSignedScopedPublicationBarrier(h.pool, signer, {
+      scope, collection: 'projects', baseline, recordStagingOutbox: true,
+      handoff: { async prepare() { return () => { published = true; }; } },
+    }, () => now)).rejects.toBeInstanceOf(ScopedSqlAuthorizationDenied);
+    expect(published).toBe(false);
+    expect(h.calls.at(-1)?.sql).toBe('ROLLBACK');
+    expect(h.releases).toEqual([false]);
+    expect(h.quarantines).toEqual([]);
+  });
+
+  test('malformed or failed signed audit write quarantines and never emits', async () => {
+    for (const malformed of [[], [{ recorded: 'true' }],
+      [{ recorded: true }, { recorded: false }], [{ no_record: true }]]) {
+      const h = harness();
+      h.setOutboxRows(malformed);
+      let published = false;
+      await expect(withSignedScopedPublicationBarrier(h.pool, signer, {
+        scope, collection: 'projects', baseline: await pubBaseline(),
+        recordStagingOutbox: true,
+        handoff: { async prepare() { return () => { published = true; }; } },
+      }, () => now)).rejects.toThrow('Scoped metadata unavailable');
+      expect(published).toBe(false);
+      expect(h.quarantines).toEqual(['read-failed']);
+      expect(h.releases).toEqual([true]);
+    }
+    const h = harness();
+    h.failWhen('record_signed_local_publication');
+    await expect(withSignedScopedPublicationBarrier(h.pool, signer, {
+      scope, collection: 'projects', baseline: await pubBaseline(),
+      recordStagingOutbox: true,
+      handoff: { async prepare() { return () => {}; } },
+    }, () => now)).rejects.toThrow('Scoped metadata unavailable');
+    expect(h.quarantines).toEqual(['read-failed']);
+    expect(h.releases).toEqual([true]);
+  });
+
+  test('outbox is opt-in: old isolated publication never calls migration 009', async () => {
+    const h = harness();
+    await withSignedScopedPublicationBarrier(h.pool, signer, {
+      scope, collection: 'projects', baseline: await pubBaseline(),
+      handoff: { async prepare() { return () => {}; } },
+    }, () => now);
+    expect(h.calls.some(x => x.sql === SCOPED_PUBLICATION_OUTBOX_SQL)).toBe(false);
   });
 });
