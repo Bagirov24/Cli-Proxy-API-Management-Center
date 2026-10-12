@@ -280,8 +280,7 @@ describe('Stage 2G.2 — trusted JWT -> actor -> AuthZ -> signed SQL (synthetic 
       [membership('demo-north', 'tenant-owner')],
       [membership('demo-orbit', 'tenant-viewer')],
     ]) {
-      let h!: ReturnType<typeof harness>;
-      h = harness({ onSelect() {
+      const h: ReturnType<typeof harness> = harness({ onSelect() {
         h.actors.set('actor-north', { id: 'actor-north', memberships: changed });
       } });
       const result = await h.read(h.request(await accessToken()));
@@ -292,8 +291,7 @@ describe('Stage 2G.2 — trusted JWT -> actor -> AuthZ -> signed SQL (synthetic 
   });
 
   test('issuer/subject actor mapping revoked during SQL invalidates the response', async () => {
-    let h!: ReturnType<typeof harness>;
-    h = harness({ onSelect() { h.directory.delete(issuer + ':sub-north'); } });
+    const h: ReturnType<typeof harness> = harness({ onSelect() { h.directory.delete(issuer + ':sub-north'); } });
     const result = await h.read(h.request(await accessToken()));
     expect(result).toMatchObject({ ok: false, status: 401 });
     expect(JSON.stringify(result)).not.toContain('north-project');
