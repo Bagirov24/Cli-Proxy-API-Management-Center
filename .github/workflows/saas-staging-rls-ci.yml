@@ -16,6 +16,7 @@ on:
       - 'tests/sql/saas_token_fingerprint_scope.test.sql'
       - 'tests/sql/saas_issuer_session_provisioning.test.sql'
       - 'tests/sql/saas_local_audit_reconciliation.test.sql'
+      - 'tests/sql/saas_synthetic_delivery_intent_ack.test.sql'
       - 'scripts/saas-staging/**'
       - 'src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts'
       - 'src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts'
@@ -217,6 +218,13 @@ jobs:
               exit 1
             }
           tail -n 3 /tmp/saas-audit-reconcile-install.log
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/013_synthetic_delivery_intent_ack_pilot.sql \
+            > /tmp/saas-synthetic-delivery-install.log 2>&1 || {
+              tail -n 100 /tmp/saas-synthetic-delivery-install.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-synthetic-delivery-install.log
           # Synthetic RS256 keys are generated only in this Bun process.
           # Real wire SQL uses only saas_ci_runner, never the postgres login.
           timeout --signal=TERM --kill-after=5s 90s env \
@@ -366,6 +374,34 @@ jobs:
               exit 1
             }
           tail -n 4 /tmp/saas-audit-reconcile-test.log
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_synthetic_delivery_intent_ack.test.sql \
+            > /tmp/saas-synthetic-delivery-test.log 2>&1 || {
+              tail -n 130 /tmp/saas-synthetic-delivery-test.log
+              exit 1
+            }
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/013_synthetic_delivery_intent_ack_pilot.sql \
+            > /tmp/saas-synthetic-delivery-replay.log 2>&1 || {
+              tail -n 110 /tmp/saas-synthetic-delivery-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 -c "SELECT saas_rls_test.assert_true(
+            (SELECT status='mock_acked' FROM saas_rls_private.synthetic_delivery_state
+             WHERE event_id=(SELECT event_id
+               FROM saas_rls_private.local_publication_audit_outbox
+               WHERE correlation_id='ci-synthetic-ack'))
+            AND
+            (SELECT status='retry_exhausted' FROM saas_rls_private.synthetic_delivery_state
+             WHERE event_id=(SELECT event_id
+               FROM saas_rls_private.local_publication_audit_outbox
+               WHERE correlation_id='ci-synthetic-exhaust')),
+            'Migration 013 replay must preserve mock ACK and exhausted terminal state')" \
+            > /tmp/saas-synthetic-delivery-replay-check.log 2>&1 || {
+              tail -n 90 /tmp/saas-synthetic-delivery-replay-check.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-synthetic-delivery-test.log
           timeout --signal=TERM --kill-after=5s 50s env \
             SAAS_EPHEMERAL_REVISION_CI=true \
             bash scripts/saas-staging/verify-revision-concurrency.sh
