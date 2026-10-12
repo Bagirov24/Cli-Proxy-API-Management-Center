@@ -1,4 +1,5 @@
 import type { AuthorizedReadScope, ControlCollection, TenantRole } from '../contracts';
+import type { ServerAuthorizationRevision } from './authorizationRevision';
 
 /**
  * Stage 2E SQL query boundary (SPEC / isolated fixtures).
@@ -59,10 +60,26 @@ export const SCOPED_AUTHORIZATION_REVISION_SQL =
   'SELECT revision, not_after_ms FROM saas_rls.authorized_revision_state(' +
   '$1::text, $2::text, $3::text, $4::text)';
 
+/** Migration 007: signed PG FOR SHARE, held until transaction COMMIT. */
+export const SCOPED_PUBLICATION_BARRIER_SQL =
+  'SELECT saas_rls.acquire_authorized_read_barrier(' +
+  '$1::text, $2::text, $3::text, $4::text) AS revision';
+
 /** A DB-signed epoch with the next cutoff for any active expiring grant. */
 export interface ScopedSqlRevisionState {
   readonly revision: string;
   readonly notAfterMs: string | null;
+}
+
+/** prepare MUST stage data privately. Only synchronous commit may hand off. */
+export interface ScopedPublicationHandoff {
+  prepare(signal: AbortSignal): Promise<() => void>;
+}
+
+/** Server-owned only; baseline comes from verified capture, never JWT/UI. */
+export interface ScopedSqlPublication extends ScopedSqlRead {
+  readonly baseline: ServerAuthorizationRevision;
+  readonly handoff: ScopedPublicationHandoff;
 }
 
 /** Safe generic denial: never attach tenant, actor, resource or PG details. */
@@ -189,19 +206,32 @@ async function executeSignedScopedRead(
   pool: ScopedSqlPool,
   issuer: SignedTransactionIssuer,
   request: ScopedSqlRead,
-  purpose: 'metadata' | 'revision',
-  nowSeconds: () => number
+  purpose: 'metadata' | 'revision' | 'publication',
+  nowSeconds: () => number,
+  publication?: Pick<ScopedSqlPublication, 'baseline' | 'handoff'>
 ): Promise<readonly SqlRow[]> {
   const { scope, collection, signal } = request;
   const limit = request.limit ?? 50;
-  const timeoutMs = request.timeoutMs ?? 15_000;
+  // Publication holds a shared epoch row lock: default to a short lease.
+  const timeoutMs = request.timeoutMs ??
+    (purpose === 'publication' ? 2_000 : 15_000);
   const cleanupMs = request.cleanupTimeoutMs ?? 1_000;
   if (!scope || !scopedIdentity(scope) ||
       !Object.prototype.hasOwnProperty.call(CONTROL_READ_SELECT_SQL, collection) ||
       !Number.isSafeInteger(limit) || limit < 1 || limit > 100 ||
       !Number.isSafeInteger(timeoutMs) || timeoutMs < 10 || timeoutMs > 60_000 ||
       !Number.isSafeInteger(cleanupMs) || cleanupMs < 10 || cleanupMs > 5_000 ||
-      signal?.aborted || typeof pool.quarantine !== 'function') {
+      signal?.aborted || typeof pool.quarantine !== 'function' ||
+      (purpose === 'publication' &&
+        (!publication || !publication.handoff ||
+         typeof publication.handoff.prepare !== 'function' ||
+         !publication.baseline ||
+         typeof publication.baseline.value !== 'string' ||
+         !/^[1-9][0-9]{0,18}$/.test(publication.baseline.value) ||
+         BigInt(publication.baseline.value) > 9_223_372_036_854_775_807n ||
+         (publication.baseline.notAfterMs !== null &&
+           (!Number.isSafeInteger(publication.baseline.notAfterMs) ||
+            publication.baseline.notAfterMs < 1))))) {
     throw new Error('Invalid scoped read');
   }
 
@@ -304,6 +334,83 @@ async function executeSignedScopedRead(
       };
       if (!await dbAllows()) {
         denied = true;
+      } else if (purpose === 'publication' && publication) {
+        const args = [scope.tenantId, scope.actorId, scope.role, collection] as const;
+        // PostgreSQL SECURITY DEFINER FOR SHARE blocks cooperating writer
+        // epoch UPDATE until publication transaction is committed.
+        const lock = await query(SCOPED_PUBLICATION_BARRIER_SQL, args);
+        if (!Array.isArray(lock.rows) || lock.rows.length !== 1 ||
+            !lock.rows[0] || typeof lock.rows[0] !== 'object' ||
+            Array.isArray(lock.rows[0])) {
+          throw new Error('Malformed publication lock attestation');
+        }
+        const lockedEpoch = lock.rows[0].revision;
+        if (lockedEpoch === null) {
+          denied = true;
+        } else if (typeof lockedEpoch !== 'string' ||
+                   !/^[1-9][0-9]{0,18}$/.test(lockedEpoch) ||
+                   BigInt(lockedEpoch) > 9_223_372_036_854_775_807n) {
+          throw new Error('Malformed locked epoch');
+        } else if (lockedEpoch !== publication.baseline.value) {
+          denied = true;
+        } else {
+          // Check time-sensitive grants under lock too, not only the epoch.
+          const state = await query(SCOPED_AUTHORIZATION_REVISION_SQL, args);
+          if (!Array.isArray(state.rows) || state.rows.length !== 1 ||
+              !state.rows[0] || typeof state.rows[0] !== 'object' ||
+              Array.isArray(state.rows[0])) {
+            throw new Error('Malformed locked revision state');
+          }
+          const current = state.rows[0];
+          if (current.revision === null) {
+            denied = true;
+          } else if (typeof current.revision !== 'string' ||
+              !/^[1-9][0-9]{0,18}$/.test(current.revision) ||
+              BigInt(current.revision) > 9_223_372_036_854_775_807n ||
+              (current.not_after_ms !== null &&
+                (typeof current.not_after_ms !== 'string' ||
+                 !/^[1-9][0-9]{0,15}$/.test(current.not_after_ms) ||
+                 !Number.isSafeInteger(Number(current.not_after_ms))))) {
+            throw new Error('Malformed locked expiry state');
+          } else if (current.revision !== publication.baseline.value ||
+                     (current.not_after_ms === null ? null :
+                       Number(current.not_after_ms)) !==
+                       publication.baseline.notAfterMs ||
+                     (publication.baseline.notAfterMs !== null &&
+                       Date.now() >= publication.baseline.notAfterMs)) {
+            denied = true;
+          } else {
+            // prepare may apply backpressure ONLY to a local private stage.
+            // A late promise after abort may never call commit.
+            const commit = await waitForAbort(
+              Promise.resolve().then(() => publication.handoff.prepare(controller.signal)),
+              controller.signal
+            );
+            if (typeof commit !== 'function') {
+              throw new Error('Invalid staged publication');
+            }
+            if (!await dbAllows()) denied = true;
+            if (!denied &&
+                (controller.signal.aborted ||
+                 (publication.baseline.notAfterMs !== null &&
+                  Date.now() >= publication.baseline.notAfterMs))) {
+              denied = true;
+            }
+            if (!denied) {
+              // Only a synchronous, atomic LOCAL handoff is admissible.
+              // Remote transport receipts cannot be proven by this module.
+              const completion: unknown = commit();
+              if (completion !== undefined) {
+                throw new Error('Publication commit must be synchronous');
+              }
+              await query('COMMIT', []);
+              transactionEnded = true;
+              if (controller.signal.aborted) {
+                throw new Error('Publication cancelled after handoff');
+              }
+            }
+          }
+        }
       } else {
         const isRevision = purpose === 'revision';
         const result = await query(
@@ -438,4 +545,27 @@ export async function readSignedScopedAuthorizationRevision(
     revision: rows[0].revision as string,
     notAfterMs: rows[0].not_after_ms as string | null,
   };
+}
+
+/**
+ * 2G.4d.5a: server-only staging publication primitive, NOT HTTP.
+ * Scope, revision and sanitized payload originate in a trusted server.
+ * prepare MUST NOT publish. The synchronous commit must be atomic,
+ * non-throwing and local, with no deferred I/O. A real transport adapter
+ * must prove those properties independently. If handoff happened but DB
+ * COMMIT fails, emitted data cannot be retracted: production blocked.
+ *
+ * The FOR SHARE lock spans the complete private prepare + handoff, so
+ * cooperating writer/revoke COMMIT cannot precede this local handoff.
+ */
+export async function withSignedScopedPublicationBarrier(
+  pool: ScopedSqlPool,
+  issuer: SignedTransactionIssuer,
+  request: ScopedSqlPublication,
+  nowSeconds: () => number = () => Math.floor(Date.now() / 1000)
+): Promise<void> {
+  await executeSignedScopedRead(
+    pool, issuer, request, 'publication', nowSeconds,
+    { baseline: request.baseline, handoff: request.handoff }
+  );
 }
