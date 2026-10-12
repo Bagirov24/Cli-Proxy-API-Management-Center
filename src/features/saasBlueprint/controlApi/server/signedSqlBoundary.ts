@@ -207,6 +207,9 @@ export async function readSignedScopedMetadata(
   let transactionEnded = false;
   let activeQueries = 0;
   let discard = false;
+  // Only a completed ROLLBACK + successful release may become a generic
+  // 404. Keep raw driver errors out of Error.cause and public diagnostics.
+  let safeDenial = false;
   try {
     // A driver can ignore abort while waiting for capacity. If it returns a
     // reservation AFTER the deadline, discard that late reservation as well.
@@ -345,10 +348,13 @@ export async function readSignedScopedMetadata(
       }
     }
     if (releaseFailed) throw new Error('Scoped metadata unavailable');
-    if (denied) throw new ScopedSqlAuthorizationDenied();
+    if (denied) {
+      safeDenial = true;
+      throw new ScopedSqlAuthorizationDenied();
+    }
     return output;
-  } catch (error) {
-    if (error instanceof ScopedSqlAuthorizationDenied) throw error;
+  } catch {
+    if (safeDenial) throw new ScopedSqlAuthorizationDenied();
     throw new Error('Scoped metadata unavailable');
   } finally {
     clearTimeout(timer);
