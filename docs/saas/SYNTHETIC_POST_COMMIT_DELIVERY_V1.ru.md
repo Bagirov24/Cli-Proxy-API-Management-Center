@@ -156,3 +156,32 @@ together with [Main CI #38305618686](https://github.com/Bagirov24/Cli-Proxy-API-
 (1,829 PASS/0 FAIL), [Demo #38305618762](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38305618762)
 and [Chromium #38305618724](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38305618724)
 — **4/4 SUCCESS**.
+
+## 014: durable LOCAL synthetic receiver ledger (additional pilot)
+
+**IMPLEMENTED, awaiting independent CI verification on the new HEAD:**
+`014_synthetic_receiver_ledger_pilot.sql` adds a guarded, append-only
+PostgreSQL16 `synthetic_receiver_effects` ledger with exactly one row per
+immutable 013 event/key. In this **test receiver only**, inserting the
+row IS the whole simulated effect, committed atomically with its
+receipt UUID. The `saas_mock_receiver` NOLOGIN capability can call
+`receive_synthetic_delivery(event,key,'audit_observed_v1')` but
+cannot read or modify private tables directly. An active committed 013
+worker claim is required. An identical retry returns the original
+receipt and `applied_now=false`; wrong key/kind fails closed.
+
+An independent sender can use `mark_mock_receiver_ack` to check a
+matching durable receiver receipt AND the unchanged 013 generation,
+lease and fence. The original 013 `mark_mock_delivery_ack` remains
+unchanged for compatibility with its existing synthetic tests; it is
+**not** cryptographic network ACK verification. The ledger survives
+receiver process restart because it lives in disposable PostgreSQL,
+not an in-memory Map. PG16 acceptance additionally checks rollback,
+ACK loss/retry, stale and forged ACK, terminal state, ACL and migration
+replay. Do not mark this addition VERIFIED until CI completes on its SHA.
+
+**Critical boundary:** a PostgreSQL receiver-local atomic row is NOT a
+remote recipient transaction; it proves neither real network delivery
+nor exactly-once effects at an arbitrary client. No real payload,
+network bytes, tenant rows, credentials or HTTP endpoints are added.
+Pre-COMMIT synchronous local handoff remains an unsolved blocker.

@@ -17,6 +17,7 @@ on:
       - 'tests/sql/saas_issuer_session_provisioning.test.sql'
       - 'tests/sql/saas_local_audit_reconciliation.test.sql'
       - 'tests/sql/saas_synthetic_delivery_intent_ack.test.sql'
+      - 'tests/sql/saas_synthetic_receiver_ledger.test.sql'
       - 'scripts/saas-staging/**'
       - 'src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts'
       - 'src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts'
@@ -225,6 +226,14 @@ jobs:
               exit 1
             }
           tail -n 4 /tmp/saas-synthetic-delivery-install.log
+          # An independent, local receiver ledger: staging only, no HTTP.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/014_synthetic_receiver_ledger_pilot.sql \
+            > /tmp/saas-synthetic-receiver-install.log 2>&1 || {
+              tail -n 100 /tmp/saas-synthetic-receiver-install.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-synthetic-receiver-install.log
           # Synthetic RS256 keys are generated only in this Bun process.
           # Real wire SQL uses only saas_ci_runner, never the postgres login.
           timeout --signal=TERM --kill-after=5s 90s env \
@@ -402,6 +411,29 @@ jobs:
               exit 1
             }
           tail -n 5 /tmp/saas-synthetic-delivery-test.log
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_synthetic_receiver_ledger.test.sql \
+            > /tmp/saas-synthetic-receiver-test.log 2>&1 || {
+              tail -n 130 /tmp/saas-synthetic-receiver-test.log
+              exit 1
+            }
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/014_synthetic_receiver_ledger_pilot.sql \
+            > /tmp/saas-synthetic-receiver-replay.log 2>&1 || {
+              tail -n 100 /tmp/saas-synthetic-receiver-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 -c "SELECT saas_rls_test.assert_true(
+            (SELECT COUNT(*)=1 FROM saas_rls_private.synthetic_receiver_effects e
+             JOIN saas_rls_private.local_publication_audit_outbox a
+               ON a.event_id=e.event_id
+             WHERE a.correlation_id='ci-receiver-durable'),
+            '014 replay must preserve durable single receiver effect')" \
+            > /tmp/saas-synthetic-receiver-replay-check.log 2>&1 || {
+              tail -n 100 /tmp/saas-synthetic-receiver-replay-check.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-synthetic-receiver-test.log
           timeout --signal=TERM --kill-after=5s 50s env \
             SAAS_EPHEMERAL_REVISION_CI=true \
             bash scripts/saas-staging/verify-revision-concurrency.sh
