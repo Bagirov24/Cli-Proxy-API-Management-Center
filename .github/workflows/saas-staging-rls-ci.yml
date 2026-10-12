@@ -21,6 +21,7 @@ on:
       - 'scripts/saas-staging/**'
       - 'src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts'
       - 'src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts'
+      - 'src/features/saasBlueprint/controlApi/server/syntheticCommittedIntent.ts'
       - 'src/features/saasBlueprint/controlApi/server/authorizationRevision.ts'
       - 'src/features/saasBlueprint/controlApi/server/signedPgAuthorizationRevision.ts'
       - 'src/features/saasBlueprint/controlApi/server/securityAudit.ts'

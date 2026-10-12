@@ -11,6 +11,8 @@ import { createTrustedIssuerSessionProvisioner } from
   '../../src/features/saasBlueprint/controlApi/server/issuerSessionProvisioning.ts';
 import { createTrustedSqlReadBoundary, createTrustedSqlPublishedBoundary } from
   '../../src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts';
+import { createTrustedSyntheticCommittedIntentBoundary } from
+  '../../src/features/saasBlueprint/controlApi/server/syntheticCommittedIntent.ts';
 import { createPinnedHmacScopeIssuer, CONTROL_READ_SELECT_SQL, SCOPED_READ_GATE_SQL,
   SCOPED_AUTHORIZATION_REVISION_SQL, SCOPED_PUBLICATION_BARRIER_SQL,
   SCOPED_PUBLICATION_OUTBOX_SQL, withSignedScopedPublicationBarrier } from
@@ -1017,6 +1019,237 @@ try {
     'Cross-tenant refusal must not insert a fake Allow event');
   assert.equal(driver.stats().poisoned, false);
   console.info('PASS: real Bun.SQL commit→local audit→synthetic idempotent intent retry, lost MOCK ACK only');
+
+  // Stage 2G.4d.7e: NEW opt-in intent-only publication mode. There is no
+  // injected sync local handoff at all; only 009/013 writes may commit.
+  // An independent worker follows the PG COMMIT and 012 reconciliation.
+  const safeDependencies = {
+    ...createTrustedDependencies(driver,audit,
+      createSignedPgAuthorizationRevisionSource(driver,signer)),
+    recordStagingOutbox:true,
+  };
+  assert.throws(
+    () => createTrustedSyntheticCommittedIntentBoundary({
+      ...safeDependencies,recordStagingOutbox:false,
+    }),
+    /Refusing post-COMMIT intent/,
+    'Intent-only publication MUST require signed staging outbox'
+  );
+  const safeIntent = createTrustedSyntheticCommittedIntentBoundary(safeDependencies);
+  const beforeSafeOutbox=readPrivateOutboxCount();
+  const beforeSafeEvent=readLastCommittedNorthAuditId();
+  const safeIntentReceipt=await safeIntent(
+    request(north,'demo-north','projects',{limit:1})
+  );
+  assert.equal(safeIntentReceipt.ok,true);
+  assert.equal(safeIntentReceipt.status,200);
+  assert.equal(safeIntentReceipt.source,'staging-committed-intent-only');
+  assert.equal(safeIntentReceipt.intentCommitted,true);
+  assert.equal(safeIntentReceipt.externalReceipt,'not_attested');
+  for(const forbidden of ['published','rows','tenantId','idempotencyKey',
+    'leaseToken','delivery_event_id','north-project',north]) {
+    assert.equal(JSON.stringify(safeIntentReceipt).includes(forbidden),false,
+      'Intent receipt must not imply external handoff or leak payload/worker state');
+  }
+  assert.equal(readPrivateOutboxCount(),beforeSafeOutbox+1,
+    'Intent must be durable only after signed SQL COMMIT');
+  const safeEventId=readLastCommittedNorthAuditId();
+  assert.ok(safeEventId>beforeSafeEvent);
+  assert.equal(syntheticDeliveryFixtureSql(safeEventId,id =>
+    'SELECT COUNT(*) FROM saas_rls_private.synthetic_receiver_effects WHERE event_id='+id),
+  '0','No downstream LOCAL effect is allowed in a pre-COMMIT callback');
+  assert.equal(mockDeliveryLease(safeEventId,1),null,
+    'A committed event does not skip independently durable audit observation');
+  const foreignSafeIntent=await safeIntent(
+    request(north,'demo-orbit','projects',{limit:1})
+  );
+  assert.equal(foreignSafeIntent.ok,false);
+  assert.equal(foreignSafeIntent.status,404);
+  assert.equal(readPrivateOutboxCount(),beforeSafeOutbox+1,
+    'Foreign tenant cannot create any durable post-commit intent');
+
+  reconcileCommittedLocalAuditInFixture(safeEventId);
+  const firstSafeLease=mockDeliveryLease(safeEventId,1);
+  assert.equal(firstSafeLease.generation,1);
+  assert.equal(firstSafeLease.attempt,1);
+  const receiveDurably = (lease) => {
+    assert.match(lease.idempotencyKey,/^[0-9a-f-]{36}$/);
+    const outcome=syntheticDeliveryFixtureSql(lease.eventId,id =>
+      'BEGIN; SET LOCAL ROLE saas_mock_receiver; SELECT '+
+      "receiver_receipt::text || '|' || applied_now::text FROM "+
+      'saas_rls_private.receive_synthetic_delivery('+id+",'"+
+      lease.idempotencyKey+"'::uuid,'audit_observed_v1'); COMMIT;"
+    );
+    const values=outcome.split('|');
+    assert.equal(values.length,2);
+    assert.match(values[0],/^[0-9a-f-]{36}$/);
+    assert.ok(values[1]==='t'||values[1]==='f');
+    return {receipt:values[0],appliedNow:values[1]==='t'};
+  };
+  const markDurableReceipt=(lease,receipt)=>{
+    assert.match(receipt,/^[0-9a-f-]{36}$/);
+    const answer=syntheticDeliveryFixtureSql(lease.eventId,id =>
+      'BEGIN; SET LOCAL ROLE saas_mock_delivery_worker; SELECT '+
+      'saas_rls_private.mark_mock_receiver_ack('+id+','+
+      lease.generation+",'"+lease.fencingToken+"'::uuid,'"+
+      receipt+"'::uuid); COMMIT;"
+    );
+    assert.ok(answer==='t'||answer==='f');
+    return answer==='t';
+  };
+  const receiverFirst=receiveDurably(firstSafeLease);
+  assert.equal(receiverFirst.appliedNow,true);
+  assert.equal(syntheticDeliveryFixtureSql(safeEventId,id =>
+    'SELECT COUNT(*) FROM saas_rls_private.synthetic_receiver_effects WHERE event_id='+id),
+  '1','Synthetic receiver effect and receipt are committed together');
+  // Deliberate sender crash / lost acknowledgement. A new physical
+  // receiver process will reopen PG; the effect must stay singleton.
+  await Bun.sleep(1350);
+  const secondSafeLease=mockDeliveryLease(safeEventId,15);
+  assert.equal(secondSafeLease.generation,2);
+  assert.equal(secondSafeLease.attempt,2);
+  assert.equal(secondSafeLease.idempotencyKey,firstSafeLease.idempotencyKey);
+  assert.notEqual(secondSafeLease.fencingToken,firstSafeLease.fencingToken);
+  const receiverReplay=receiveDurably(secondSafeLease);
+  assert.equal(receiverReplay.appliedNow,false);
+  assert.equal(receiverReplay.receipt,receiverFirst.receipt);
+  assert.equal(markDurableReceipt(firstSafeLease,receiverFirst.receipt),false,
+    'Stale sender fence can never authorize a newly claimed ACK');
+  assert.equal(markDurableReceipt(secondSafeLease,crypto.randomUUID()),false,
+    'Guessed receipt is insufficient for positive ACK');
+  assert.equal(markDurableReceipt(secondSafeLease,receiverReplay.receipt),true);
+  assert.equal(markDurableReceipt(secondSafeLease,receiverReplay.receipt),false);
+  assert.equal(syntheticDeliveryFixtureSql(safeEventId,id =>
+    "SELECT status || '|' || attempts::text FROM "+
+    'saas_rls_private.synthetic_delivery_state WHERE event_id='+id),
+  'mock_acked|2');
+  assert.equal(syntheticDeliveryFixtureSql(safeEventId,id =>
+    'SELECT COUNT(*) FROM saas_rls_private.synthetic_receiver_effects WHERE event_id='+id),
+  '1','Lost ACK plus retry must not cause a second receiver-local effect');
+  console.info('PASS: event-only trusted post-COMMIT intent -> durable PG receiver -> lost ACK -> fenced retry');
+
+  // Fail the exact signed publication COMMIT by executing ROLLBACK on its
+  // REAL reserved PostgreSQL connection before COMMIT reaches the server.
+  // No receipt/effect can have been emitted by the new no-op-only handoff.
+  const failingSql=nativeSql(1);
+  const failingBase=boundedDriver(failingSql);
+  let hadStagedOutbox=false;
+  let forcedRollback=false;
+  const failCommitPool={
+    quarantine(reason){ failingBase.quarantine(reason); },
+    async connect(signal){
+      const reserved=await failingBase.connect(signal);
+      return {
+        release(discard){return reserved.release(discard);},
+        async query(statement,params,querySignal){
+          if(statement===SCOPED_PUBLICATION_OUTBOX_SQL){
+            const result=await reserved.query(statement,params,querySignal);
+            if(result.rows?.[0]?.recorded===true) hadStagedOutbox=true;
+            return result;
+          }
+          if(statement==='COMMIT' && hadStagedOutbox){
+            forcedRollback=true;
+            await reserved.query('ROLLBACK',[],querySignal);
+            throw new Error('CI-only forced rollback before outbox COMMIT');
+          }
+          return reserved.query(statement,params,querySignal);
+        },
+      };
+    },
+  };
+  const beforeFailedOutbox=readPrivateOutboxCount();
+  try {
+    const interruptedIntent=createTrustedSyntheticCommittedIntentBoundary({
+      ...createTrustedDependencies(failCommitPool,audit,
+        createSignedPgAuthorizationRevisionSource(failCommitPool,signer)),
+      recordStagingOutbox:true,
+    });
+    const failed=await interruptedIntent(
+      request(north,'demo-north','projects',{limit:1})
+    );
+    assert.equal(hadStagedOutbox,true,
+      'Failure must actually occur after signed audit + intent insertion');
+    assert.equal(forcedRollback,true,
+      'Fault injection must intercept only the publication transaction COMMIT');
+    assert.equal(failed.ok,false);
+    assert.equal(failed.status,503);
+    assert.equal('intentCommitted' in failed,false);
+    assert.equal(readPrivateOutboxCount(),beforeFailedOutbox,
+      'Forced SQL rollback must leave zero new committed intents');
+  } finally {
+    if(!failingBase.stats().poisoned) await failingSql.close({timeout:0});
+  }
+  console.info('PASS: injected pre-COMMIT ROLLBACK keeps synthetic receiver unreachable without emitting local effect');
+
+  // Opposite uncertainty: PostgreSQL COMMIT SUCCEEDS but its reply is
+  // artificially lost. No caller-facing success is permitted; an independent
+  // synthetic worker can recover the persisted intent without resubmitting
+  // the request and thereby creating another logical event.
+  const uncertainSql=nativeSql(1);
+  const uncertainBase=boundedDriver(uncertainSql);
+  let uncertainStaged=false;
+  let committedReplyLost=false;
+  const lostReplyPool={
+    quarantine(reason){ uncertainBase.quarantine(reason); },
+    async connect(signal){
+      const reserved=await uncertainBase.connect(signal);
+      return {
+        release(discard){return reserved.release(discard);},
+        async query(statement,params,querySignal){
+          if(statement===SCOPED_PUBLICATION_OUTBOX_SQL){
+            const result=await reserved.query(statement,params,querySignal);
+            if(result.rows?.[0]?.recorded===true) uncertainStaged=true;
+            return result;
+          }
+          if(statement==='COMMIT' && uncertainStaged){
+            await reserved.query('COMMIT',[],querySignal);
+            committedReplyLost=true;
+            throw new Error('CI-only unknown COMMIT reply after real PostgreSQL commit');
+          }
+          return reserved.query(statement,params,querySignal);
+        },
+      };
+    },
+  };
+  const beforeUnknown=readPrivateOutboxCount();
+  const previousUnknownEvent=readLastCommittedNorthAuditId();
+  try {
+    const uncertainBoundary=createTrustedSyntheticCommittedIntentBoundary({
+      ...createTrustedDependencies(lostReplyPool,audit,
+        createSignedPgAuthorizationRevisionSource(lostReplyPool,signer)),
+      recordStagingOutbox:true,
+    });
+    const unknown=await uncertainBoundary(
+      request(north,'demo-north','projects',{limit:1})
+    );
+    assert.equal(uncertainStaged,true);
+    assert.equal(committedReplyLost,true,
+      'The injected error MUST happen strictly after real PostgreSQL COMMIT');
+    assert.equal(unknown.ok,false);
+    assert.equal(unknown.status,503);
+    assert.equal('intentCommitted' in unknown,false,
+      'A lost COMMIT reply cannot be returned as an attested success');
+    assert.equal(readPrivateOutboxCount(),beforeUnknown+1,
+      'Committed event is durable even when sender did not receive a success');
+  } finally {
+    if(!uncertainBase.stats().poisoned) await uncertainSql.close({timeout:0});
+  }
+  const survivedId=readLastCommittedNorthAuditId();
+  assert.ok(survivedId>previousUnknownEvent);
+  assert.equal(syntheticDeliveryFixtureSql(survivedId,id =>
+    'SELECT COUNT(*) FROM saas_rls_private.synthetic_receiver_effects WHERE event_id='+id),
+  '0','Commit-response uncertainty must not accidentally send before worker claim');
+  reconcileCommittedLocalAuditInFixture(survivedId);
+  const recoveredLease=mockDeliveryLease(survivedId,15);
+  assert.ok(recoveredLease);
+  const recoveredEffect=receiveDurably(recoveredLease);
+  assert.equal(recoveredEffect.appliedNow,true);
+  assert.equal(markDurableReceipt(recoveredLease,recoveredEffect.receipt),true);
+  assert.equal(syntheticDeliveryFixtureSql(survivedId,id =>
+    'SELECT COUNT(*) FROM saas_rls_private.synthetic_receiver_effects WHERE event_id='+id),
+  '1');
+  console.info('PASS: real COMMIT with lost reply yields 503/UNKNOWN, yet independent PG worker recovers single durable intent');
+
 
   // 2G.4d.7a: real ephemeral PostgreSQL with TWO verified RS256 bearer
   // tokens for the SAME actor. The server derives SHA-256 of each exact
