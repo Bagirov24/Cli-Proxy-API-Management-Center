@@ -50,3 +50,11 @@ required to wait until that reader commits; the newly signed scope
 afterward is denied and restoration bumps North again, not Orbit.
 This proves cooperative PostgreSQL DB ordering only, not remote
 transport delivery or real OIDC session logout.
+
+## Raw signed RLS gate after actor revocation
+
+Migration 008 also updates `scope_tenant()` and `read_allowed()`
+to check private active actor state. A previously HMAC-signed actor
+whose singleton synthetic session is revoked cannot use an allowed raw
+RLS SELECT to circumvent `SCOPED_READ_GATE_SQL`; the database returns
+zero project rows. This is actor-wide, not per-token OIDC revocation.

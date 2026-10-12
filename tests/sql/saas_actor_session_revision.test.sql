@@ -49,8 +49,12 @@ SELECT saas_rls_test.assert_true(
       'demo-north','actor-north','tenant-admin','projects')
   )
   AND saas_rls.acquire_authorized_read_barrier(
-    'demo-north','actor-north','tenant-admin','projects') IS NULL,
-  'revoked actor must fail signed gate, revision attestation and FOR SHARE');
+    'demo-north','actor-north','tenant-admin','projects') IS NULL
+  AND saas_rls.scope_tenant() IS NULL
+  AND NOT saas_rls.read_allowed('demo-north','projects')
+  AND NOT EXISTS (SELECT 1 FROM saas_rls.projects
+                  WHERE tenant_id='demo-north'),
+  'revoked actor must deny gate, signed revision and RAW RLS SELECT');
 RESET ROLE;
 ROLLBACK;
 

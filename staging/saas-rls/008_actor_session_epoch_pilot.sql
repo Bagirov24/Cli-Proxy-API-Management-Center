@@ -97,6 +97,51 @@ REVOKE ALL ON FUNCTION saas_rls.scope_membership_matches(TEXT,TEXT,TEXT)
 GRANT EXECUTE ON FUNCTION saas_rls.scope_membership_matches(TEXT,TEXT,TEXT)
   TO saas_rls_reader;
 
+-- The raw RLS predicates themselves must check actor-wide revocation;
+-- future SQL clients must not bypass this through a direct SELECT.
+CREATE OR REPLACE FUNCTION saas_rls.scope_tenant()
+RETURNS TEXT LANGUAGE sql VOLATILE SECURITY DEFINER
+SET search_path=pg_catalog,pg_temp
+AS $fn$
+  SELECT CASE WHEN saas_rls_private.scope_verified()
+     AND EXISTS (
+       SELECT 1 FROM saas_rls_private.actor_session_state AS s
+       WHERE s.actor_id=NULLIF(current_setting('saas.scope_actor',true),'')
+         AND s.status='active'
+     )
+    THEN NULLIF(current_setting('saas.scope_tenant',true),'')
+    ELSE NULL END
+$fn$;
+ALTER FUNCTION saas_rls.scope_tenant() OWNER TO saas_rls_owner;
+REVOKE ALL ON FUNCTION saas_rls.scope_tenant() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION saas_rls.scope_tenant() TO saas_rls_reader;
+
+CREATE OR REPLACE FUNCTION saas_rls.read_allowed(
+  target_tenant TEXT, resource_collection TEXT
+) RETURNS BOOLEAN
+LANGUAGE sql VOLATILE SECURITY DEFINER
+SET search_path=pg_catalog,pg_temp
+AS $fn$
+  SELECT saas_rls_private.scope_verified()
+    AND target_tenant=NULLIF(current_setting('saas.scope_tenant',true),'')
+    AND EXISTS (
+      SELECT 1 FROM saas_rls_private.actor_session_state AS s
+      WHERE s.actor_id=NULLIF(current_setting('saas.scope_actor',true),'')
+        AND s.status='active'
+    )
+    AND EXISTS (
+      SELECT 1 FROM saas_rls.memberships AS m
+      WHERE m.actor_id=NULLIF(current_setting('saas.scope_actor',true),'')
+        AND m.tenant_id=target_tenant AND m.status='active'
+        AND (m.role IN ('tenant-owner','tenant-admin','tenant-viewer')
+          OR (m.role='tenant-auditor'
+              AND resource_collection IN ('tenant','projects','applications')))
+    )
+$fn$;
+ALTER FUNCTION saas_rls.read_allowed(TEXT,TEXT) OWNER TO saas_rls_owner;
+REVOKE ALL ON FUNCTION saas_rls.read_allowed(TEXT,TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION saas_rls.read_allowed(TEXT,TEXT) TO saas_rls_reader;
+
 DO $assert$
 BEGIN
   IF has_schema_privilege('saas_rls_reader','saas_rls_private','USAGE')
