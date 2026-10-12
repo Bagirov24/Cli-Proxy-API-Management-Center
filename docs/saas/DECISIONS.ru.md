@@ -602,3 +602,39 @@ Private `token_bound_actor_tombstones` переживает удаление в�
 `expires_at` запрещены. Отзыв конкретного токена окончателен в
 рамках этого staging DB. Срок хранения tombstones и резервное
 восстановление в production ещё не спроектированы.
+
+## D-052 — issuer/subject→actor не может изменять принадлежность после bootstrap (2G.4d.7b)
+
+**IMPLEMENTED / VERIFIED** только synthetic+disposable PG16, code SHA
+`cade8751232b8deff40143c1ed31a8ac800194a1`, [PG16 #38300085282](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085282).
+
+Отдельный доверенный directory bootstrap закрепляет
+`issuer+subject→actor` навсегда в private `issuer_subject_bindings`;
+revoked status является терминальным, UPDATE actor/issuer/subject и
+DELETE запрещены. `issuer_bound_actor_tombstones` защищает от
+actor ID recycling и actor-only downgrade. Даже при активном
+token fingerprint отзыв subject меняет tenant epoch и блокирует signed
+RLS/receipt-only publication. Это не реальный OIDC identity provider.
+
+## D-053 — private subject bootstrap и bearer provisioning имеют разные привилегии
+
+**IMPLEMENTED / VERIFIED** только PG16, [Main CI #38300085289](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085289) (1 829 PASS),
+[PG16 #38300085282](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085282), [Demo #38300085311](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085311), [Chromium #38300085300](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085300) — 4/4 SUCCESS.
+
+NOLOGIN `saas_issuer_directory_admin` вызывает pin/revoke SUBJECT,
+NOLOGIN `saas_issuer_provisioner` вызывает enroll/revoke отдельного
+VERIFIED bearer. Они не могут читать таблицы друг друга или signer
+secret, не выдаются `saas_ci_runner/saas_rls_reader`. Только
+server-проверенный RS256 JWT + issuer/subject actor directory могут
+породить immutable token fingerprint+expiry writer input. Production
+secure issuer-driven enrollment, issuer subject pin policy и сервисные
+учётные данные ещё SPEC.
+
+## D-054 — при subject logout signed публикация обязана сериализоваться на tenant epoch
+
+**IMPLEMENTED / VERIFIED** лишь для local ephemeral PG16, [PG16 #38300085282](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085282).
+
+Writer issuer-subject revoke обязан ожидать reader `FOR SHARE`,
+после COMMIT revoke прежняя signed session denied даже при ACTIVE
+собственной token row. Не доказывает атомарность remote HTTP delivery
+и не создаёт production tamper-evident audit.

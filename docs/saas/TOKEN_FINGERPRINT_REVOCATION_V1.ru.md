@@ -107,3 +107,16 @@ These tombstones are deliberately *not* a production token directory,
 issuer, key vault or tamper-evident audit log. Their lifetime,
 retention/compliance requirements and disaster recovery remain
 production SPEC. Never store raw bearer strings in this registry.
+
+## 2G.4d.7b — authoritative issuer-subject layer above token fingerprint
+
+Migration 010 fingerprint ownership remains irreversible. New migration
+011 additionally demands a pre-pinned issuer+subject binding for
+issuer-enrolled token rows and terminal SUBJECT revocation. It denies
+still-active token rows after subject logout and permanently prevents
+legacy issuerless token enrollment for pinned actors. The app-side
+provisioning module validates exact signed RS256 bearer and verified
+expiry, never trusts JWT `jti`, and only passes a hash to a private
+writer capability. No real issuer provisioning credentials or public
+API exist. Details:
+[ISSUER_SESSION_ENROLLMENT_V1.ru.md](ISSUER_SESSION_ENROLLMENT_V1.ru.md).

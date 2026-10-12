@@ -75,3 +75,14 @@ individual enrolled SHA-256 bearer fingerprints to be revoked without
 disabling the actor and its sibling active tokens. Details and real
 acceptance evidence:
 [TOKEN_FINGERPRINT_REVOCATION_V1.ru.md](TOKEN_FINGERPRINT_REVOCATION_V1.ru.md).
+
+## 2G.4d.7b — issuer subject cancellation independent of actor-wide logout
+
+Actor-wide 008 revocation is still authoritative for all actor tokens;
+individual 010 token revocation still affects only that fingerprint.
+New 011 issuer SUBJECT revocation invalidates every token whose immutable
+subject binding was revoked, without updating each private token row.
+A cooperating writer waits for signed publication `FOR SHARE`; a
+stale subject is denied after COMMIT even when token status remains
+active. This is isolated PG16 only, NOT a real OIDC logout provider.
+See [ISSUER_SESSION_ENROLLMENT_V1.ru.md](ISSUER_SESSION_ENROLLMENT_V1.ru.md).

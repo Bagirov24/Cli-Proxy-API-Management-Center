@@ -134,3 +134,22 @@ and [Main CI #38297886508](https://github.com/Bagirov24/Cli-Proxy-API-Management
 (1,822 PASS) verified these tests, with Demo and Chromium successful.
 This is not an operational retention/compliance or production-token
 issuance policy; those remain **SPEC**.
+
+## 2G.4d.7b — issuer subject authority (disposable, NOT production approval)
+
+| Security property | Proof | Status |
+| --- | --- | --- |
+| Immutable issuer+subject→actor and terminal subject logout | Migration 011, SQL acceptance [PG16 #38300085282](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085282) | VERIFIED ephemeral |
+| Separate NOLOGIN binding-admin and token-provisioner roles | PG16 least privilege/SECURITY DEFINER checks | VERIFIED ephemeral |
+| Trusted RS256 bearer→SHA-256 digest and verified exp, no `jti` reliance | [Main CI #38300085289](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085289), 1 829 PASS, 0 FAIL | VERIFIED synthetic |
+| Token A revocation preserves B, subject revocation denies B | Real non-superuser Bun.SQL E2E [PG16 #38300085282](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085282) | VERIFIED ephemeral |
+| Independent reader/writer issuer-subject COMMIT serializes with FOR SHARE | Multi-process PG16 [PG16 #38300085282](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085282) | VERIFIED ephemeral |
+| Production issuer session enrollment/refresh/identity store | Trusted port + synthetic keys/fixture only | SPEC |
+| Production monotonic migration runner and audited rollback | Reapply 011 after 010 in CI, no live runner | SPEC |
+| Durable token/subject audit + remote HTTP ACK and crash reconciliation | Local handoff and minimal outbox only | SPEC |
+| Vault/CPA/Gateway, actual network enforcement and billing | Outside staging-only scope | PROPOSED |
+
+**Exact code SHA `cade8751232b8deff40143c1ed31a8ac800194a1`**: [Main CI #38300085289](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085289), [PG16 #38300085282](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085282), [Demo #38300085311](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085311), [Chromium #38300085300](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085300) —
+4/4 SUCCESS. No Railway deploy, base merge, Core/Gateway/CPA changes,
+production credentials, `/data`, public SaaS routes or real AI traffic.
+See [ISSUER_SESSION_ENROLLMENT_V1.ru.md](ISSUER_SESSION_ENROLLMENT_V1.ru.md).

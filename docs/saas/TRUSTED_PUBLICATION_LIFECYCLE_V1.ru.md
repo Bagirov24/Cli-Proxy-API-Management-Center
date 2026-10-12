@@ -104,3 +104,15 @@ SQL reads/revisions and FOR SHARE publication, but never returned in
 a receipt. Enrolled actor IDs cannot fall back to 4-field actor-only
 HMAC. This does not add a public OIDC or HTTP transport.
 See [TOKEN_FINGERPRINT_REVOCATION_V1.ru.md](TOKEN_FINGERPRINT_REVOCATION_V1.ru.md).
+
+## 2G.4d.7b — issuer subject revocation within bounded publication lease
+
+For explicitly enrolled subjects, migration 011 extends the same
+signed actor+token+epoch PostgreSQL gate with an immutable, active
+issuer+subject binding. Subject revoke versions all member tenants,
+blocking concurrent publishing readers on the established `FOR SHARE`
+barrier until earlier COMMIT. Real multi-process evidence [PG16 #38300085282](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38300085282) confirms
+an individually active token is denied after subject revoke COMMIT.
+The synchronous local handoff still precedes DB COMMIT and is NOT a
+remote HTTP receipt; atomic transport/outbox reconciliation is SPEC.
+See [ISSUER_SESSION_ENROLLMENT_V1.ru.md](ISSUER_SESSION_ENROLLMENT_V1.ru.md).
