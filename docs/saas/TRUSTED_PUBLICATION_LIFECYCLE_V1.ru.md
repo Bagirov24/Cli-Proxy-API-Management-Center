@@ -94,3 +94,13 @@ does not equate to receipt at a remote browser.
 See [BOUNDED_PUBLICATION_HANDOFF_V1.ru.md](BOUNDED_PUBLICATION_HANDOFF_V1.ru.md),
 [PUBLICATION_BARRIER_PILOT_V1.ru.md](PUBLICATION_BARRIER_PILOT_V1.ru.md),
 [PRODUCTION_READINESS_GATES_V1.ru.md](PRODUCTION_READINESS_GATES_V1.ru.md).
+
+## 2G.4d.7a — opt-in token-bound trusted publication
+
+`createTrustedSqlPublishedBoundary` now supports server-only
+`requireTokenBoundSession:true` with an authoritative staging revision
+source. The verified exact bearer fingerprint is signed through all
+SQL reads/revisions and FOR SHARE publication, but never returned in
+a receipt. Enrolled actor IDs cannot fall back to 4-field actor-only
+HMAC. This does not add a public OIDC or HTTP transport.
+See [TOKEN_FINGERPRINT_REVOCATION_V1.ru.md](TOKEN_FINGERPRINT_REVOCATION_V1.ru.md).

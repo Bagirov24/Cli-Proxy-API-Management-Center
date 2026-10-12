@@ -41,3 +41,11 @@ direct reader privileges, committed minimal redacted record, ROLLBACK,
 cross-tenant denial, duplicate correlation and E2E receipt-only handoff.
 [Main CI #38293380784](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380784) passes 1,815 unit tests; Demo and Chromium succeed.
 An audit event is durable on PG COMMIT, not a delivery receipt.
+
+## 2G.4d.7a token fingerprint limitation
+
+Token-bound signed requests continue to emit existing minimal
+actor/tenant/revision/correlation outbox records after PG COMMIT.
+Current outbox does NOT persist an individual token fingerprint, so
+token-specific durable reconciliation and remote response receipt
+remain SPEC; no raw bearer is ever stored or exposed.

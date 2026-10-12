@@ -563,3 +563,28 @@ tamper-evidence, retention and external identity audit remain SPEC.
 HMAC-проверенный scope отозванного actor больше не видит private
 tenant и SQL-проекции напрямую. Это одна actor-wide синтетическая
 сессия, не token-bound OIDC revocation; release blocked.
+
+## D-049 — verified bearer fingerprint является частью signed PG scope
+
+**IMPLEMENTED / VERIFIED** (ephemeral code SHA
+`772a29be5b855f31e65e28b30144adddbe776bb1`).
+
+В opt-in token-bound режиме HMAC подписывает
+actor/tenant/txid/expiry/SHA-256 полного ранее проверенного access
+token; клиентские `jti`, actor ID и role НЕ являются authority.
+Каждый SQL gate требует actor+fingerprint+active/expiry из закрытого
+PostgreSQL registry. Поэтому revoke A повышает tenant epoch, не
+отключая другой token B этого actor.
+
+## D-050 — постоянная защита от actor-only downgrade и строгий порядок миграций
+
+**IMPLEMENTED / VERIFIED** только disposable PG16.
+
+Любой enrollment переводит actor в token-bound режим навсегда.
+Private `token_bound_actor_tombstones` переживает удаление всех
+токенов и actor ID recycling. Legacy 4-field HMAC допустим только
+для никогда не enrolled synthetic actor; production rollout требует
+независимого полного перевода без fallback. Миграция 010 должна
+применяться ПОСЛЕ 006, поскольку replay более старой версии
+перезаписывает token-aware expiry attestation. Production требует
+монотонной migration registry, без out-of-order replay.

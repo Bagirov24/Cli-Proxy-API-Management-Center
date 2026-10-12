@@ -66,3 +66,12 @@ private session status update, exact epoch bump, multi-tenant fanout,
 rollback, and independent reader/logout-writer COMMIT order.
 [Main CI #38293380784](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380784) verifies 1,815 unit tests; [Demo #38293380672](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380672) and [Chromium #38293380657](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380657) succeed.
 This **does not** prove issuer-bound per-token revocation or remote HTTP.
+
+## Follow-up 2G.4d.7a — individual-token revocation
+
+Migration 008 actor-wide kill switch remains mandatory; it denies
+EVERY token when actor is revoked. Migration 010 additionally permits
+individual enrolled SHA-256 bearer fingerprints to be revoked without
+disabling the actor and its sibling active tokens. Details and real
+acceptance evidence:
+[TOKEN_FINGERPRINT_REVOCATION_V1.ru.md](TOKEN_FINGERPRINT_REVOCATION_V1.ru.md).

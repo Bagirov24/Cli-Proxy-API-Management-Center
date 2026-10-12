@@ -104,3 +104,22 @@ audit storage and distribution, atomic/ordered HTTP delivery,
 crash-safe SQL connection lifecycle, Vault/BYOA, CPA/Gateway,
 network egress, product billing and deployment approvals remain
 SPEC/PROPOSED.
+
+## 2G.4d.7a — token-specific revocation (NOT production approval)
+
+| Security property | Evidence | Status |
+| --- | --- | --- |
+| Verified bearer SHA-256 binds exact HMAC transaction | [Main CI 1,822 tests](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38296991853) | VERIFIED ephemeral |
+| Same actor: revoke token A, token B remains | [Real PG16 E2E](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38296991811) | VERIFIED ephemeral |
+| Raw RLS denial + earliest expiry, immutable enrollment tombstone | PostgreSQL 16 SQL assertions | VERIFIED ephemeral |
+| Physical PG token-revoke writer waits for signed publication COMMIT | Independent reader/writer/observer PG16 | VERIFIED ephemeral |
+| Production OIDC-backed issuance/session enrollment/rotation | Synthetic signer and privileged fixture only | SPEC |
+| Monotonic production migration registry and safe rollback | Existing out-of-order replay requires 010 reapplication | SPEC |
+| Token-specific, tamper-evident audit and HTTP/outbox delivery ACK | Local handoff is NOT network receipt | SPEC |
+| Physical driver discard, multi-instance failover and recovery | CI quarantine only | SPEC |
+
+Remaining gates for production include authoritative actor directory,
+token/session registration API, durable audit, real HTTP transport,
+Vault, CPA/Gateway, network enforcement and billing. Zero live
+production endpoints, credentials, Railway, /data or Core changes.
+See [TOKEN_FINGERPRINT_REVOCATION_V1.ru.md](TOKEN_FINGERPRINT_REVOCATION_V1.ru.md).
