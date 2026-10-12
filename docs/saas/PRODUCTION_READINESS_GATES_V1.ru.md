@@ -193,3 +193,14 @@ see [LOCAL_AUDIT_RECONCILIATION_V1.ru.md](LOCAL_AUDIT_RECONCILIATION_V1.ru.md).
 This is a **synthetic intent/ACK simulation, NOT actual HTTP delivery,
 NOT a production-ready SaaS release**.
 See [SYNTHETIC_POST_COMMIT_DELIVERY_V1.ru.md](SYNTHETIC_POST_COMMIT_DELIVERY_V1.ru.md).
+
+## 2G.4d.7d adversarial negative proof — NOT an HTTP release gate
+
+Real Bun + PostgreSQL16 E2E on code SHA `e452993e14d5f9db4d86a7fa74516f6961600f2f` explicitly simulates
+a local effect during a signed, uncommitted 009/013 transaction. After
+SQL ROLLBACK the Allow audit and intent are both missing, yet the
+simulated effect persists. [PG16 #38305618718](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38305618718)
+passes this **negative proof**, showing the failure is detectable in
+tests but NOT recoverable by a committed-event-only reconciliation
+worker. **Remote delivery, client ACK and commit/delivery atomicity
+remain SPEC / NOT PRODUCTION-READY.**

@@ -705,3 +705,16 @@ Map применил эффект один раз даже при потерян
 отклоняются; rollback отметки не создаёт подтверждения. Реальный
 dead-letter sink, secure scheduler, backpressure и операторская
 эскалация пока SPEC.
+
+## D-060 — adversarial pre-COMMIT effect без durable intent остаётся production blocker
+
+**VERIFIED negative proof**, synthetic Bun + real PG16:
+[PG16 #38305618718](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38305618718).
+
+В подписанной транзакции до COMMIT создаётся 009 audit + 013 intent,
+но отдельно моделируется немедленный локальный эффект. SQL затем
+выполняет ROLLBACK: обе записи исчезают, а эффект уже произошёл.
+Это НЕ исправлено retry/ACK моделью 013, потому что post-COMMIT
+worker не видит отсутствующий intent. Production должен заново
+спроектировать транспортный контракт и durable message payload;
+отсутствие события НЕ доказывает отсутствие байтов у клиента.

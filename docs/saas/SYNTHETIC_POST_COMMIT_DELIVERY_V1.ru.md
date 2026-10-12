@@ -131,3 +131,28 @@ Key Policy, production OAuth/credentials, `/data`, management.html,
 public SaaS endpoints, live VPN/proxy/egress or real AI traffic.**
 See [LOCAL_AUDIT_RECONCILIATION_V1.ru.md](LOCAL_AUDIT_RECONCILIATION_V1.ru.md)
 and [PRODUCTION_READINESS_GATES_V1.ru.md](PRODUCTION_READINESS_GATES_V1.ru.md).
+
+## Negative acceptance: orphan local effect before PG ROLLBACK
+
+A real PG16 Bun process signs a synthetic Allow and stages the 009
+audit event + 013 intent, then pauses BEFORE SQL transaction completion.
+The test runner observes that PostgreSQL transaction still active,
+records one effect in a local in-memory simulated recipient, and lets
+the SQL writer explicitly ROLLBACK. Both source audit and intent are
+then absent, but the already emitted synthetic effect remains. The
+test deliberately reports **PASS for exposing the gap**, not PASS for
+solving it. The 013 worker cannot claim an event that does not exist,
+cannot retract an earlier effect and cannot infer what the external
+receiver saw.
+
+This negative acceptance is proof that the production HTTP publication
+readiness gate must stay OPEN. A separate audited post-COMMIT outbox
+payload/send/recipient ACK protocol with appropriate authorization,
+cancellation, idempotency and crash semantics is still SPEC.
+
+Verified on code SHA `e452993e14d5f9db4d86a7fa74516f6961600f2f` in
+[PG16 #38305618718](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38305618718)
+together with [Main CI #38305618686](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38305618686)
+(1,829 PASS/0 FAIL), [Demo #38305618762](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38305618762)
+and [Chromium #38305618724](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38305618724)
+— **4/4 SUCCESS**.

@@ -905,3 +905,8 @@ atomic revision increments. See
   multi-process durable failover/monitoring, monotonic migration runner.
 - [ ] **PROPOSED:** production OIDC/Vault/CPA/Gateway/network egress,
   billing/public API and separately approved production release.
+
+- [x] **Negative E2E verified**: synthetic local effect before signed
+  PostgreSQL ROLLBACK persists while 009 audit/013 intent disappear.
+  This proves the old synchronous handoff gap remains OPEN;
+  [PG16 #38305618718](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38305618718).
