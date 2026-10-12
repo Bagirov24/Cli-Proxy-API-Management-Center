@@ -148,3 +148,10 @@ pipeline через настоящий драйвер**.
 только generic 503. Версия, источник, `classification: synthetic`,
 timestamp и разрешённые поля описаны в
 [SECURITY_AUDIT_V1.ru.md](SECURITY_AUDIT_V1.ru.md).
+
+**Этап 2G.3 проверен:** [CI #38265951045](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38265951045)
+подтвердил обязательный синхронный audit adapter, безопасные
+allow/deny/error events, отсутствие чужих tenant IDs и generic
+503 при сбое audit sink. Только synthetic fake SQL-port и
+in-memory audit, не реальный backend ledger. Полный протокол:
+[SECURITY_AUDIT_V1.ru.md](SECURITY_AUDIT_V1.ru.md).

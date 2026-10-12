@@ -301,7 +301,10 @@ session revocation/storage consistency и end-to-end PG16 acceptance —
 
 ## D-034 — Audit является серверной границей, не отладочным логом (2G.3)
 
-**Статус: IMPLEMENTED contract / synthetic tests, CI pending.**
+**Статус: IMPLEMENTED / VERIFIED synthetic tests
+([CI #38265951045](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38265951045),
+SHA `1ea71978abd6abc33263fe460754d7f9dbdd1053`);
+production audit ledger — PROPOSED.**
 
 Для Blueprint B вводится обязательный `SecurityAuditRecorder` на
 server-side `trustedSqlReadBoundary`: результат Allow/Deny/Error,

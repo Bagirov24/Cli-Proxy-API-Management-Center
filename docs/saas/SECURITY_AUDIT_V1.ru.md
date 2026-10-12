@@ -1,7 +1,8 @@
 # 2G.3 — Security Audit Contract v1 (STAGING / SYNTHETIC)
 
-**Статус до CI: IMPLEMENTED isolated TypeScript contract; verification
-pending.** Никакого production sink, long-term ledger, Railway
+**Статус: IMPLEMENTED / VERIFIED в synthetic CI на SHA
+`1ea71978abd6abc33263fe460754d7f9dbdd1053`;
+реальный audit backend, OIDC и PostgreSQL E2E — PROPOSED.** Никакого production sink, long-term ledger, Railway
 deployment, real OAuth/API keys, сетевых маршрутов или публичных
 HTTP endpoints. Работа выполняется только в feature-ветке Blueprint B.
 
@@ -115,3 +116,22 @@ OIDC готовыми по результатам synthetic audit unit tests.
 См. [TRUSTED_SQL_READ_BOUNDARY_V1.ru.md](TRUSTED_SQL_READ_BOUNDARY_V1.ru.md),
 [ROADMAP.ru.md](ROADMAP.ru.md),
 [BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md).
+
+## Подтверждённый CI — инкремент 2G.3
+
+Код проверен на SHA `1ea71978abd6abc33263fe460754d7f9dbdd1053`:
+
+- [Main CI #38265951045](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38265951045):
+  **SUCCESS**, **1758 тестов / 0 ошибок**, ESLint, TypeScript,
+  default-off Vite; обычная сборка `3 305,72 KB` (без прироста).
+- [Ephemeral PostgreSQL #38265950944](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38265950944):
+  **SUCCESS**, существующие SQL/RLS/driver acceptance. **Это не**
+  запись audit в PostgreSQL и не E2E тест JWT→RLS→audit.
+- [Opt-in SaaS demo #38265950961](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38265950961):
+  **SUCCESS**, `3 386,51 KB`, unchanged.
+- [Chromium synthetic browser QA #38265951009](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38265951009):
+  **SUCCESS**.
+
+Тестируемая функциональность — **строго синтетический security audit
+contract**, а не production persistent ledger. Нет внешних вызовов
+поставщиков AI, записи в `/data`, Railway deployment и real credentials.

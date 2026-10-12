@@ -464,8 +464,14 @@ reuse повреждённого пула.
 - [x] Synthetic adversarial tests: Allow/Deny/Error, IDOR, wrong JWT,
   revocation mid-SQL, cancellation, sink exception, malicious
   metadata/credentials, schema/reason enforcement, bounded buffer.
-- [ ] Финальные 4 GitHub Actions на текущем SHA успешно завершены
-  (до результата CI обозначать только IMPLEMENTED / NOT VERIFIED).
+- [x] 4/4 GitHub Actions SUCCESS на проверенном кодовом SHA
+  `1ea71978abd6abc33263fe460754d7f9dbdd1053`:
+  [Main CI #38265951045](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38265951045)
+  (1758 tests, 0 fail, lint/TS/Vite),
+  [PG16 #38265950944](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38265950944),
+  [Demo #38265950961](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38265950961),
+  [Browser #38265951009](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38265951009).
+  **VERIFIED только synthetic audit contract; НЕ persistent ledger**.
 - [ ] 2G.4 — настоящий synthetic JWT→PostgreSQL wire protocol→RLS→audit
   end-to-end, отдельные consistency/revocation races.
 - [ ] Persistent audit, tamper-evident store, ACL, retention,

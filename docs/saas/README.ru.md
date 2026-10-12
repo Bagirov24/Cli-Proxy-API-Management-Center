@@ -389,3 +389,13 @@ prompts, AI responses или произвольного metadata payload.
 существует только ограниченный по размеру synthetic in-memory buffer.
 Это **не** production audit ledger и не HTTP endpoint; durable
 event storage, retention и tamper resistance остаются PROPOSED.
+
+**2G.3 CI:** synthetic audit unit tests и интеграция с trusted SQL
+boundary подтверждены на `1ea71978abd6abc33263fe460754d7f9dbdd1053`:
+[CI #38265951045](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38265951045)
+(1758 tests PASS / 0 FAIL),
+[PG16 #38265950944](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38265950944),
+[Demo #38265950961](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38265950961),
+[Chromium #38265951009](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38265951009):
+**4/4 SUCCESS**. Никакой live DB audit или token replay protection
+этими проверками не подтверждены.
