@@ -370,8 +370,9 @@ generic 404+tenantless Deny audit; подтверждённый ROLLBACK поз�
 
 ## D-037 — Post-COMMIT authorization/read-set recheck только в staging (2G.4c)
 
-**Статус: IMPLEMENTED isolated; CI pending; production revocation
-linearizability PROPOSED.**
+**Статус: IMPLEMENTED / VERIFIED ephemeral PG16 + synthetic unit
+([PG16 #38275287696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38275287696),
+код SHA `6b47e92`); production revocation linearizability PROPOSED.**
 
 После первого signed DB COMMIT синтетический SaaS read boundary
 выполняет вторую транзакцию с новым HMAC/txid, тем же verified actor,

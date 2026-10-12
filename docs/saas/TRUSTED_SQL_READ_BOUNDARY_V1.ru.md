@@ -196,3 +196,9 @@ COMMIT. Подробности: [TENANT_DB_AUTHZ_GATE_V1.ru.md](TENANT_DB_AUTHZ_
 данных/DB grants после первого COMMIT приводит к generic 404,
 SQL error → 503. Не обещать атомарность отзыва после второго
 COMMIT: [POST_COMMIT_REVALIDATION_V1.ru.md](POST_COMMIT_REVALIDATION_V1.ru.md).
+
+**2G.4c CONFIRMED:** [PG16 CI #38275287696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38275287696)
+проверил post-COMMIT signed RLS read-set revalidation и
+отзыв текущего tenant/member/grant. [Main CI #38275287907](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38275287907)
+успешно завершился с 1 767 unit-тестами. См.
+[POST_COMMIT_REVALIDATION_V1.ru.md](POST_COMMIT_REVALIDATION_V1.ru.md).

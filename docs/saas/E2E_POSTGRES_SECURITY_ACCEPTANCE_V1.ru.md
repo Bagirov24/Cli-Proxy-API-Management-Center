@@ -161,4 +161,7 @@ SQL gate и read-set сравнение должны выдать generic 404,
 без первоначальных rows и чужих resource IDs. Никакой
 production admin SQL/HTTP endpoint не добавлен. Описание:
 [POST_COMMIT_REVALIDATION_V1.ru.md](POST_COMMIT_REVALIDATION_V1.ru.md).
-Статус этого инкремента до GitHub CI — IMPLEMENTED / NOT VERIFIED.
+**2G.4c VERIFIED** на кодовом SHA `6b47e92d2884d238b036e6539382cc4ed7a3383f`:
+[actual ephemeral PG16 #38275287696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38275287696)
+и [Main CI #38275287907](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38275287907).
+Не production atomic revocation.

@@ -1,6 +1,7 @@
 # SaaS Blueprint B — Stage 2G.4c: post-COMMIT signed RLS revalidation
 
-**Статус: IMPLEMENTED (isolated server/CI), CI PENDING.** Не production
+**Статус: IMPLEMENTED / VERIFIED только в synthetic unit + ephemeral PG16 E2E на
+кодовом SHA `6b47e92d2884d238b036e6539382cc4ed7a3383f`.** Не production
 backend, не реальный OIDC, не атомарный механизм отзыва полномочий.
 Все SQL reads идут через проверенный signed-scope boundary и
 non-superuser `saas_ci_runner` к одноразовой PostgreSQL 16.6.
@@ -108,3 +109,30 @@ non-superuser и имеет только allowlisted SELECT. Writer не явл�
 [E2E_POSTGRES_SECURITY_ACCEPTANCE_V1.ru.md](E2E_POSTGRES_SECURITY_ACCEPTANCE_V1.ru.md),
 [SECURITY_AUDIT_V1.ru.md](SECURITY_AUDIT_V1.ru.md) и
 [ROADMAP.ru.md](ROADMAP.ru.md).
+
+## GitHub Actions — подтверждённый результат 2G.4c
+
+Кодовый SHA `6b47e92d2884d238b036e6539382cc4ed7a3383f`:
+
+- [CI #38275287907](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38275287907):
+  **SUCCESS, 1 767 Bun unit-тестов, 0 fail, ESLint, TypeScript, Vite**.
+  Default-off HTML: **3 305,72 KB**, без прироста.
+- [PostgreSQL #38275287696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38275287696):
+  **SUCCESS** на настоящем disposable PG16; логи содержат
+  `PASS: after-COMMIT real PG16 tenant/member/grant revocation returns
+  404 and hides old rows`. В этих tests привилегированный SQL используется
+  только fixture writer после первого COMMIT; читатель остаётся
+  `saas_ci_runner` без private SELECT/credentials.
+- [Opt-in SaaS Demo #38275287915](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38275287915):
+  **SUCCESS**, **3 386,51 KB**, unchanged.
+- [Chromium QA #38275287939](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38275287939):
+  **SUCCESS**, synthetic browser QA.
+
+Первый CI на SHA `e72ff2d` подтвердил 1 767 passing unit-тестов
+и PostgreSQL E2E, но остановился на ESLint `prefer-const` в
+synthetic request-mutation test. Это исправлено в
+`6b47e92`, затем полный CI был запущен повторно и успешно завершён.
+
+**VERIFIED** относится лишь к bounded/staging post-COMMIT detection,
+не к atomic revocation после второй транзакции, real OIDC, production
+SQL-driver lifecycle, durable audit или реальной сетевой маршрутизации.

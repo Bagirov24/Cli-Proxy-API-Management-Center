@@ -460,6 +460,12 @@ generic 404, а ранние rows не возвращаются; SQL/pool errors
 generic 503. Аудит не раскрывает tenant/resource IDs при Deny.
 
 Unit и CI-only real PG16 tests моделируют отзыв прав/Account grant
-**после** COMMIT; результаты CI пока **PENDING**. Эта проверка
+**после** COMMIT. **VERIFIED** в
+[PG16 E2E #38275287696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38275287696)
+и [Main CI #38275287907](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38275287907)
+(1 767 tests PASS, 0 fail),
+[Demo #38275287915](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38275287915),
+[Browser #38275287939](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38275287939).
+Код SHA `6b47e92d2884d238b036e6539382cc4ed7a3383f`. Эта проверка
 **не** обеспечивает атомарность отзыва после второго COMMIT,
 не заменяет production OIDC/driver/audit и не подключает HTTP/Core.

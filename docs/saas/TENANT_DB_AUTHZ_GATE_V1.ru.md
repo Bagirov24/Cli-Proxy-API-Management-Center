@@ -138,3 +138,11 @@ Account/Pool/Egress rows возвращают generic 404 вместо stale dat
 Это диагностический security-hardening в CI, **не** атомарный
 revision-barrier. Подробнее:
 [POST_COMMIT_REVALIDATION_V1.ru.md](POST_COMMIT_REVALIDATION_V1.ru.md).
+
+**2G.4c VERIFIED:** независимая signed READ COMMITTED transaction
+после первого COMMIT повторно проверяет те же gates и resource
+row set. На [PG16 #38275287696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38275287696)
+изолированный fixture writer отозвал tenant, membership и Account
+grant после первого COMMIT; прочитанные строки не были выданы.
+Это не гарантия сериализации после второго COMMIT:
+[POST_COMMIT_REVALIDATION_V1.ru.md](POST_COMMIT_REVALIDATION_V1.ru.md).

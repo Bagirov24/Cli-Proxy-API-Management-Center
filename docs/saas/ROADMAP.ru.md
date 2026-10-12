@@ -553,8 +553,14 @@ reuse повреждённого пула.
 - [x] Adversarial unit и ephemeral PG16 tests: отозванный tenant,
   membership и Account grant между транзакциями, stale response,
   мутируемые request fields и cancel второй транзакции.
-- [ ] GitHub Actions на commit этого инкремента — до SUCCESS
-  **IMPLEMENTED / NOT VERIFIED**.
+- [x] 4/4 GitHub Actions SUCCESS для кодового SHA
+  `6b47e92d2884d238b036e6539382cc4ed7a3383f`:
+  [Main CI #38275287907](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38275287907)
+  (1 767 unit tests, 0 fail, lint/TypeScript/Vite),
+  [actual PG16 E2E #38275287696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38275287696),
+  [Demo #38275287915](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38275287915),
+  [Chromium #38275287939](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38275287939).
+  VERIFIED только synthetic/ephemeral post-COMMIT RLS revalidation.
 - [ ] **PROPOSED:** действительно согласованный versioned
   authorization state и revocation barrier после второго COMMIT,
   robust production physical connection discard, real OIDC,
