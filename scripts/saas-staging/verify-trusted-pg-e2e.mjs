@@ -224,6 +224,50 @@ async function verifiedBearerFingerprint(bearer) {
   return hex;
 }
 
+/** Privileged fixture-only assertion: observe the committed audit event
+ * from the actual non-superuser trusted publication, not mock SQL rows. */
+function readLastCommittedNorthAuditId() {
+  const run = Bun.spawnSync([
+    'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-c',
+    "SELECT COALESCE(MAX(event_id),0) FROM saas_rls_private.local_publication_audit_outbox WHERE tenant_id='demo-north'",
+  ], { stderr:'ignore' });
+  assert.equal(run.exitCode,0,'Private audit fixture unavailable');
+  const value=Buffer.from(run.stdout).toString('utf8').trim();
+  assert.match(value,/^[0-9]+$/);
+  return Number(value);
+}
+
+/** No client-facing output: an isolated NOLOGIN PG role observes only an
+ * already committed local audit ID. This is NOT remote HTTP delivery. */
+function reconcileCommittedLocalAuditInFixture(eventId) {
+  assert.ok(Number.isSafeInteger(eventId) && eventId>0);
+  const fixtureQuery=(sql)=>{
+    const run=Bun.spawnSync([
+      'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-c',sql,
+    ], {stderr:'ignore'});
+    assert.equal(run.exitCode,0,'Ephemeral reconciler SQL failed');
+    return Buffer.from(run.stdout).toString('utf8').trim();
+  };
+  const claim=fixtureQuery(
+    "BEGIN; SET LOCAL ROLE saas_audit_reconciler; SELECT event_id::text || '|' || generation::text || '|' || lease_token::text FROM saas_rls_private.claim_committed_local_audit(1,15,"+eventId+"); COMMIT;"
+  );
+  const values=claim.split('|');
+  assert.equal(values.length,3);
+  assert.equal(values[0],String(eventId));
+  assert.equal(values[1],'1');
+  assert.match(values[2],/^[0-9a-f-]{36}$/);
+  const observed=fixtureQuery(
+    "BEGIN; SET LOCAL ROLE saas_audit_reconciler; SELECT saas_rls_private.mark_local_audit_reconciled("+eventId+",1,'"+values[2]+"'::uuid); COMMIT;"
+  );
+  assert.equal(observed,'t','Only current private lease may finish local audit');
+  assert.equal(fixtureQuery(
+    "SELECT status FROM saas_rls_private.local_audit_reconciliation_state WHERE event_id="+eventId
+  ),'reconciled_local');
+  assert.equal(fixtureQuery(
+    "SELECT COUNT(*) FROM saas_rls_private.local_audit_reconciliation_history WHERE event_id="+eventId
+  ),'2');
+}
+
 function readPrivateOutboxCount() {
   const result = Bun.spawnSync(
     ['psql', '-X', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-c',
@@ -762,6 +806,7 @@ try {
   // is returned to the caller, and audit must precede synchronous handoff.
   const trustedPublished = [];
   const outboxBefore = readPrivateOutboxCount();
+  const lastNorthAuditBefore=readLastCommittedNorthAuditId();
   const publishRead = createTrustedSqlPublishedBoundary(
     { ...createTrustedDependencies(driver, audit,
       createSignedPgAuthorizationRevisionSource(driver, signer)),
@@ -795,6 +840,12 @@ try {
   assert.deepEqual(trustedPublished, ['north-project']);
   assert.equal(readPrivateOutboxCount(), outboxBefore + 1,
     'Signed audit outbox must persist only after successful COMMIT');
+  const committedAuditId=readLastCommittedNorthAuditId();
+  assert.ok(committedAuditId>lastNorthAuditBefore,
+    'Signed trusted publication must create a NEW committed PG event');
+  reconcileCommittedLocalAuditInFixture(committedAuditId);
+  assert.equal('eventId' in publicationReceipt,false);
+  assert.equal('leaseToken' in publicationReceipt,false);
   assertAudit(publicationReceipt, {
     reason: 'read-allowed', actorId: 'actor-north', tenantId: 'demo-north',
   });
@@ -807,7 +858,7 @@ try {
   assert.equal(readPrivateOutboxCount(), outboxBefore + 1,
     'Cross-tenant refusal must not insert a fake Allow event');
   assert.equal(driver.stats().poisoned, false);
-  console.info('PASS: signed PG16 durable-on-COMMIT outbox and receipt-only trusted publication');
+  console.info('PASS: real Bun.SQL trusted receipt persists then reconciles LOCAL PG audit, no HTTP ACK');
 
   // 2G.4d.7a: real ephemeral PostgreSQL with TWO verified RS256 bearer
   // tokens for the SAME actor. The server derives SHA-256 of each exact
