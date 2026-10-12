@@ -114,7 +114,7 @@ BEGIN
      (event_id,status,generation,lease_token,lease_until)
   VALUES (candidate.event_id,'leased',1,next_token,
           clock_timestamp()+make_interval(secs=>lease_seconds))
-  ON CONFLICT(event_id) DO UPDATE SET
+  ON CONFLICT ON CONSTRAINT local_audit_reconciliation_state_pkey DO UPDATE SET
      status='leased',
      generation=state.generation+1,
      lease_token=EXCLUDED.lease_token,

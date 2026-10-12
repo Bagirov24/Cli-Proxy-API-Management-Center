@@ -10,6 +10,13 @@ BEGIN
 END
 $guard$;
 
+-- A harmless assertion helper is explicitly granted for the disposable
+-- acceptance role and REVOKED again before this script exits. Migration 012
+-- itself grants neither application nor production testing permissions.
+GRANT USAGE ON SCHEMA saas_rls_test TO saas_audit_reconciler;
+GRANT EXECUTE ON FUNCTION saas_rls_test.assert_true(BOOLEAN,TEXT)
+ TO saas_audit_reconciler;
+
 SELECT saas_rls_test.assert_true(
  NOT has_table_privilege('saas_rls_reader',
   'saas_rls_private.local_audit_reconciliation_state','SELECT')
@@ -195,14 +202,24 @@ DECLARE delete_denied BOOLEAN:=FALSE;
 BEGIN
  BEGIN
   UPDATE saas_rls_private.local_audit_reconciliation_history
-   SET action='reclaimed' WHERE event_id=(:'seeded_event')::BIGINT;
+   SET action='reclaimed' WHERE event_id=(SELECT event_id
+     FROM saas_rls_private.local_publication_audit_outbox
+     WHERE correlation_id='ci-reconcile-seeded');
  EXCEPTION WHEN OTHERS THEN update_denied:=TRUE; END;
  BEGIN
   DELETE FROM saas_rls_private.local_audit_reconciliation_history
-   WHERE event_id=(:'seeded_event')::BIGINT;
+   WHERE event_id=(SELECT event_id
+     FROM saas_rls_private.local_publication_audit_outbox
+     WHERE correlation_id='ci-reconcile-seeded');
  EXCEPTION WHEN OTHERS THEN delete_denied:=TRUE; END;
  PERFORM saas_rls_test.assert_true(update_denied AND delete_denied,
  'History is append only even for test fixture SQL mutation');
 END
 $immutable$;
+REVOKE EXECUTE ON FUNCTION saas_rls_test.assert_true(BOOLEAN,TEXT)
+ FROM saas_audit_reconciler;
+REVOKE USAGE ON SCHEMA saas_rls_test FROM saas_audit_reconciler;
+SELECT saas_rls_test.assert_true(
+ NOT has_schema_privilege('saas_audit_reconciler','saas_rls_test','USAGE'),
+ 'Temporary PG16 test-helper privilege must not remain granted');
 \echo 'PASS: committed-only local audit, lease fencing, retry, ACK rollback and terminal idempotency'
