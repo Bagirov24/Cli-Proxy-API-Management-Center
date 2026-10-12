@@ -469,3 +469,24 @@ Unit и CI-only real PG16 tests моделируют отзыв прав/Account
 Код SHA `6b47e92d2884d238b036e6539382cc4ed7a3383f`. Эта проверка
 **не** обеспечивает атомарность отзыва после второго COMMIT,
 не заменяет production OIDC/driver/audit и не подключает HTTP/Core.
+
+
+## Этап 2G.4d — server-owned authorization revision (opt-in guard)
+
+Добавлен [Authorization Revision Contract v1](AUTHORIZATION_REVISION_CONTRACT_V1.ru.md):
+новый server-only `authorizationRevision.ts`, опционально подключаемый к
+существующему trusted SQL boundary через `revisions`. После trusted
+identity/RBAC он фиксирует валидную server-owned ревизию, а после
+двух signed SQL транзакций и post-read RBAC повторно читает её.
+Изменение → generic 404 и tenantless audit; недоступность,
+неканоническое значение и cancellation → generic 503. Ревизия из JWT
+или request игнорируется. Тесты `tests/saasTrustedSqlReadBoundary.test.ts`
+моделируют изменение во время SELECT, после первого COMMIT и перед
+финальным Allow.
+
+**Статус: IMPLEMENTED / SYNTHETIC pending verification on this SHA.**
+В отсутствие `revisions` старый путь 2G.4c не изменяется; настоящего
+authoritative storage/writer и atomic revision bump пока нет. Новая
+PostgreSQL миграция намеренно не добавлена. Временная PostgreSQL CI
+проверяет прежний signed RLS E2E как regression, а не новую
+линейризуемость; window после последнего revision check остаётся.

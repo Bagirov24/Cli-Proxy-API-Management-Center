@@ -16,6 +16,9 @@ import {
 import {
   createTrustedSqlReadBoundary, type TrustedSqlReadRequest,
 } from '../src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary';
+import type {
+  ServerAuthorizationRevisionSource,
+} from '../src/features/saasBlueprint/controlApi/server/authorizationRevision';
 
 const issuer = 'https://synthetic-issuer.example.test/oauth';
 const audience = 'saas-control-api';
@@ -59,6 +62,9 @@ interface TestHarnessOptions {
   readonly rowsBySelect?: readonly (readonly Record<string, unknown>[])[];
   readonly gateAnswers?: readonly boolean[];
   readonly auditSink?: SecurityAuditSink;
+  readonly revisions?: ServerAuthorizationRevisionSource;
+  readonly onCommit?: (count: number) => Promise<void> | void;
+  readonly onActorLookup?: (count: number) => void;
 }
 
 function harness(options: TestHarnessOptions = {}) {
@@ -84,6 +90,8 @@ function harness(options: TestHarnessOptions = {}) {
   let acquired = 0;
   let gateIndex = 0;
   let selectIndex = 0;
+  let commitCount = 0;
+  let actorLookupCount = 0;
   let poisoned = false;
   const pool: ScopedSqlPool = {
     quarantine(reason) { quarantines.push(reason); poisoned = true; },
@@ -93,6 +101,9 @@ function harness(options: TestHarnessOptions = {}) {
       return {
         async query(sql, params) {
           queries.push({ sql, params });
+          if (sql === 'COMMIT') {
+            await options.onCommit?.(++commitCount);
+          }
           if (sql === 'SELECT txid_current()::text AS transaction_id') {
             return { rows: [{ transaction_id: '424242' }] };
           }
@@ -128,11 +139,13 @@ function harness(options: TestHarnessOptions = {}) {
     },
     actors: {
       async lookup(actorId, signal) {
+        options.onActorLookup?.(++actorLookupCount);
         if (signal.aborted) throw new Error('Aborted actor lookup');
         return actors.get(actorId) ?? null;
       },
     },
-    pool, signer, audit, newCorrelationId: () => correlationId,
+    pool, signer, audit, revisions: options.revisions,
+    newCorrelationId: () => correlationId,
   });
   const request = (
     accessTokenValue: string, overrides: Partial<TrustedSqlReadRequest> = {}
@@ -571,5 +584,170 @@ describe('Stage 2G.2 — trusted JWT -> actor -> AuthZ -> signed SQL (synthetic 
     expect(await h.read(h.request(token, { signal: controller.signal })))
       .toMatchObject({ ok: false, status: 503 });
     expect(h.acquired).toBe(0);
+  });
+});
+
+function syntheticRevision(initial: unknown = '7') {
+  let current: unknown = initial;
+  const checked: { actorId: string; tenantId: string }[] = [];
+  const source: ServerAuthorizationRevisionSource = {
+    async readRevision(scope, signal) {
+      if (signal.aborted) throw new Error('Synthetic abort');
+      checked.push({ ...scope });
+      return current;
+    },
+  };
+  return { source, checked, set(next: unknown) { current = next; } };
+}
+
+describe('Stage 2G.4d — opt-in server-owned revision guard (SYNTHETIC)', () => {
+  test('stable server revision allows, stays out of response/audit and uses trusted scope', async () => {
+    const rev = syntheticRevision();
+    const h = harness({ revisions: rev.source });
+    const result = await h.read(h.request(await accessToken()));
+    expect(result).toMatchObject({ ok: true, status: 200, tenantId: 'demo-north' });
+    expect(rev.checked).toEqual([
+      { actorId: 'actor-north', tenantId: 'demo-north' },
+      { actorId: 'actor-north', tenantId: 'demo-north' },
+    ]);
+    expect(JSON.stringify(result)).not.toContain('authorizationRevision');
+    expect(JSON.stringify(h.auditEvents())).not.toContain('"7"');
+    expect(h.acquired).toBe(2);
+    expect(h.quarantines).toEqual([]);
+  });
+
+  test('grant revision bump during SELECT denies old rows without poisoning safe SQL', async () => {
+    const rev = syntheticRevision();
+    const h = harness({ revisions: rev.source, onSelect() { rev.set('8'); } });
+    const denied = await h.read(h.request(await accessToken(), { collection: 'accounts' }));
+    expect(denied).toMatchObject({ ok: false, status: 404 });
+    expect(JSON.stringify(denied)).not.toContain('north-project');
+    expect(h.released).toEqual([false, false]);
+    expect(h.quarantines).toEqual([]);
+    expect(h.auditEvents()).toMatchObject([{
+      result: 'deny', reason: 'authorization-changed', tenantId: null,
+    }]);
+    // A new request takes a fresh baseline; previously safe reservations
+    // remain reusable after a business authorization denial.
+    const fresh = await h.read(h.request(await accessToken()));
+    expect(fresh).toMatchObject({ ok: true, status: 200 });
+    expect(h.released).toEqual([false, false, false, false]);
+  });
+
+  test('revision bump AFTER first COMMIT is denied even when rows are unchanged', async () => {
+    const rev = syntheticRevision();
+    const h = harness({
+      revisions: rev.source, onCommit(count) { if (count === 1) rev.set('8'); },
+    });
+    const result = await h.read(h.request(await accessToken()));
+    expect(result).toMatchObject({ ok: false, status: 404 });
+    expect(h.queries.filter(q => q.sql === 'COMMIT')).toHaveLength(2);
+    expect(h.queries.filter(q => q.sql === CONTROL_READ_SELECT_SQL.projects)).toHaveLength(2);
+    expect(h.auditEvents()).toMatchObject([{
+      reason: 'authorization-changed', tenantId: null,
+    }]);
+  });
+
+  test('last actor recheck may change revision; final guard rejects before Allow', async () => {
+    const rev = syntheticRevision();
+    const h = harness({
+      revisions: rev.source,
+      onActorLookup(count) { if (count === 2) rev.set('8'); },
+    });
+    const result = await h.read(h.request(await accessToken()));
+    expect(result).toMatchObject({ ok: false, status: 404 });
+    expect(rev.checked).toHaveLength(2);
+    expect(JSON.stringify(result)).not.toContain('north-project');
+  });
+
+  test('untrusted JWT/request revision cannot override the server-owned revision', async () => {
+    const rev = syntheticRevision();
+    const h = harness({ revisions: rev.source });
+    const token = await accessToken({ authorizationRevision: '999999',
+      tenantId: 'demo-orbit', role: 'tenant-owner' });
+    const request = { ...h.request(token), authorizationRevision: '999999',
+      revision: '999999' };
+    const result = await h.read(request);
+    expect(result).toMatchObject({ ok: true, status: 200, tenantId: 'demo-north' });
+    expect(rev.checked).toHaveLength(2);
+    expect(rev.checked.every(scope => scope.tenantId === 'demo-north')).toBe(true);
+    expect(JSON.stringify(result)).not.toContain('999999');
+    expect(JSON.stringify(h.auditEvents())).not.toContain('999999');
+  });
+
+  test('cross-tenant IDOR is rejected BEFORE the revision source is consulted', async () => {
+    const rev = syntheticRevision();
+    const h = harness({ revisions: rev.source });
+    const response = await h.read(h.request(await accessToken(), {
+      tenantId: 'demo-orbit',
+    }));
+    expect(response).toMatchObject({ ok: false, status: 404 });
+    expect(rev.checked).toHaveLength(0);
+    expect(h.acquired).toBe(0);
+    expect(JSON.stringify(response)).not.toContain('demo-orbit');
+  });
+
+  test('absent, noncanonical, overflow and failed revision storage deny as 503', async () => {
+    for (const invalid of [null, '07', '-1', '9223372036854775808', 7, '']) {
+      const rev = syntheticRevision(invalid);
+      const h = harness({ revisions: rev.source });
+      const result = await h.read(h.request(await accessToken()));
+      expect(result).toMatchObject({ ok: false, status: 503 });
+      expect(h.acquired).toBe(0);
+      expect(h.auditEvents()).toMatchObject([{ tenantId: null, result: 'error' }]);
+    }
+    const h = harness({ revisions: { async readRevision() {
+      throw new Error('PRIVATE_DATABASE_PASSWORD_NEVER_RETURN');
+    } } });
+    const response = await h.read(h.request(await accessToken()));
+    expect(response).toMatchObject({ ok: false, status: 503 });
+    expect(JSON.stringify(response)).not.toContain('PRIVATE_DATABASE_PASSWORD');
+    expect(JSON.stringify(h.auditEvents())).not.toContain('PRIVATE_DATABASE_PASSWORD');
+    expect(h.acquired).toBe(0);
+  });
+
+  test('revision storage lost only AFTER SQL still denies all previously read rows', async () => {
+    let calls = 0;
+    const h = harness({ revisions: { async readRevision() {
+      return ++calls === 1 ? '7' : null;
+    } } });
+    const result = await h.read(h.request(await accessToken()));
+    expect(result).toMatchObject({ ok: false, status: 503 });
+    expect(h.acquired).toBe(2);
+    expect(h.released).toEqual([false, false]);
+    expect(JSON.stringify(result)).not.toContain('north-project');
+    expect(h.auditEvents()).toMatchObject([{
+      result: 'error', reason: 'source-unavailable', tenantId: null,
+    }]);
+  });
+
+  test('request cancellation during the revision read denies before SQL', async () => {
+    const controller = new AbortController();
+    const h = harness({ revisions: { async readRevision() {
+      controller.abort();
+      return '7';
+    } } });
+    const result = await h.read(h.request(await accessToken(), {
+      signal: controller.signal,
+    }));
+    expect(result).toMatchObject({ ok: false, status: 503 });
+    expect(h.acquired).toBe(0);
+    expect(h.auditEvents()).toMatchObject([{
+      reason: 'request-cancelled', tenantId: null,
+    }]);
+  });
+
+  test('old server revision cannot be replayed into the final check', async () => {
+    let calls = 0;
+    const h = harness({ revisions: { async readRevision() {
+      calls++;
+      return calls === 1 ? '22' : '21';
+    } } });
+    const result = await h.read(h.request(await accessToken()));
+    expect(result).toMatchObject({ ok: false, status: 404 });
+    expect(JSON.stringify(result)).not.toContain('north-project');
+    expect(h.auditEvents()).toMatchObject([{
+      reason: 'authorization-changed', tenantId: null,
+    }]);
   });
 });

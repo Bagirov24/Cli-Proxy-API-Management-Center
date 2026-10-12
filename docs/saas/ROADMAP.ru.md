@@ -568,3 +568,27 @@ reuse повреждённого пула.
   требования и не рекомендовано в качестве production SLA.
 
 См. [POST_COMMIT_REVALIDATION_V1.ru.md](POST_COMMIT_REVALIDATION_V1.ru.md).
+
+
+## Этап 2G.4d — opt-in server-owned authorization revision guard
+
+- [x] Изолированный типизированный server-side revision port, canonical
+  PostgreSQL BIGINT-text range; значения из клиентского запроса/JWT не
+  являются авторитетными.
+- [x] Опциональное включение guard в существующий trusted signed SQL
+  boundary: capture после RBAC и compare после двух COMMIT, повторной
+  JWT/actor/membership проверки; mismatch 404, unavailable/abort 503.
+- [x] Синтетические adversarial tests: in-SQL revision drift,
+  post-first-COMMIT drift, change before final Allow, forged revision,
+  malformed/missing storage, fail-closed и safe connection reuse.
+- [ ] **VERIFIED** на новом SHA только после GitHub Actions. Уже
+  завершённые CI 2G.4c не являются проверкой нового кода.
+- [ ] **SPEC:** authoritative transactional revision writes/reader backed
+  by ephemeral PG, grant invalidation across affected tenants,
+  multiple backend instances and concurrent writer tests.
+- [ ] **PROPOSED:** explicit revocation linearization point/response
+  policy; the post-final-check race remains unsolved.
+
+No 004 migration yet: no authoritative write path is present to enforce
+atomic revision increments. See
+[AUTHORIZATION_REVISION_CONTRACT_V1.ru.md](AUTHORIZATION_REVISION_CONTRACT_V1.ru.md).

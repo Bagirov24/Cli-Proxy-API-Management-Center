@@ -1,4 +1,8 @@
 import { authorizeTenantRead } from '../authorization';
+import {
+  assertServerAuthorizationRevision, captureServerAuthorizationRevision,
+  AuthorizationRevisionChanged, type ServerAuthorizationRevisionSource,
+} from './authorizationRevision';
 import type { SecurityAuditReason, SecurityAuditRecorder } from './securityAudit';
 import type {
   AuthorizedReadScope, ControlActor, ControlCollection,
@@ -31,6 +35,11 @@ export interface TrustedSqlReadDependencies {
   };
   readonly pool: ScopedSqlPool;
   readonly signer: SignedTransactionIssuer;
+  /**
+   * Opt-in 2G.4d staging port. Omission preserves the historical 2G.4c
+   * behavior; production MUST NOT treat omission as revision enforcement.
+   */
+  readonly revisions?: ServerAuthorizationRevisionSource;
   /** Mandatory test/staging audit port; a failed write denies the response. */
   readonly audit: SecurityAuditRecorder;
   /** Trusted backend-generated only. Never use client correlation headers. */
@@ -174,6 +183,14 @@ export function createTrustedSqlReadBoundary(deps: TrustedSqlReadDependencies) {
         role: allowed.membership.role,
         correlationId,
       };
+      // Server-owned revision is captured only AFTER trusted identity/RBAC.
+      // No user-provided revision participates in authorization.
+      const revisionSource = deps.revisions;
+      const initialRevision = revisionSource
+        ? await captureServerAuthorizationRevision(revisionSource, scope, signal)
+        : null;
+      if (signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
+
       const rows = await readSignedScopedMetadata(deps.pool, deps.signer, {
         scope, collection: requestedCollection, signal, limit: requestedLimit,
       });
@@ -212,6 +229,16 @@ export function createTrustedSqlReadBoundary(deps: TrustedSqlReadDependencies) {
       if (!again.allowed || again.membership.role !== scope.role) {
         return finish(response(NOT_FOUND), 'authorization-changed');
       }
+      // Final server-only check after the second SQL COMMIT AND trusted
+      // token/actor/RBAC revalidation. Drift denies even if LIMIT masks a
+      // grant change from both row-set comparisons. No third metadata SELECT.
+      // Another revoke can still commit after this check: NOT linearizable.
+      if (revisionSource && initialRevision !== null) {
+        await assertServerAuthorizationRevision(
+          revisionSource, scope, initialRevision, signal
+        );
+        if (signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
+      }
       return finish({
         ok: true, status: 200, source: 'staging-signed-rls', correlationId,
         tenantId: scope.tenantId, collection: requestedCollection, rows,
@@ -222,6 +249,9 @@ export function createTrustedSqlReadBoundary(deps: TrustedSqlReadDependencies) {
       }
       // The signed PG gate may deny a tenant/membership that the in-memory
       // actor store still believes active. Hide its existence as generic 404.
+      if (error instanceof AuthorizationRevisionChanged) {
+        return finish(response(NOT_FOUND), 'authorization-changed');
+      }
       if (error instanceof ScopedSqlAuthorizationDenied) {
         return finish(response(NOT_FOUND), 'authorization-changed');
       }

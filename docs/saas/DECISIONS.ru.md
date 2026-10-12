@@ -387,3 +387,25 @@ caller-supplied SQL, production DB hook, public endpoint или credentials.
 revision/serialization/revocation consistency design. Синтетические
 E2E привилегированные UPDATE выполняются только на disposable PG16.
 Подробно: [POST_COMMIT_REVALIDATION_V1.ru.md](POST_COMMIT_REVALIDATION_V1.ru.md).
+
+
+## D-038 — revision-сигнал не равен атомарному revocation barrier (2G.4d)
+
+**IMPLEMENTED opt-in server-owned revision guard / SYNTHETIC acceptance;
+GitHub verification pending. Production protocol remains SPEC/PROPOSED.**
+
+Порт `ServerAuthorizationRevisionSource` и строгий BIGINT-text parser
+созданы отдельно от UI/Core. Verified actor+tenant используются для
+capture, после повторного signed SQL/COMMIT и RBAC проверяется текущая
+server-owned revision; mismatch 404, storage failure 503. При Deny
+tenant/resource/revision не попадают в ответ и audit. Caller/JWT
+revision игнорируется. Без explicit `revisions` сохраняется прежнее
+2G.4c, и это **не** production revocation enforcement.
+
+Не добавляем 004 миграцию без атомарной writer-side invalidation.
+Обязательные будущие решения: единое PostgreSQL truth для всех
+instances, транзакционное повышение tenant revision при membership,
+role/grant/status writes и отдельная доказанная линейризационная
+семантика. Между последней revision проверкой и HTTP delivery гонка
+сохраняется. См.
+[AUTHORIZATION_REVISION_CONTRACT_V1.ru.md](AUTHORIZATION_REVISION_CONTRACT_V1.ru.md).
