@@ -183,6 +183,25 @@ function changeEphemeralFixture(action) {
   assert.equal(outcome.exitCode, 0, 'Disposable PG16 fixture mutation failed');
 }
 
+/** Privileged, fixed-fixture statements ONLY on disposable GitHub PG16.
+ * Only synthetic actor and SHA-256 hex IDs are interpolated, never bearer,
+ * Core/production SQL or HTTP input. All runtime values are regex guarded. */
+function tokenFixtureSql(sql) {
+  const child = Bun.spawnSync(
+    ['psql','-X','-q','-v','ON_ERROR_STOP=1','-c',sql],
+    { stdout:'ignore', stderr:'ignore' }
+  );
+  assert.equal(child.exitCode,0,'Disposable token-bound fixture mutation failed');
+}
+
+async function verifiedBearerFingerprint(bearer) {
+  const bytes = new Uint8Array(await crypto.subtle.digest(
+    'SHA-256',new TextEncoder().encode(bearer)));
+  const hex = Buffer.from(bytes).toString('hex');
+  assert.match(hex,/^[0-9a-f]{64}$/);
+  return hex;
+}
+
 function readPrivateOutboxCount() {
   const result = Bun.spawnSync(
     ['psql', '-X', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-c',
@@ -252,6 +271,9 @@ const actors = new Map([
   ['actor-db-revoked', {
     id: 'actor-db-revoked', memberships: [member('demo-north', 'tenant-viewer')],
   }],
+  ['actor-token-ci', {
+    id: 'actor-token-ci', memberships: [member('demo-north', 'tenant-viewer')],
+  }],
 ]);
 const directory = new Map([
   [issuer + ':sub-north', 'actor-north'],
@@ -259,6 +281,7 @@ const directory = new Map([
   [issuer + ':sub-auditor', 'actor-auditor'],
   [issuer + ':sub-paused', 'actor-paused'],
   [issuer + ':sub-db-revoked', 'actor-db-revoked'],
+  [issuer + ':sub-token-ci', 'actor-token-ci'],
 ]);
 const sink = createSyntheticAuditBuffer(128);
 const audit = createSecurityAuditRecorder(sink, { classification: 'staging' });
@@ -759,6 +782,104 @@ try {
     'Cross-tenant refusal must not insert a fake Allow event');
   assert.equal(driver.stats().poisoned, false);
   console.info('PASS: signed PG16 durable-on-COMMIT outbox and receipt-only trusted publication');
+
+  // 2G.4d.7a: real ephemeral PostgreSQL with TWO verified RS256 bearer
+  // tokens for the SAME actor. The server derives SHA-256 of each exact
+  // token; client-provided jti is never trusted as a SQL scope/session ID.
+  // Enrollment and revocation are privileged CI fixture operations only.
+  const boundA = await token('sub-token-ci',{jti:'ci-separate-a'});
+  const boundB = await token('sub-token-ci',{jti:'ci-separate-b'});
+  const fpA = await verifiedBearerFingerprint(boundA);
+  const fpB = await verifiedBearerFingerprint(boundB);
+  assert.notEqual(fpA,fpB);
+  let boundRegistered = false;
+  const handoffs = [];
+  const boundOutboxBefore = readPrivateOutboxCount();
+  try {
+    tokenFixtureSql(`BEGIN;
+      INSERT INTO saas_rls.memberships(actor_id,tenant_id,role,status)
+      VALUES ('actor-token-ci','demo-north','tenant-viewer','active');
+      INSERT INTO saas_rls_private.actor_session_state(actor_id,status)
+      VALUES ('actor-token-ci','active');
+      INSERT INTO saas_rls_private.actor_token_sessions
+        (fingerprint,actor_id,status,expires_at)
+      VALUES ('${fpA}','actor-token-ci','active',clock_timestamp()+interval '85 seconds'),
+             ('${fpB}','actor-token-ci','active',clock_timestamp()+interval '85 seconds');
+      COMMIT;`);
+    boundRegistered = true;
+    const revisionAtEnrollment = readEphemeralNorthEpoch();
+    const boundPublisher = createTrustedSqlPublishedBoundary(
+      { ...createTrustedDependencies(driver,audit,
+        createSignedPgAuthorizationRevisionSource(driver,signer)),
+        requireTokenBoundSession:true, recordStagingOutbox:true },
+      {
+        async stage(payload,signal) {
+          assert.equal(signal.aborted,false);
+          assert.equal(payload.tenantId,'demo-north');
+          assert.deepEqual(payload.rows.map(r=>r.id),['north-project']);
+          assert.equal(JSON.stringify(payload).includes('bearer'),false);
+          return () => { handoffs.push('north-project'); };
+        },
+      }
+    );
+    const readBound = (bearer) => boundPublisher(
+      request(bearer,'demo-north','projects',{limit:1})
+    );
+    const allowedA = await readBound(boundA);
+    const allowedB = await readBound(boundB);
+    for (const receipt of [allowedA,allowedB]) {
+      assert.equal(receipt.ok,true);
+      assert.equal(receipt.published,true);
+      assert.equal('rows' in receipt,false);
+      assert.equal('tenantId' in receipt,false);
+      assert.equal(JSON.stringify(receipt).includes('token-ci'),false);
+    }
+    assert.deepEqual(handoffs,['north-project','north-project']);
+    assert.equal(readPrivateOutboxCount(),boundOutboxBefore+2,
+      'Both distinct signed tokens must append only minimal authorized records');
+
+    // Even when token B is ACTIVE, actor-only signed SQL is now a deny.
+    const attemptedDowngrade = await createRead(driver,audit,
+      createSignedPgAuthorizationRevisionSource(driver,signer))(
+        request(boundB,'demo-north','projects')
+      );
+    assert.equal(attemptedDowngrade.status,404);
+    assert.equal('rows' in attemptedDowngrade,false);
+
+    // One committed token-specific revoke advances the SAME private tenant
+    // epoch, while the other token, membership, and actor stay active.
+    tokenFixtureSql(`UPDATE saas_rls_private.actor_token_sessions
+      SET status='revoked' WHERE fingerprint='${fpA}' AND status='active'`);
+    assert.equal(BigInt(readEphemeralNorthEpoch()),BigInt(revisionAtEnrollment)+1n,
+      'Token A revocation must increment North tenant epoch exactly once');
+    const revokedA = await readBound(boundA);
+    assert.equal(revokedA.ok,false);
+    assert.equal(revokedA.status,404);
+    assert.equal('rows' in revokedA,false);
+    assert.deepEqual(handoffs,['north-project','north-project'],
+      'Revoked token must never perform another handoff');
+    assert.equal(readPrivateOutboxCount(),boundOutboxBefore+2,
+      'Revoked token must not append misleading successful audit records');
+
+    const stillB = await readBound(boundB);
+    assert.equal(stillB.ok,true);
+    assert.equal(stillB.published,true);
+    assert.deepEqual(handoffs,Array(3).fill('north-project'));
+    assert.equal(readPrivateOutboxCount(),boundOutboxBefore+3);
+    assert.equal(driver.stats().poisoned,false);
+  } finally {
+    if (boundRegistered) {
+      // Full fixture cleanup (a fresh ephemeral test database anyway).
+      tokenFixtureSql(`BEGIN;
+        DELETE FROM saas_rls_private.actor_token_sessions
+          WHERE actor_id='actor-token-ci';
+        DELETE FROM saas_rls_private.actor_session_state
+          WHERE actor_id='actor-token-ci';
+        DELETE FROM saas_rls.memberships WHERE actor_id='actor-token-ci';
+        COMMIT;`);
+    }
+  }
+  console.info('PASS: real PG16 token A revoked; sibling B remains allowed; legacy downgrade denied');
 
   const brokenAudit = createSecurityAuditRecorder({
     write() { throw new Error('HIDDEN_TEST_ONLY_REFRESH_TOKEN'); },
