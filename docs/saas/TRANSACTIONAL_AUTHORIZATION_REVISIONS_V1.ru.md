@@ -61,11 +61,12 @@ different North grant and is REQUIRED to wait on a PostgreSQL lock.
 An observer sees no uncommitted epoch, and two commits increase North by
 exactly 2 without incrementing Orbit. Fixture rights are restored.
 
-This is a writer/storage proof, **not** yet a real `revisions` adapter
-for `createTrustedSqlReadBoundary`. Current runtime guard remains opt-in
-and synthetic. A separate fixed-SQL, signed-scope, non-superuser adapter
-with correct cancellation/connection quarantine must be implemented
-before treating this as a live staging read path.
+At the 2G.4d.2 checkpoint this was only a writer/storage proof, without a
+live signed revision adapter. The following 2G.4d.3 increment subsequently
+implemented `createSignedPgAuthorizationRevisionSource` and verified it in
+disposable PG16 E2E through the existing fixed-SQL signed read boundary.
+The runtime guard remains opt-in, is not connected to production and
+still has no response/revocation linearization guarantee.
 
 **Important limitations:** A grant expires due to time passage without a
 write/trigger; revision does not advance at its expiry instant. Metadata

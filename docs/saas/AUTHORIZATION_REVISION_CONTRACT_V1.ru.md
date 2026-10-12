@@ -1,8 +1,9 @@
 # Stage 2G.4d — Server-Owned Authorization Revision Contract v1
 
-**Status: IMPLEMENTED as an opt-in isolated TypeScript guard; SYNTHETIC
-acceptance only until the exact new SHA has passed CI.** This is NOT a
-production revocation protocol or a linearizable authorization decision.
+**Status: IMPLEMENTED / VERIFIED** in synthetic tests and real isolated
+PG16 signed revision E2E through stage 2G.4d.3
+([PostgreSQL #38286208002](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38286208002), SHA `94f8d7a14c24573ff5397fbe1349e0d89fa7c91f`). This is NOT production
+revocation or a linearizable authorization decision.
 
 ## Why the contract exists
 
@@ -19,9 +20,11 @@ The request/JWT has **no revision field with authorization semantics**.
 ## Implemented server read path
 
 1. Validate pinned synthetic access JWT → issuer/subject → actor → membership/RBAC.
-2. Capture a **server-owned canonical decimal BIGINT revision** for verified
-   `actorId + tenantId`. Null, malformed, overflow, failure and cancellation
-   fail closed as generic 503 before SQL.
+2. Capture a **server-owned canonical positive decimal BIGINT revision** for
+   verified `actorId + tenantId + role + collection`. A malformed,
+   missing-row, overflow, failed or cancelled storage response fails closed
+   as generic 503. Signed database authorization denial/NULL becomes
+   generic 404 via the trusted SQL adapter.
 3. Keep both signed PG metadata reads from 2G.4c unchanged.
 4. Reverify JWT/actor mapping and membership/RBAC after the second COMMIT.
 5. When opt-in is configured, compare a fresh server-owned revision to the
@@ -35,7 +38,7 @@ remains unchanged; **that omission is NOT revision enforcement**.
 The current synthetic map used by adversarial tests is not authoritative
 or suitable for multi-instance production.
 
-## Required future authoritative writer/storage protocol (SPEC)
+## Authoritative writer/storage requirements (staging pilot IMPLEMENTED; production SPEC)
 
 - One monotonically increasing **tenant-scoped** revision covering tenant
   status, active membership, role and Pool/Account/Egress grants visible to
@@ -50,15 +53,18 @@ or suitable for multi-instance production.
 - No external caller may choose or overwrite revision, actor or tenant.
   Revisions themselves are not user-visible, cache keys or bearer proofs.
 - Revision wrapping, deletion/recreation, fixture reset, out-of-order
-  updates and any unavailability MUST be handled fail-closed. The pilot
-  decimal range 0..9223372036854775807 is a transport constraint, not an
-  implemented allocator or guarantee of monotonicity.
+  updates and any unavailability MUST be handled fail-closed. The
+  staging BIGINT range 1..9223372036854775807 is a transport constraint.
+  Migration 004 implements transactionally bumped tenant epochs in an
+  ephemeral PG16 database, not a production allocator or writer pipeline.
 - Pool grants do not imply Account/Egress grants. RLS and explicit DB gate
   still protect each metadata SELECT independently.
 
-No migration `004` is added yet: there is no authoritative SaaS write
-pipeline to attach atomic invalidation to. Creating an unused table would
-pretend to provide a consistency guarantee it does not enforce.
+The staging-only migration `004` was subsequently added and verified
+in disposable PG16 with transactional status/membership/grant/catalog
+triggers (2G.4d.2). Stage 2G.4d.3 wires its signed revision function
+into the isolated TypeScript E2E. There is still no production SaaS write
+pipeline, complete policy coverage or authorized HTTP delivery barrier.
 
 ## Linearization and concurrency (not implemented)
 
@@ -84,8 +90,9 @@ Do not describe the current double read plus revision query as atomic.
 | Forged client revision, stale revision replay | SYNTHETIC unit |
 | Missing/invalid/overflow revision, store exception, abort | SYNTHETIC fail-closed unit |
 | Safe SQL pool reuse following revision-only Deny | SYNTHETIC unit |
-| Concurrent PG writer/read with atomic revision bump | SPEC — not tested |
-| Real PG tenant/membership/grant revision triggers | SPEC — no migration |
+| Concurrent PG writer/read with atomic revision bump | VERIFIED ephemeral PG16 2G.4d.2 (no lost bumps) |
+| Real PG tenant/membership/grant revision triggers | VERIFIED ephemeral PG16 migration 004 |
+| Signed server-side revision reader after second metadata COMMIT | VERIFIED ephemeral PG16 2G.4d.3; NOT an HTTP linearization guarantee |
 | Cross-instance linearization after final check | PROPOSED — not proven |
 
 No new HTTP endpoint, real OIDC, Core/Gateway, CPA settings, live keys,
@@ -97,10 +104,11 @@ See [POST_COMMIT_REVALIDATION_V1.ru.md](POST_COMMIT_REVALIDATION_V1.ru.md),
 ## Next implemented increment: ephemeral PG writer/storage proof (2G.4d.2)
 
 [TRANSACTIONAL_AUTHORIZATION_REVISIONS_V1.ru.md](TRANSACTIONAL_AUTHORIZATION_REVISIONS_V1.ru.md)
-adds a guarded private PostgreSQL epoch table, transactional triggers,
-signed revision read attestation and concurrent SQL acceptance. This is
-**not yet wired** to the optional TypeScript `revisions` port; therefore
-the old synthetic limitations and the response/revocation race remain.
+added a guarded private PostgreSQL epoch table, transactional triggers,
+signed revision read attestation and concurrent SQL acceptance. At the
+2G.4d.2 historical checkpoint it was not yet wired; **2G.4d.3 now
+connects it in real ephemeral PG16 E2E**. The remaining
+response/revocation race is unchanged.
 
 ## Stage 2G.4d.3 — trusted signed SQL reader
 

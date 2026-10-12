@@ -614,9 +614,11 @@ atomic revision increments. See
   [Demo #38284819723](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38284819723),
   [Browser #38284819716](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38284819716).
   Это не verification production revocation linearizability.
-- [ ] **SPEC:** server-only native driver adapter для включения этой
-  revision в TypeScript read boundary; expiry-time invalidation,
-  policy coverage и multi-instance transaction/crash/deadlock QA.
+- [x] Staging-only signed PostgreSQL revision adapter реализован и
+  VERIFIED в следующем этапе 2G.4d.3.
+- [ ] **SPEC:** production native driver physical discard,
+  expiry-time invalidation, policy coverage и multi-instance
+  transaction/crash/deadlock QA.
 - [ ] **PROPOSED:** linearizable response/revocation completion barrier.
 
 См. [TRANSACTIONAL_AUTHORIZATION_REVISIONS_V1.ru.md](TRANSACTIONAL_AUTHORIZATION_REVISIONS_V1.ru.md).
@@ -636,7 +638,11 @@ atomic revision increments. See
 - [x] Реальный ephemeral PG16 E2E проверяет изменения grant, tenant,
   membership после второго metadata COMMIT перед final Allow; старые
   LIMITed rows не выдаются.
-- [ ] **VERIFIED:** GitHub Actions 4/4 на новом кодовом SHA.
+- [x] **VERIFIED** на SHA `94f8d7a14c24573ff5397fbe1349e0d89fa7c91f`: [Main CI #38286207826](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38286207826)
+  (1 785 unit tests PASS, 0 fail, lint/tsc/Vite), [PostgreSQL #38286208002](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38286208002)
+  (реальный non-superuser SQL и после второго metadata COMMIT
+  tenant/member/Account grant revocation), [Demo #38286208055](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38286208055), [Chromium #38286207825](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38286207825)
+  — 4/4 SUCCESS.
 - [ ] **SPEC:** production multi-instance driver/credential lifecycle,
   link/routing/expiry revision coverage, actor persistence, transactional
   session revocation and correctness across concurrent HTTP delivery.

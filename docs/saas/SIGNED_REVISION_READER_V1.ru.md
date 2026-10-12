@@ -1,7 +1,10 @@
 # Stage 2G.4d.3 — staging PostgreSQL revision adapter and final post-COMMIT check
 
-**IMPLEMENTED: isolated server-only code and adversarial tests.**
-**VERIFIED** is reserved for successful GitHub Actions on the actual commit SHA.
+**IMPLEMENTED / VERIFIED** for the isolated ephemeral PG16 staging boundary on
+code SHA `94f8d7a14c24573ff5397fbe1349e0d89fa7c91f`. All 4 Actions succeeded:
+[Main CI #38286207826](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38286207826) (1,785 tests pass, 0 fail, ESLint, TypeScript, Vite),
+[PostgreSQL #38286208002](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38286208002) (real signed revision recheck after second metadata COMMIT),
+[Demo #38286208055](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38286208055), [Chromium #38286207825](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38286207825). This does not verify a production revocation protocol.
 
 ## Implementation
 

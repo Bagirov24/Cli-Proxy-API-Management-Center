@@ -511,10 +511,10 @@ denial, cross-tenant isolation, drift между двумя транзакция
 [Demo #38284819723](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38284819723)
 и [Chromium #38284819716](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38284819716)
 — **4/4 SUCCESS** для кодового SHA `6ea4546a6953d10baa42f7dcdc6ec5495f9f9517`.
-Это PostgreSQL storage/writer proof:
-действующий TypeScript `ServerAuthorizationRevisionSource` пока
-не привязан к новой функции. TTL expiry по времени и гонка между
-final check и ответом остаются SPEC. Нет новых HTTP endpoints,
+Исторически это был PostgreSQL storage/writer proof; в последующем
+2G.4d.3 TypeScript `ServerAuthorizationRevisionSource` подключён
+к нему только в disposable staging E2E. TTL expiry по времени и
+гонка между final check и ответом остаются SPEC. Нет новых HTTP endpoints,
 production DB, Railway, Core, Gateway или изменений UI.
 
 
@@ -530,6 +530,9 @@ PG16 E2E проверяется реальный revoke после **второ�
 который обнаруживается даже при одинаковом LIMITed read set.
 Нет новых HTTP endpoints и production data-plane.
 
-**Статус: IMPLEMENTED / CI PENDING** на новой кодовой ревизии.
+**Статус: IMPLEMENTED / VERIFIED** только для synthetic + ephemeral
+PostgreSQL16. [Main CI #38286207826](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38286207826) (1 785 Bun tests PASS, 0 fail, ESLint, TypeScript, Vite),
+[PostgreSQL #38286208002](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38286208002) (real signed PG16 revision source, after-second-COMMIT tenant/member/grant revoke and epoch regression),
+[Demo #38286208055](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38286208055) и [Chromium #38286207825](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38286207825) — **4/4 SUCCESS** на кодовом SHA `94f8d7a14c24573ff5397fbe1349e0d89fa7c91f`.
 Этап не устраняет race после последнего COMMIT и не является
 production credential/access/session enforcement.

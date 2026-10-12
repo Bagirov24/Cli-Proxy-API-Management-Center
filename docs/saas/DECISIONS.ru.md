@@ -426,16 +426,17 @@ reader privileges. Временный CI writer имеет test-only приви�
 production credentials не используются. Concurrency проверяет
 distinct writers одной tenant revision и committed visibility.
 
-Не объявляем endpoint готовым: TypeScript revision provider ещё
-не использует этот SQL, expiry времени не bump, final check/response
-race остаётся, нескольких backend instances и производственного
-authoritative writer API нет. См.
+Не объявляем endpoint готовым: последующий 2G.4d.3 подключает
+TypeScript revision provider к signed SQL только в ephemeral PG16 E2E;
+expiry времени не bump, final check/response race остаётся, нескольких
+backend instances и производственного authoritative writer API нет. См.
 [TRANSACTIONAL_AUTHORIZATION_REVISIONS_V1.ru.md](TRANSACTIONAL_AUTHORIZATION_REVISIONS_V1.ru.md).
 
 
 ## D-040 — revision reader должен использовать тот же подписанный DB trust boundary (2G.4d.3)
 
-**IMPLEMENTED staging-only / CI PENDING; production SPEC.**
+**IMPLEMENTED / VERIFIED** для ephemeral PG16, SHA `94f8d7a14c24573ff5397fbe1349e0d89fa7c91f`
+([PostgreSQL #38286208002](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38286208002) и [Main CI #38286207826](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38286207826)); production SPEC.
 
 Серверный trusted actor/tenant/role/collection фиксируется после
 access-JWT и RBAC. Обе revision reads используют новую signed
