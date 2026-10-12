@@ -81,3 +81,12 @@ response/revoke linearizability or concurrent HTTP correctness exists.
 No public HTTP endpoint, real identity, production credentials, Core,
 Gateway, CPA settings, Railway deploy or UI dependency is introduced.
 See [AUTHORIZATION_REVISION_CONTRACT_V1.ru.md](AUTHORIZATION_REVISION_CONTRACT_V1.ru.md).
+
+## Stage 2G.4d.3 — adapter follow-up
+
+A fixed-query `createSignedPgAuthorizationRevisionSource` is now
+implemented for the isolated staging security chain, with full signed
+actor/tenant/role/collection state. See
+[SIGNED_REVISION_READER_V1.ru.md](SIGNED_REVISION_READER_V1.ru.md).
+No production physical-connection discard or final response
+linearizability is implied.

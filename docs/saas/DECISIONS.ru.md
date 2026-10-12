@@ -431,3 +431,22 @@ distinct writers одной tenant revision и committed visibility.
 race остаётся, нескольких backend instances и производственного
 authoritative writer API нет. См.
 [TRANSACTIONAL_AUTHORIZATION_REVISIONS_V1.ru.md](TRANSACTIONAL_AUTHORIZATION_REVISIONS_V1.ru.md).
+
+
+## D-040 — revision reader должен использовать тот же подписанный DB trust boundary (2G.4d.3)
+
+**IMPLEMENTED staging-only / CI PENDING; production SPEC.**
+
+Серверный trusted actor/tenant/role/collection фиксируется после
+access-JWT и RBAC. Обе revision reads используют новую signed
+PostgreSQL транзакцию через существующий non-superuser
+`ScopedSqlPool`, fixed SQL, текущие DB gates, HMAC/txid и safe
+rollback/quarantine. NULL/DB denial → generic 404; испорченный SQL,
+connection error, abort → generic 503. Только immutable,
+server-generated scope; пользовательские JWT/revision headers
+не определяют privileges. Staging E2E проверяет revoke после второго
+COMMIT без изменения project rows.
+
+Production revocation linearization, физический discard Bun
+connection и многоинстансовый invalidate остаются открытыми.
+См. [SIGNED_REVISION_READER_V1.ru.md](SIGNED_REVISION_READER_V1.ru.md).

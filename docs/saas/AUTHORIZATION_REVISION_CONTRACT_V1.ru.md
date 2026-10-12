@@ -101,3 +101,13 @@ adds a guarded private PostgreSQL epoch table, transactional triggers,
 signed revision read attestation and concurrent SQL acceptance. This is
 **not yet wired** to the optional TypeScript `revisions` port; therefore
 the old synthetic limitations and the response/revocation race remain.
+
+## Stage 2G.4d.3 — trusted signed SQL reader
+
+The server-held revision scope now contains actor, tenant, verified role,
+correlation ID and exact collection. The optional
+`createSignedPgAuthorizationRevisionSource` reads migration-004
+`authorized_revision` through the same signed PG transaction executor.
+This replaces synthetic-only revision reads **inside ephemeral PG16 E2E**
+but does not create a production backend, OIDC or atomic response barrier.
+See [SIGNED_REVISION_READER_V1.ru.md](SIGNED_REVISION_READER_V1.ru.md).

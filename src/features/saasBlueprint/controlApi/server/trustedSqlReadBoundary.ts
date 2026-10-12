@@ -1,7 +1,8 @@
 import { authorizeTenantRead } from '../authorization';
 import {
   assertServerAuthorizationRevision, captureServerAuthorizationRevision,
-  AuthorizationRevisionChanged, type ServerAuthorizationRevisionSource,
+  AuthorizationRevisionChanged, AuthorizationRevisionDenied,
+  type ServerAuthorizationRevisionSource,
 } from './authorizationRevision';
 import type { SecurityAuditReason, SecurityAuditRecorder } from './securityAudit';
 import type {
@@ -187,7 +188,9 @@ export function createTrustedSqlReadBoundary(deps: TrustedSqlReadDependencies) {
       // No user-provided revision participates in authorization.
       const revisionSource = deps.revisions;
       const initialRevision = revisionSource
-        ? await captureServerAuthorizationRevision(revisionSource, scope, signal)
+        ? await captureServerAuthorizationRevision(
+          revisionSource, scope, requestedCollection, signal
+        )
         : null;
       if (signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
 
@@ -235,7 +238,7 @@ export function createTrustedSqlReadBoundary(deps: TrustedSqlReadDependencies) {
       // Another revoke can still commit after this check: NOT linearizable.
       if (revisionSource && initialRevision !== null) {
         await assertServerAuthorizationRevision(
-          revisionSource, scope, initialRevision, signal
+          revisionSource, scope, requestedCollection, initialRevision, signal
         );
         if (signal.aborted) return finish(response(UNAVAILABLE), 'request-cancelled');
       }
@@ -249,7 +252,8 @@ export function createTrustedSqlReadBoundary(deps: TrustedSqlReadDependencies) {
       }
       // The signed PG gate may deny a tenant/membership that the in-memory
       // actor store still believes active. Hide its existence as generic 404.
-      if (error instanceof AuthorizationRevisionChanged) {
+      if (error instanceof AuthorizationRevisionChanged ||
+          error instanceof AuthorizationRevisionDenied) {
         return finish(response(NOT_FOUND), 'authorization-changed');
       }
       if (error instanceof ScopedSqlAuthorizationDenied) {

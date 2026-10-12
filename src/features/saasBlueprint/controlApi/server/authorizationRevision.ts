@@ -1,4 +1,4 @@
-import type { AuthorizedReadScope } from '../contracts';
+import type { AuthorizedReadScope, ControlCollection } from '../contracts';
 
 /**
  * Stage 2G.4d: an opt-in server-only authorization revision port.
@@ -14,7 +14,8 @@ import type { AuthorizedReadScope } from '../contracts';
  */
 export interface ServerAuthorizationRevisionSource {
   readRevision(
-    scope: Readonly<Pick<AuthorizedReadScope, 'actorId' | 'tenantId'>>,
+    scope: Readonly<AuthorizedReadScope>,
+    collection: ControlCollection,
     signal: AbortSignal
   ): Promise<unknown>;
 }
@@ -31,6 +32,14 @@ export class AuthorizationRevisionChanged extends Error {
   }
 }
 
+/** Current database signed gate denied; never treat it as a missing source. */
+export class AuthorizationRevisionDenied extends Error {
+  constructor() {
+    super('Authorization revision denied');
+    this.name = 'AuthorizationRevisionDenied';
+  }
+}
+
 export class AuthorizationRevisionUnavailable extends Error {
   constructor() {
     super('Authorization revision unavailable');
@@ -38,7 +47,7 @@ export class AuthorizationRevisionUnavailable extends Error {
   }
 }
 
-const REVISION_PATTERN = /^(0|[1-9][0-9]{0,18})$/;
+const REVISION_PATTERN = /^[1-9][0-9]{0,18}$/;
 const MAX_INT64 = 9_223_372_036_854_775_807n;
 const SAFE_ACTOR = /^[A-Za-z0-9_-]{1,128}$/;
 const SAFE_TENANT = /^[A-Za-z0-9_-]{1,64}$/;
@@ -47,17 +56,25 @@ const SAFE_TENANT = /^[A-Za-z0-9_-]{1,64}$/;
 export async function captureServerAuthorizationRevision(
   source: ServerAuthorizationRevisionSource,
   scope: AuthorizedReadScope,
+  collection: ControlCollection,
   signal: AbortSignal
 ): Promise<ServerAuthorizationRevision> {
   if (!source || typeof source.readRevision !== 'function' ||
       !scope || !SAFE_ACTOR.test(scope.actorId) ||
-      !SAFE_TENANT.test(scope.tenantId) || !signal || signal.aborted) {
+      !SAFE_TENANT.test(scope.tenantId) ||
+      typeof scope.role !== 'string' ||
+      !SAFE_ACTOR.test(scope.correlationId) ||
+      typeof collection !== 'string' || !signal || signal.aborted) {
     throw new AuthorizationRevisionUnavailable();
   }
   try {
-    const revision = await source.readRevision({
+    // Freeze server-authenticated values across awaits: a mutable caller
+    // request can never replace actor, role, collection or tenant scope.
+    const trustedScope = Object.freeze({
       actorId: scope.actorId, tenantId: scope.tenantId,
-    }, signal);
+      role: scope.role, correlationId: scope.correlationId,
+    });
+    const revision = await source.readRevision(trustedScope, collection, signal);
     // PostgreSQL BIGINT is represented as canonical decimal text; do not
     // round 64-bit revisions through JavaScript Number.
     if (signal.aborted || typeof revision !== 'string' ||
@@ -65,7 +82,8 @@ export async function captureServerAuthorizationRevision(
       throw new Error('Invalid revision attestation');
     }
     return revision as ServerAuthorizationRevision;
-  } catch {
+  } catch (error) {
+    if (error instanceof AuthorizationRevisionDenied) throw error;
     // Invalid/missing/failed storage is unavailable, never an Allow.
     throw new AuthorizationRevisionUnavailable();
   }
@@ -74,9 +92,12 @@ export async function captureServerAuthorizationRevision(
 export async function assertServerAuthorizationRevision(
   source: ServerAuthorizationRevisionSource,
   scope: AuthorizedReadScope,
+  collection: ControlCollection,
   baseline: ServerAuthorizationRevision,
   signal: AbortSignal
 ): Promise<void> {
-  const current = await captureServerAuthorizationRevision(source, scope, signal);
+  const current = await captureServerAuthorizationRevision(
+    source, scope, collection, signal
+  );
   if (current !== baseline) throw new AuthorizationRevisionChanged();
 }

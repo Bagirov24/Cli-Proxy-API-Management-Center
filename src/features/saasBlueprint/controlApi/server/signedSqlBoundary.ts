@@ -49,6 +49,15 @@ export const SCOPED_READ_GATE_SQL =
   "AND saas_rls.scope_membership_matches($1::text, $2::text, $3::text) " +
   "AND saas_rls.read_allowed($1::text, $4::text)) AS allowed";
 
+/**
+ * Stage 2G.4d.3: fixed staging-only revision attestation. The SECURITY
+ * DEFINER function in migration 004 independently verifies the signed
+ * txid, actor, tenant, exact database role and collection. A caller MUST
+ * supply a trusted server-created scope, never actor/role from a request.
+ */
+export const SCOPED_AUTHORIZATION_REVISION_SQL =
+  'SELECT saas_rls.authorized_revision($1::text, $2::text, $3::text, $4::text) AS revision';
+
 /** Safe generic denial: never attach tenant, actor, resource or PG details. */
 export class ScopedSqlAuthorizationDenied extends Error {
   constructor() {
@@ -169,11 +178,12 @@ async function boundedCleanup(
  * CONTRACT ONLY: safe production use requires independently verified driver
  * quarantine/discard semantics and database-enforced statement timeouts.
  */
-export async function readSignedScopedMetadata(
+async function executeSignedScopedRead(
   pool: ScopedSqlPool,
   issuer: SignedTransactionIssuer,
   request: ScopedSqlRead,
-  nowSeconds: () => number = () => Math.floor(Date.now() / 1000)
+  purpose: 'metadata' | 'revision',
+  nowSeconds: () => number
 ): Promise<readonly SqlRow[]> {
   const { scope, collection, signal } = request;
   const limit = request.limit ?? 50;
@@ -288,32 +298,61 @@ export async function readSignedScopedMetadata(
       if (!await dbAllows()) {
         denied = true;
       } else {
-        const result = await query(CONTROL_READ_SELECT_SQL[collection], [scope.tenantId, limit]);
-        if (controller.signal.aborted || !Array.isArray(result.rows) || result.rows.length > limit) {
+        const isRevision = purpose === 'revision';
+        const result = await query(
+          isRevision ? SCOPED_AUTHORIZATION_REVISION_SQL : CONTROL_READ_SELECT_SQL[collection],
+          isRevision
+            ? [scope.tenantId, scope.actorId, scope.role, collection]
+            : [scope.tenantId, limit]
+        );
+        if (controller.signal.aborted || !Array.isArray(result.rows) ||
+            result.rows.length > (isRevision ? 1 : limit)) {
           throw new Error('Invalid scoped database response');
         }
-        const safe = result.rows.map((item) => {
-          if (!item || typeof item !== 'object' || Array.isArray(item)) {
-            throw new Error('Invalid row shape');
+        let safe: readonly SqlRow[];
+        if (isRevision) {
+          // A NULL from the authenticated DB function is a Deny, not a
+          // revision 0 or an empty authorized read. Driver/malformed values
+          // poison the connection, not just the returned metadata.
+          if (result.rows.length !== 1 || !result.rows[0] ||
+              typeof result.rows[0] !== 'object' ||
+              Array.isArray(result.rows[0])) {
+            throw new Error('Malformed revision attestation');
           }
-          const row: Record<string, unknown> = {};
-          for (const field of FIELDS[collection]) {
-            const value = item[field];
-            if (value !== null && (typeof value !== 'string' || value.length > 256)) {
-              throw new Error('Invalid row field');
-            }
-            row[field] = value;
+          const revision = result.rows[0].revision;
+          if (revision === null) {
+            denied = true;
+            safe = [];
+          } else if (typeof revision !== 'string' ||
+                     !/^[1-9][0-9]{0,18}$/.test(revision) ||
+                     BigInt(revision) > 9_223_372_036_854_775_807n) {
+            throw new Error('Malformed revision value');
+          } else {
+            safe = [{ revision }];
           }
-          if (typeof row.id !== 'string' || row.id.length === 0 ||
-              ('tenant_id' in row && row.tenant_id !== scope.tenantId)) {
-            throw new Error('Cross-tenant or malformed database row');
-          }
-          return row;
-        });
-        if (controller.signal.aborted) throw new Error('Scoped SQL cancelled');
-        if (!await dbAllows()) {
-          denied = true;
         } else {
+          safe = result.rows.map((item) => {
+            if (!item || typeof item !== 'object' || Array.isArray(item)) {
+              throw new Error('Invalid row shape');
+            }
+            const row: Record<string, unknown> = {};
+            for (const field of FIELDS[collection]) {
+              const value = item[field];
+              if (value !== null && (typeof value !== 'string' || value.length > 256)) {
+                throw new Error('Invalid row field');
+              }
+              row[field] = value;
+            }
+            if (typeof row.id !== 'string' || row.id.length === 0 ||
+                ('tenant_id' in row && row.tenant_id !== scope.tenantId)) {
+              throw new Error('Cross-tenant or malformed database row');
+            }
+            return row;
+          });
+        }
+        if (controller.signal.aborted) throw new Error('Scoped SQL cancelled');
+        if (!denied && !await dbAllows()) denied = true;
+        if (!denied) {
           await query('COMMIT', []);
           transactionEnded = true;
           if (controller.signal.aborted) throw new Error('Scoped SQL cancelled');
@@ -360,4 +399,28 @@ export async function readSignedScopedMetadata(
     clearTimeout(timer);
     signal?.removeEventListener('abort', forwardAbort);
   }
+}
+
+// Both operations use the EXACT SAME signed transaction, dual DB gates,
+// quarantine and bounded cleanup machinery. Revision reads never expose a
+// generic SQL execution interface or accept client-provided role/collection.
+export async function readSignedScopedMetadata(
+  pool: ScopedSqlPool,
+  issuer: SignedTransactionIssuer,
+  request: ScopedSqlRead,
+  nowSeconds: () => number = () => Math.floor(Date.now() / 1000)
+): Promise<readonly SqlRow[]> {
+  return executeSignedScopedRead(pool, issuer, request, 'metadata', nowSeconds);
+}
+
+/** Read an authoritative private tenant epoch through signed PG16 RLS. */
+export async function readSignedScopedAuthorizationRevision(
+  pool: ScopedSqlPool,
+  issuer: SignedTransactionIssuer,
+  request: ScopedSqlRead,
+  nowSeconds: () => number = () => Math.floor(Date.now() / 1000)
+): Promise<string> {
+  const rows = await executeSignedScopedRead(pool, issuer, request, 'revision', nowSeconds);
+  // Validated inside the transaction, before COMMIT, never from raw SQL.
+  return rows[0].revision as string;
 }

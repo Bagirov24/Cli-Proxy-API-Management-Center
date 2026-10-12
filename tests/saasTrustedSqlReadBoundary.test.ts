@@ -589,11 +589,12 @@ describe('Stage 2G.2 — trusted JWT -> actor -> AuthZ -> signed SQL (synthetic 
 
 function syntheticRevision(initial: unknown = '7') {
   let current: unknown = initial;
-  const checked: { actorId: string; tenantId: string }[] = [];
+  const checked: { actorId: string; tenantId: string;
+    role: string; correlationId: string; collection: string }[] = [];
   const source: ServerAuthorizationRevisionSource = {
-    async readRevision(scope, signal) {
+    async readRevision(scope, collection, signal) {
       if (signal.aborted) throw new Error('Synthetic abort');
-      checked.push({ ...scope });
+      checked.push({ ...scope, collection });
       return current;
     },
   };
@@ -606,10 +607,10 @@ describe('Stage 2G.4d — opt-in server-owned revision guard (SYNTHETIC)', () =>
     const h = harness({ revisions: rev.source });
     const result = await h.read(h.request(await accessToken()));
     expect(result).toMatchObject({ ok: true, status: 200, tenantId: 'demo-north' });
-    expect(rev.checked).toEqual([
-      { actorId: 'actor-north', tenantId: 'demo-north' },
-      { actorId: 'actor-north', tenantId: 'demo-north' },
-    ]);
+    expect(rev.checked).toEqual(Array.from({ length: 2 }, () => ({
+      actorId: 'actor-north', tenantId: 'demo-north',
+      role: 'tenant-viewer', correlationId, collection: 'projects',
+    })));
     expect(JSON.stringify(result)).not.toContain('authorizationRevision');
     expect(JSON.stringify(h.auditEvents())).not.toContain('"7"');
     expect(h.acquired).toBe(2);
@@ -735,6 +736,15 @@ describe('Stage 2G.4d — opt-in server-owned revision guard (SYNTHETIC)', () =>
     expect(h.auditEvents()).toMatchObject([{
       reason: 'request-cancelled', tenantId: null,
     }]);
+  });
+
+  test('zero is not an initialized PostgreSQL tenant revision', async () => {
+    const rev = syntheticRevision('0');
+    const h = harness({ revisions: rev.source });
+    expect(await h.read(h.request(await accessToken()))).toMatchObject({
+      ok: false, status: 503,
+    });
+    expect(h.acquired).toBe(0);
   });
 
   test('old server revision cannot be replayed into the final check', async () => {

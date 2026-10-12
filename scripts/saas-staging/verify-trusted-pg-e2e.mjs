@@ -9,10 +9,13 @@ import { createPinnedAccessTokenVerifier } from
   '../../src/features/saasBlueprint/controlApi/server/trustedAccessToken.ts';
 import { createTrustedSqlReadBoundary } from
   '../../src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts';
-import { createPinnedHmacScopeIssuer, CONTROL_READ_SELECT_SQL, SCOPED_READ_GATE_SQL } from
+import { createPinnedHmacScopeIssuer, CONTROL_READ_SELECT_SQL, SCOPED_READ_GATE_SQL,
+  SCOPED_AUTHORIZATION_REVISION_SQL } from
   '../../src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts';
 import { createSecurityAuditRecorder, createSyntheticAuditBuffer } from
   '../../src/features/saasBlueprint/controlApi/server/securityAudit.ts';
+import { createSignedPgAuthorizationRevisionSource } from
+  '../../src/features/saasBlueprint/controlApi/server/signedPgAuthorizationRevision.ts';
 
 const ciOnly = process.env.GITHUB_ACTIONS === 'true' &&
   process.env.SAAS_EPHEMERAL_E2E_CI === 'true' &&
@@ -59,7 +62,8 @@ function safeStatement(sql, params) {
     (FIXED.has(sql) && (sql === 'SELECT set_config($1::text, $2::text, true)'
       ? params.length === 2 : params.length === 0) ||
      SELECTS.has(sql) && params.length === 2 ||
-     sql === SCOPED_READ_GATE_SQL && params.length === 4);
+     sql === SCOPED_READ_GATE_SQL && params.length === 4 ||
+     sql === SCOPED_AUTHORIZATION_REVISION_SQL && params.length === 4);
 }
 
 /** A disposable adapter, NOT proof of per-connection Bun discard safety. */
@@ -69,9 +73,17 @@ function boundedDriver(sql) {
   let committed = 0;
   let discarded = 0;
   let afterCommit = null;
+  let commitQueries = 0;
+  let scheduledCommit = null;
   return {
     stats: () => ({ poisoned, reservations, committed, discarded }),
     afterNextCommit(callback) { afterCommit = callback; },
+    afterNthCommit(count, callback) {
+      if (!Number.isSafeInteger(count) || count < 1 || scheduledCommit) {
+        throw new Error('Invalid staging-only scheduled COMMIT');
+      }
+      scheduledCommit = { at: commitQueries + count, callback };
+    },
     quarantine() { poisoned = true; },
     async connect(signal) {
       if (poisoned) throw new Error('Quarantined CI pool');
@@ -98,9 +110,15 @@ function boundedDriver(sql) {
           try {
             const rows = await pending;
             if (statement === 'COMMIT') {
+              commitQueries += 1;
               const callback = afterCommit;
               afterCommit = null;
               callback?.(); // deterministic race AFTER real DB COMMIT
+              if (scheduledCommit && scheduledCommit.at === commitQueries) {
+                const scheduled = scheduledCommit.callback;
+                scheduledCommit = null;
+                scheduled(); // post-COMMIT fixture writer; never client SQL
+              }
             }
             return { rows };
           } finally {
@@ -211,7 +229,7 @@ const sink = createSyntheticAuditBuffer(128);
 const audit = createSecurityAuditRecorder(sink, { classification: 'staging' });
 let nextCorrelation = 0;
 
-function createRead(pool, selectedAudit = audit) {
+function createRead(pool, selectedAudit = audit, revisions = undefined) {
   return createTrustedSqlReadBoundary({
     tokens: verifier,
     actorDirectory: {
@@ -225,7 +243,7 @@ function createRead(pool, selectedAudit = audit) {
         return actors.get(actorId) ?? null;
       },
     },
-    pool, signer, audit: selectedAudit,
+    pool, signer, audit: selectedAudit, revisions,
     newCorrelationId: () => 'ci-e2e-' + (++nextCorrelation),
   });
 }
@@ -461,6 +479,74 @@ try {
   }
   assert.equal(driver.stats().discarded, 0);
   console.info('PASS: after-COMMIT real PG16 tenant/member/grant revocation returns 404 and hides old rows');
+
+  // Stage 2G.4d.3: ALL four signed transactions use the SAME real
+  // non-superuser Bun.SQL driver: revision, metadata, metadata, revision.
+  // Role, tenant, collection and actor are pinned by trusted server state.
+  const revisionGuardedRead = createRead(
+    driver, audit, createSignedPgAuthorizationRevisionSource(driver, signer)
+  );
+  const stableRevisionRead = await revisionGuardedRead(
+    request(north, 'demo-north', 'projects', { limit: 1 })
+  );
+  assert.deepEqual(visibleIds(stableRevisionRead, 'PG revision-guarded stable North'),
+    ['north-project']);
+  assertAudit(stableRevisionRead, {
+    reason: 'read-allowed', actorId: 'actor-north', tenantId: 'demo-north',
+  });
+  // No client/JWT-controlled revision can override signed PostgreSQL state.
+  const forgedRevisionToken = await token('sub-north', {
+    authorizationRevision: '9223372036854775807',
+    role: 'tenant-owner', tenantId: 'demo-orbit',
+  });
+  const forgedRevisionRequest = {
+    ...request(forgedRevisionToken, 'demo-north'),
+    authorizationRevision: '9223372036854775807',
+  };
+  const forgedRevisionRead = await revisionGuardedRead(forgedRevisionRequest);
+  assert.deepEqual(visibleIds(forgedRevisionRead, 'Client revision spoof ignored'),
+    ['north-project']);
+  assert.equal(JSON.stringify(forgedRevisionRead).includes('authorizationRevision'), false);
+  assert.equal(JSON.stringify(sink.snapshot()).includes('9223372036854775807'), false);
+
+  // COMMIT #1 captures a real signed revision; #2 and #3 commit unchanged
+  // project rows. A privileged fixture writer changes an unrelated grant
+  // AFTER metadata COMMIT #3; the final signed revision must reject even
+  // though BOTH sanitized project reads were identical.
+  for (const scenario of [
+    { change: 'disableSharedAccount', restore: 'restoreSharedAccount',
+      label: 'grant outside requested LIMIT' },
+    { change: 'suspendNorth', restore: 'restoreNorth',
+      label: 'tenant revoked after second metadata COMMIT' },
+    { change: 'revokeNorth', restore: 'restoreNorthMembership',
+      label: 'membership revoked before last signed revision' },
+  ]) {
+    driver.afterNthCommit(3, () => changeEphemeralFixture(scenario.change));
+    try {
+      const denied = await revisionGuardedRead(
+        request(north, 'demo-north', 'projects', { limit: 1 })
+      );
+      assert.equal(denied.ok, false, scenario.label);
+      assert.equal(denied.status, 404, scenario.label);
+      assert.equal('rows' in denied, false);
+      assert.equal('tenantId' in denied, false);
+      assertAudit(denied, {
+        reason: 'authorization-changed', actorId: 'actor-north', tenantId: null,
+      });
+      const safeText = JSON.stringify(denied) + JSON.stringify(sink.snapshot());
+      assert.equal(safeText.includes('shared-account'), false);
+      assert.equal(safeText.includes('north-project'), false);
+      assert.equal(driver.stats().poisoned, false);
+    } finally {
+      changeEphemeralFixture(scenario.restore);
+    }
+    assert.deepEqual(visibleIds(
+      await revisionGuardedRead(request(orbit, 'demo-orbit', 'projects')),
+      'Orbit independent revision after North deny'
+    ), ['orbit-project']);
+  }
+  assert.equal(driver.stats().discarded, 0);
+  console.info('PASS: real PG16 signed revision detects after-second-COMMIT grant/tenant/member revoke');
 
   const brokenAudit = createSecurityAuditRecorder({
     write() { throw new Error('HIDDEN_TEST_ONLY_REFRESH_TOKEN'); },

@@ -516,3 +516,20 @@ denial, cross-tenant isolation, drift между двумя транзакция
 не привязан к новой функции. TTL expiry по времени и гонка между
 final check и ответом остаются SPEC. Нет новых HTTP endpoints,
 production DB, Railway, Core, Gateway или изменений UI.
+
+
+## Этап 2G.4d.3 — real PG16 revision source в trusted read path
+
+[Signed revision reader](SIGNED_REVISION_READER_V1.ru.md) подключает
+`createSignedPgAuthorizationRevisionSource` к server-only
+`trustedSqlReadBoundary`, используя тот же non-superuser signed
+transaction executor, HMAC/txid, DB gates и quarantine, что метаданные.
+Обе metadata транзакции остаются; начальная и итоговая ревизии
+теперь читаются через signed SQL `authorized_revision`. В ephemeral
+PG16 E2E проверяется реальный revoke после **второго** metadata COMMIT,
+который обнаруживается даже при одинаковом LIMITed read set.
+Нет новых HTTP endpoints и production data-plane.
+
+**Статус: IMPLEMENTED / CI PENDING** на новой кодовой ревизии.
+Этап не устраняет race после последнего COMMIT и не является
+production credential/access/session enforcement.

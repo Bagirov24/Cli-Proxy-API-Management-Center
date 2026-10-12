@@ -620,3 +620,26 @@ atomic revision increments. See
 - [ ] **PROPOSED:** linearizable response/revocation completion barrier.
 
 См. [TRANSACTIONAL_AUTHORIZATION_REVISIONS_V1.ru.md](TRANSACTIONAL_AUTHORIZATION_REVISIONS_V1.ru.md).
+
+
+## Этап 2G.4d.3 — signed PG revision source для trusted SQL
+
+- [x] Типизированный server-only revision port расширен до trusted
+  actor/tenant/**role**/correlation/collection. User JWT/request
+  revision/role не используются для issuance.
+- [x] Тот же signed SQL executor теперь выполняет fixed
+  `authorized_revision` с HMAC-txid, двойным DB gate,
+  timeout/cancellation и pool quarantine.
+- [x] Отдельный `createSignedPgAuthorizationRevisionSource` внедрён в
+  isolated E2E non-superuser driver. Unit tests для malformed/NULL/
+  cross-tenant SQL, SQL failure, cancel и clean ROLLBACK.
+- [x] Реальный ephemeral PG16 E2E проверяет изменения grant, tenant,
+  membership после второго metadata COMMIT перед final Allow; старые
+  LIMITed rows не выдаются.
+- [ ] **VERIFIED:** GitHub Actions 4/4 на новом кодовом SHA.
+- [ ] **SPEC:** production multi-instance driver/credential lifecycle,
+  link/routing/expiry revision coverage, actor persistence, transactional
+  session revocation and correctness across concurrent HTTP delivery.
+- [ ] **PROPOSED:** формально упорядоченный revocation/response barrier.
+
+Подробнее: [SIGNED_REVISION_READER_V1.ru.md](SIGNED_REVISION_READER_V1.ru.md).

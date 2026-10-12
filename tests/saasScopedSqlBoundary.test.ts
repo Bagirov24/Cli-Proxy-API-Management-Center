@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
 import {
   createPinnedHmacScopeIssuer, readSignedScopedMetadata,
+  readSignedScopedAuthorizationRevision, SCOPED_AUTHORIZATION_REVISION_SQL,
   SCOPED_READ_GATE_SQL, ScopedSqlAuthorizationDenied,
   type ScopedSqlConnection, type ScopedSqlPool, type SignedTransactionIssuer,
   type SqlRow, type SqlValue,
@@ -20,6 +21,7 @@ function harness(rows: readonly SqlRow[] = [
     name: 'North Project', status: 'active', hidden_token: 'NEVER_RETURN' },
 ], gateAnswers: readonly boolean[] = [true, true]) {
   let gateIndex = 0;
+  let revisionRows: readonly SqlRow[] = [{ revision: '7' }];
   const calls: Call[] = [];
   const releases: boolean[] = [];
   const quarantines: string[] = [];
@@ -36,6 +38,7 @@ function harness(rows: readonly SqlRow[] = [
       if (sql === SCOPED_READ_GATE_SQL) {
         return { rows: [{ allowed: gateAnswers[gateIndex++] ?? true }] };
       }
+      if (sql === SCOPED_AUTHORIZATION_REVISION_SQL) return { rows: revisionRows };
       if (sql.startsWith('SELECT id, ')) return { rows };
       return { rows: [] };
     },
@@ -47,7 +50,8 @@ function harness(rows: readonly SqlRow[] = [
   };
   return { calls, releases, quarantines, pool,
     failWhen: (sql: string) => { failAt = sql; },
-    onQuery: (fn: (sql: string) => void) => { afterCall = fn; } };
+    onQuery: (fn: (sql: string) => void) => { afterCall = fn; },
+    setRevisionRows: (items: readonly SqlRow[]) => { revisionRows = items; } };
 }
 
 beforeAll(async () => {
@@ -337,5 +341,103 @@ describe('Stage 2E — signed SQL scoped query boundary (fake pool, no network)'
       expect(h.releases).toEqual([false]);
       expect(h.calls.some((x) => /\b(INSERT|UPDATE|DELETE|DROP)\b/i.test(x.sql))).toBe(false);
     }
+  });
+});
+
+describe('Stage 2G.4d.3 — signed PostgreSQL revision attestation (fake pool)', () => {
+  test('uses fixed SQL, exact actor/tenant/role/collection and dual DB gates', async () => {
+    const h = harness();
+    const revision = await readSignedScopedAuthorizationRevision(h.pool, signer, {
+      scope, collection: 'projects',
+    }, () => now);
+    expect(revision).toBe('7');
+    expect(h.calls.filter(x => x.sql === SCOPED_AUTHORIZATION_REVISION_SQL))
+      .toEqual([{ sql: SCOPED_AUTHORIZATION_REVISION_SQL,
+        params: ['demo-north', 'actor-north', 'tenant-admin', 'projects'] }]);
+    expect(h.calls.filter(x => x.sql === SCOPED_READ_GATE_SQL)).toHaveLength(2);
+    expect(h.calls.filter(x => x.sql.startsWith('SELECT set_config'))).toHaveLength(5);
+    expect(h.calls.some(x => x.sql.startsWith('SELECT id, '))).toBe(false);
+    expect(h.calls.at(-1)?.sql).toBe('COMMIT');
+    expect(h.releases).toEqual([false]);
+    expect(h.quarantines).toEqual([]);
+    expect(h.calls.map(x => x.sql).join(' ')).not.toContain('actor-north');
+  });
+
+  test('database gate denies before or after revision SELECT with safe ROLLBACK', async () => {
+    for (const answers of [[false], [true, false]]) {
+      const h = harness(undefined, answers);
+      await expect(readSignedScopedAuthorizationRevision(h.pool, signer, {
+        scope, collection: 'projects',
+      }, () => now)).rejects.toBeInstanceOf(ScopedSqlAuthorizationDenied);
+      expect(h.calls.at(-1)?.sql).toBe('ROLLBACK');
+      expect(h.releases).toEqual([false]);
+      expect(h.quarantines).toEqual([]);
+      expect(h.calls.filter(x => x.sql === SCOPED_AUTHORIZATION_REVISION_SQL))
+        .toHaveLength(answers[0] ? 1 : 0);
+    }
+  });
+
+  test('signed SQL NULL is a generic denial, not a revision zero or Allow', async () => {
+    const h = harness();
+    h.setRevisionRows([{ revision: null }]);
+    await expect(readSignedScopedAuthorizationRevision(h.pool, signer, {
+      scope, collection: 'projects',
+    }, () => now)).rejects.toBeInstanceOf(ScopedSqlAuthorizationDenied);
+    expect(h.releases).toEqual([false]);
+    expect(h.calls.at(-1)?.sql).toBe('ROLLBACK');
+  });
+
+  test('missing, overflow, duplicate, numeric and malformed attestation quarantines', async () => {
+    for (const rows of [
+      [], [{ revision: 7 }], [{ revision: undefined }],
+      [{ revision: '07' }], [{ revision: '0' }],
+      [{ revision: '9223372036854775808' }],
+      [{ revision: '7' }, { revision: '8' }],
+      [{ revision: '7; DROP TABLE sensitive' }],
+    ]) {
+      const h = harness();
+      h.setRevisionRows(rows);
+      await expect(readSignedScopedAuthorizationRevision(h.pool, signer, {
+        scope, collection: 'projects',
+      }, () => now)).rejects.toThrow('Scoped metadata unavailable');
+      expect(h.quarantines).toContain('read-failed');
+      expect(h.releases).toEqual([true]);
+      expect(h.calls.some(x => x.sql === 'COMMIT')).toBe(false);
+    }
+  });
+
+  test('revision driver failure never exposes SQL details and quarantines', async () => {
+    const h = harness();
+    h.failWhen('authorized_revision');
+    await expect(readSignedScopedAuthorizationRevision(h.pool, signer, {
+      scope, collection: 'projects',
+    }, () => now)).rejects.toThrow('Scoped metadata unavailable');
+    expect(h.quarantines).toEqual(['read-failed']);
+    expect(h.releases).toEqual([true]);
+  });
+
+  test('cancel during revision SQL fails closed, discards and never commits', async () => {
+    const h = harness();
+    const controller = new AbortController();
+    h.onQuery(sql => {
+      if (sql === SCOPED_AUTHORIZATION_REVISION_SQL) controller.abort();
+    });
+    await expect(readSignedScopedAuthorizationRevision(h.pool, signer, {
+      scope, collection: 'projects', signal: controller.signal,
+    }, () => now)).rejects.toThrow('Scoped metadata unavailable');
+    expect(h.calls.some(x => x.sql === 'COMMIT')).toBe(false);
+    expect(h.quarantines).toContain('read-failed');
+    expect(h.releases).toEqual([true]);
+  });
+
+  test('revision read rejects foreign scope and untrusted collection pre-connection', async () => {
+    const h = harness();
+    await expect(readSignedScopedAuthorizationRevision(h.pool, signer, {
+      scope: { ...scope, tenantId: 'north;DROP' }, collection: 'projects',
+    }, () => now)).rejects.toThrow();
+    await expect(readSignedScopedAuthorizationRevision(h.pool, signer, {
+      scope, collection: '__proto__' as ControlCollection,
+    }, () => now)).rejects.toThrow();
+    expect(h.calls).toEqual([]);
   });
 });
