@@ -209,7 +209,7 @@ function issuerFixtureBoolean(role, trustedCall) {
   );
   assert.equal(run.exitCode,0,'Ephemeral issuer fixture SQL failed');
   const values = Buffer.from(run.stdout).toString('utf8')
-    .split(/\\r?\\n/).map(x => x.trim()).filter(Boolean);
+    .split(/\r?\n/).map(x => x.trim()).filter(Boolean);
   assert.ok(values.length>=1,'Missing issuer fixture result');
   const decisions = values.filter(x => x === 't' || x === 'f');
   assert.equal(decisions.length,1,'Malformed issuer fixture attestation');
