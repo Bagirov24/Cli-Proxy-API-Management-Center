@@ -7,6 +7,8 @@ import assert from 'node:assert/strict';
 import { SQL } from 'bun';
 import { createPinnedAccessTokenVerifier } from
   '../../src/features/saasBlueprint/controlApi/server/trustedAccessToken.ts';
+import { createTrustedIssuerSessionProvisioner } from
+  '../../src/features/saasBlueprint/controlApi/server/issuerSessionProvisioning.ts';
 import { createTrustedSqlReadBoundary, createTrustedSqlPublishedBoundary } from
   '../../src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts';
 import { createPinnedHmacScopeIssuer, CONTROL_READ_SELECT_SQL, SCOPED_READ_GATE_SQL,
@@ -194,6 +196,26 @@ function tokenFixtureSql(sql) {
   assert.equal(child.exitCode,0,'Disposable token-bound fixture mutation failed');
 }
 
+/** Only the ephemeral privileged fixture can SET ROLE to one of two
+ * dedicated NOLOGIN roles. No raw bearer/session secret is interpolated. */
+function issuerFixtureBoolean(role, trustedCall) {
+  assert.ok(['saas_issuer_provisioner','saas_issuer_directory_admin'].includes(role));
+  assert.ok(typeof trustedCall === 'string' &&
+    trustedCall.startsWith('saas_rls_private.'));
+  const run = Bun.spawnSync(
+    ['psql','-X','-t','-A','-q','-v','ON_ERROR_STOP=1','-c',
+      'BEGIN; SET LOCAL ROLE '+role+'; SELECT '+trustedCall+'; COMMIT;'],
+    { stderr:'ignore' }
+  );
+  assert.equal(run.exitCode,0,'Ephemeral issuer fixture SQL failed');
+  const values = Buffer.from(run.stdout).toString('utf8')
+    .split(/\\r?\\n/).map(x => x.trim()).filter(Boolean);
+  assert.ok(values.length>=1,'Missing issuer fixture result');
+  const decisions = values.filter(x => x === 't' || x === 'f');
+  assert.equal(decisions.length,1,'Malformed issuer fixture attestation');
+  return decisions[0] === 't';
+}
+
 async function verifiedBearerFingerprint(bearer) {
   const bytes = new Uint8Array(await crypto.subtle.digest(
     'SHA-256',new TextEncoder().encode(bearer)));
@@ -274,6 +296,9 @@ const actors = new Map([
   ['actor-token-ci', {
     id: 'actor-token-ci', memberships: [member('demo-north', 'tenant-viewer')],
   }],
+  ['actor-issuer-ci', {
+    id: 'actor-issuer-ci', memberships: [member('demo-north', 'tenant-viewer')],
+  }],
 ]);
 const directory = new Map([
   [issuer + ':sub-north', 'actor-north'],
@@ -282,6 +307,7 @@ const directory = new Map([
   [issuer + ':sub-paused', 'actor-paused'],
   [issuer + ':sub-db-revoked', 'actor-db-revoked'],
   [issuer + ':sub-token-ci', 'actor-token-ci'],
+  [issuer + ':sub-issuer-ci', 'actor-issuer-ci'],
 ]);
 const sink = createSyntheticAuditBuffer(128);
 const audit = createSecurityAuditRecorder(sink, { classification: 'staging' });
@@ -880,6 +906,145 @@ try {
     }
   }
   console.info('PASS: real PG16 token A revoked; sibling B remains allowed; legacy downgrade denied');
+
+  // Stage 2G.4d.7b: actual pinned-RS256 server provisioning module sends
+  // only the digest/verified exp to a STRICTLY separate NOLOGIN provisioner,
+  // after a different issuer-directory-admin role pins issuer+subject->actor.
+  const pinnedActor = 'actor-issuer-ci';
+  const pinnedSubject = 'sub-issuer-ci';
+  const issuerA = await token(pinnedSubject,{jti:'issuer-bound-A'});
+  const issuerB = await token(pinnedSubject,{jti:'issuer-bound-B'});
+  const issuerFingerprintA = await verifiedBearerFingerprint(issuerA);
+  const issuerFingerprintB = await verifiedBearerFingerprint(issuerB);
+  const issuerPublished = [];
+  const outboxBeforeIssuer = readPrivateOutboxCount();
+  let issuerActorRegistered = false;
+  try {
+    tokenFixtureSql(`BEGIN;
+      INSERT INTO saas_rls.memberships(actor_id,tenant_id,role,status)
+       VALUES ('actor-issuer-ci','demo-north','tenant-viewer','active');
+      INSERT INTO saas_rls_private.actor_session_state(actor_id,status)
+       VALUES ('actor-issuer-ci','active');
+      COMMIT;`);
+    issuerActorRegistered = true;
+
+    const pinned = issuerFixtureBoolean('saas_issuer_directory_admin',
+      "saas_rls_private.pin_verified_subject('"+
+      issuer+"','"+pinnedSubject+"','"+pinnedActor+"')");
+    assert.equal(pinned,true,'Only directory-admin pins subject ownership');
+
+    const provisioner = createTrustedIssuerSessionProvisioner({
+      tokens:verifier,
+      actorDirectory:{
+        async resolveActorId(id) {
+          return directory.get(id.issuer + ':' + id.subject) ?? null;
+        },
+      },
+      nowSeconds:()=>Math.floor(Date.now()/1000),
+      writer:{
+        async enrollVerifiedToken(v) {
+          assert.equal(v.issuer,issuer,'Pinned issuer must be exact');
+          assert.equal(v.subject,pinnedSubject,'No unpinned subject');
+          assert.equal(v.actorId,pinnedActor,'Actor comes from server directory');
+          assert.match(v.fingerprint,/^[0-9a-f]{64}$/);
+          assert.ok(Number.isSafeInteger(v.expiresAtSeconds));
+          return issuerFixtureBoolean('saas_issuer_provisioner',
+            "saas_rls_private.enroll_verified_token('"+issuer+
+            "','"+pinnedSubject+"','"+pinnedActor+"','"+v.fingerprint+
+            "',to_timestamp("+v.expiresAtSeconds+"))");
+        },
+        async revokeVerifiedToken(v) {
+          assert.equal(v.issuer,issuer);
+          assert.equal(v.subject,pinnedSubject);
+          assert.equal(v.actorId,pinnedActor);
+          assert.match(v.fingerprint,/^[0-9a-f]{64}$/);
+          return issuerFixtureBoolean('saas_issuer_provisioner',
+            "saas_rls_private.revoke_verified_token('"+issuer+
+            "','"+pinnedSubject+"','"+v.fingerprint+"')");
+        },
+      },
+    });
+    assert.equal(await provisioner.enrollBearer(
+      await token(pinnedSubject,{aud:'wrong-audience'})),false,
+      'Unverified bearer must not reach issuer-provisioner SQL');
+    assert.equal(await provisioner.enrollBearer(issuerA),true);
+    assert.equal(await provisioner.enrollBearer(issuerB),true);
+    assert.equal(await provisioner.enrollBearer(issuerA),false,
+      'Duplicate verified token cannot be re-enrolled or expiry-extended');
+
+    const safePublisher = createTrustedSqlPublishedBoundary(
+      { ...createTrustedDependencies(driver,audit,
+        createSignedPgAuthorizationRevisionSource(driver,signer)),
+        requireTokenBoundSession:true,recordStagingOutbox:true },
+      {
+        async stage(payload,signal) {
+          assert.equal(signal.aborted,false);
+          assert.equal(payload.tenantId,'demo-north');
+          assert.deepEqual(payload.rows.map(r=>r.id),['north-project']);
+          const serialized = JSON.stringify(payload);
+          for(const banned of [
+            issuerA,issuerB,issuerFingerprintA,issuerFingerprintB,pinnedSubject,
+          ]) assert.equal(serialized.includes(banned),false);
+          return ()=>{issuerPublished.push('north-project');};
+        },
+      }
+    );
+    const invoke = bearer => safePublisher(
+      request(bearer,'demo-north','projects',{limit:1})
+    );
+    for(const bearer of [issuerA,issuerB]) {
+      const receipt = await invoke(bearer);
+      assert.equal(receipt.ok,true);
+      assert.equal(receipt.published,true);
+      assert.equal('rows' in receipt,false);
+      assert.equal('tenantId' in receipt,false);
+      const serialized=JSON.stringify(receipt);
+      for (const banned of [
+        issuerA,issuerB,issuerFingerprintA,issuerFingerprintB,pinnedSubject,
+      ]) assert.equal(serialized.includes(banned),false);
+    }
+    assert.deepEqual(issuerPublished,['north-project','north-project']);
+    assert.equal(readPrivateOutboxCount(),outboxBeforeIssuer+2);
+
+    assert.equal(await provisioner.revokeBearer(issuerA),true);
+    assert.equal(await provisioner.revokeBearer(issuerA),false);
+    const deniedA=await invoke(issuerA);
+    assert.equal(deniedA.ok,false);
+    assert.equal(deniedA.status,404);
+    assert.equal('rows' in deniedA,false);
+    assert.equal(readPrivateOutboxCount(),outboxBeforeIssuer+2);
+    assert.equal((await invoke(issuerB)).ok,true,
+      'Subject remains active and independent token B remains usable');
+    assert.equal(readPrivateOutboxCount(),outboxBeforeIssuer+3);
+
+    // Revoking issuer+subject invalidates B despite its individual
+    // fingerprint row remaining active: no per-token sweep is required.
+    assert.equal(issuerFixtureBoolean('saas_issuer_directory_admin',
+      "saas_rls_private.revoke_verified_subject('"+
+      issuer+"','"+pinnedSubject+"')"),true);
+    const deniedSubject=await invoke(issuerB);
+    assert.equal(deniedSubject.ok,false);
+    assert.equal(deniedSubject.status,404);
+    assert.equal('rows' in deniedSubject,false);
+    assert.equal(readPrivateOutboxCount(),outboxBeforeIssuer+3,
+      'Revoked subject must never write success outbox');
+    assert.deepEqual(issuerPublished,
+      ['north-project','north-project','north-project']);
+    assert.equal(driver.stats().poisoned,false);
+  } finally {
+    if (issuerActorRegistered) {
+      // Identity binding/tombstones intentionally survive cleanup.
+      tokenFixtureSql(`BEGIN;
+        DELETE FROM saas_rls_private.actor_token_sessions
+         WHERE actor_id='actor-issuer-ci';
+        DELETE FROM saas_rls_private.actor_session_state
+         WHERE actor_id='actor-issuer-ci';
+        DELETE FROM saas_rls.memberships
+         WHERE actor_id='actor-issuer-ci';
+        COMMIT;`);
+    }
+  }
+  console.info('PASS: real PG16 pinned issuer enroll/revoke: token A denied, B survives, subject revoke denies all');
 
   const brokenAudit = createSecurityAuditRecorder({
     write() { throw new Error('HIDDEN_TEST_ONLY_REFRESH_TOKEN'); },
