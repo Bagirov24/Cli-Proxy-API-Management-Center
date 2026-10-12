@@ -599,3 +599,20 @@ staging PostgreSQL authorization contract пока **не равен**
 Эта feature-ветка не выдаёт новые production endpoints и не меняет
 Core/Gateway/Railway. Отдельные approvals, security review и
 production-hardening необходимы до любых live credentials.
+
+## Этап 2G.4d.5a — bounded local publication handoff
+
+[Контракт staging-публикации](BOUNDED_PUBLICATION_HANDOFF_V1.ru.md)
+добавляет server-only примитив `withSignedScopedPublicationBarrier`.
+Он использует существующую подписанную транзакцию и PostgreSQL
+`FOR SHARE`, сверяет server-owned epoch и expiry, выполняет асинхронную
+*закрытую* подготовку с timeout/cancellation, затем допускает только
+синхронную локальную передачу данных до освобождения lock.
+
+**IMPLEMENTED / VERIFIED** на кодовом SHA
+`02f5db4dddeabddf099ae9d98d49c13421d759a8`,
+[CI #38290101997](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38290101997)
+(1 802 PASS), [PG16 #38290101971](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38290101971)
+и Demo/Chromium — 4/4 SUCCESS. Публичных HTTP endpoints нет:
+remote delivery, audit/outbox, crashes и production credentials остаются
+отдельными блокерами.

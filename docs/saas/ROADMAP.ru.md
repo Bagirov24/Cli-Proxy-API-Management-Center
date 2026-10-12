@@ -717,3 +717,26 @@ atomic revision increments. See
 Текущие стадии 2G.4d.4a/b/c verified только в disposable CI;
 это НЕ green light для release. См.
 [PRODUCTION_READINESS_GATES_V1.ru.md](PRODUCTION_READINESS_GATES_V1.ru.md).
+
+## Этап 2G.4d.5a — bounded publication callback
+
+- [x] Signed server-only PostgreSQL publication primitive shares HMAC,
+  txid, DB gates, SQL quarantine and deadline with metadata path.
+- [x] `FOR SHARE` plus server-owned epoch/expiry comparison before
+  prepare, second DB gate and expiry check before sync local handoff.
+- [x] Synthetic adversarial tests for replay, foreign tenant, unsafe
+  SQL, clock expiry, cancellation, hung prepare and malformed results.
+- [x] Real PG16 E2E: writer revoke waits for local handoff, stale
+  epoch cannot republish and neighboring tenant remains isolated.
+- [x] VERIFIED: `02f5db4dddeabddf099ae9d98d49c13421d759a8` —
+  [main CI #38290101997](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38290101997)
+  (1 802 PASS, 0 FAIL), [PG16 #38290101971](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38290101971),
+  [Demo #38290101951](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38290101951),
+  [Browser #38290101996](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38290101996).
+- [ ] **SPEC**: verified actor/session identity and durable audit must be
+  tied to the same high-level publication flow, not separately replayed.
+- [ ] **SPEC**: a real bounded HTTP transport/cancel/crash contract and
+  independently proven DB per-connection destruction/reuse correctness.
+- [ ] **PROPOSED**: production completion semantics and release approvals.
+
+См. [BOUNDED_PUBLICATION_HANDOFF_V1.ru.md](BOUNDED_PUBLICATION_HANDOFF_V1.ru.md).

@@ -494,3 +494,20 @@ Writer-side triggers UPDATE того же epoch блокируются до read
 доставки по сети. Производственный протокол должен ограничить срок
 lease, определить семантику при отмене/краше и не создавать unbounded
 locks на медленных клиентах.
+
+## D-044 — publish только после signed scope и FOR SHARE, без асинхронного COMMIT callback
+
+**IMPLEMENTED / VERIFIED synthetic and disposable PG16; production SPEC.**
+
+Данные предварительно собираются внутренним trusted SQL read, но
+отдельный publication port принимает только server-owned scope,
+первоначальную ревизию и приватную `prepare` callback. Внутри
+параметризованной signed PostgreSQL transaction сверяются epoch/expiry
+под кооперативным `FOR SHARE`, DB capability проверяется ещё раз,
+после чего допустим только синхронный локальный `commit` до DB COMMIT.
+Отмена, истёкшая ревизия или SQL отказ не должны выполнять handoff.
+Реальный PG16 доказал порядок local handoff → revoker COMMIT.
+Асинхронный network delivery и невозвратные эффекты после ошибки
+callback остаются вне доказанного контракта; не представлять как
+production-ready HTTP. См.
+[BOUNDED_PUBLICATION_HANDOFF_V1.ru.md](BOUNDED_PUBLICATION_HANDOFF_V1.ru.md).

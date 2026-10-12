@@ -55,3 +55,12 @@ as remote HTTP receipt. A revoke-complete contract must specify whether
 in-flight prior authorized responses may arrive after revocation and how
 a caller learns completion. No current artifact proves remote receipt
 semantics, and no staging result should be reported as such.
+
+## 2G.4d.5a: signed local publication primitive (not a release gate)
+
+A backend-only bounded `FOR SHARE` publication handoff now passes
+disposable PG16 CI (1,802 unit tests and real writer contention).
+Evidence: [stage contract](BOUNDED_PUBLICATION_HANDOFF_V1.ru.md).
+This closes the **local staged-handoff vs revoker COMMIT** experiment,
+but not true HTTP delivery, session/audit authority or durable publish.
+The HTTP publication readiness checkbox remains **SPEC**, not VERIFIED.

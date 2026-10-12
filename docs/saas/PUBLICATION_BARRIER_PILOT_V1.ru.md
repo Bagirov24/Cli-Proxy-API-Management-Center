@@ -68,3 +68,12 @@ commit and the epoch advances exactly once; fixture restoration is
 separately versioned. This is a database crash/disconnect property,
 NOT a proof that cancellation from a real HTTP client reliably closes
 an individual Bun.SQL physical connection.
+
+## Follow-up 2G.4d.5a
+
+The new `withSignedScopedPublicationBarrier` is a server-only,
+bounded signed transaction that holds migration-007 FOR SHARE across
+private staging and **synchronous local** handoff; tested against a real
+concurrent revoker writer in ephemeral PostgreSQL. It does not open
+a public endpoint, promise remote receipt or serialize durable audit.
+See [BOUNDED_PUBLICATION_HANDOFF_V1.ru.md](BOUNDED_PUBLICATION_HANDOFF_V1.ru.md).
