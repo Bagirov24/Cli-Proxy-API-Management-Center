@@ -323,3 +323,27 @@ prompts и произвольные дополнительные поля. Со�
 production audit ledger, outbox, retention, расследование,
 ACL, tamper evidence, async sinks и reliability — PROPOSED.
 Детали: [SECURITY_AUDIT_V1.ru.md](SECURITY_AUDIT_V1.ru.md).
+
+## D-035 — 2G.4a проверяет реальную RLS транзакцию, но не production identity
+
+**Статус: IMPLEMENTED ephemeral CI contract; VERIFIED после Actions.**
+
+Полный staging-only путь синтетического JWT → trusted actor map →
+двойная membership/RBAC проверка → подписанный по txid SQL scope →
+Bun.SQL 1.3.14 (NOINHERIT/NOBYPASSRLS) → PostgreSQL FORCE RLS →
+санитизированные metadata rows → redacted audit проверяется в
+новом `verify-trusted-pg-e2e.mjs`, а не только mock SQL port.
+Тестовые SQL grants независимы на Pool/Account/Egress.
+Все попытки использовать client actor/role, другое audience,
+ID-token и чужие tenant запрещаются до SQL.
+
+Только экспериментальная временная PostgreSQL получает
+дополнительную grant fixture; никаких расширений live Core,
+production ключей, egress-подключений или публичных API.
+Схема не даёт atomic actor-store snapshot и не заменяет
+production OIDC, session invalidation, durable audit и безопасный
+physical discard SQL соединения. Suspended tenant activity gate
+остаётся отдельным обязательным fail-closed требованием до SaaS backend.
+
+Подробнее:
+[E2E_POSTGRES_SECURITY_ACCEPTANCE_V1.ru.md](E2E_POSTGRES_SECURITY_ACCEPTANCE_V1.ru.md).

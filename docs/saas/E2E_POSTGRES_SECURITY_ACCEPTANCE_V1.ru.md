@@ -1,0 +1,111 @@
+# Stage 2G.4a — End-to-end Trusted Identity → PostgreSQL RLS → Audit
+
+> **Статус: IMPLEMENTED / CI PENDING.** Интеграционный тест выполняется
+> только в GitHub Actions на одноразовой PostgreSQL 16.6 и Bun 1.3.14.
+> **STAGING ONLY:** нет production credentials, публичного HTTP,
+> настоящего OIDC, CLIProxyAPI Core/Gateway или SaaS deployment.
+
+## Что теперь действительно объединено
+
+Новый отдельный executable acceptance:
+
+- `scripts/saas-staging/verify-trusted-pg-e2e.mjs`.
+- `tests/sql/saas_e2e_grants_fixture.test.sql` (строго временный
+  PostgreSQL, запуск ПОСЛЕ существующего 2F native driver acceptance).
+- Шаг в `.github/workflows/saas-staging-rls-ci.yml`.
+
+Цепочка проверки **в одном запросе**:
+
+1. Синтетический **RS256 JWT**, сгенерированный в памяти текущего CI
+   процесса, `typ=at+jwt`, заранее прикреплённый issuer/audience/key.
+2. Trusted `issuer + sub → actorId` через **server-held synthetic map**.
+   Никакие JWT actor/role/tenant claims не определяют права.
+3. Актуальное in-memory membership/RBAC на стороне isolated server
+   boundary, собственный correlationId.
+4. SQL scope выдаётся через `createPinnedHmacScopeIssuer`. HMAC ключ
+   берётся **только из disposable PG16 fixture**, через защищённый
+   CI bootstrap, не публикуется и не читается SQL reader ролью.
+5. Встроенный **реальный** `Bun.SQL` PostgreSQL wire connection под
+   логином `saas_ci_runner` (NOINHERIT, NOBYPASSRLS, без доступа к
+   приватным membership/grant/signer таблицам). Все SQL строки
+   фиксированы на сервере, значения только параметрами `$1/$2`.
+6. Реальная транзакция: `BEGIN`, `txid_current()`, signed GUCs,
+   `SET LOCAL ROLE saas_rls_reader`, fixed SELECT, PostgreSQL
+   `ENABLE/FORCE RLS`, sanitation allowlist и `COMMIT`.
+7. Повторная проверка JWT/subject mapping и membership/RBAC **после**
+   COMMIT. Revocation during async SQL скрывает уже полученный результат.
+8. Синхронное audit событие с 11 разрешёнными полями и безопасным
+   reason. Deny/Error не содержат чужого tenant ID. Сбой sink →
+   generic 503 без rows.
+
+Не задействованы реальные accounts, CPA native keys, VPN/Proxy или
+Data Plane. События аудита существуют исключительно в памяти
+CI-процесса; не публикуются в stdout, API, Core или production store.
+
+## Положительные и отрицательные проверки
+
+| Сценарий | Критерий |
+| --- | --- |
+| North → North projects; Orbit → Orbit projects | Только собственные строки, Allow audit и соответствующий tenant |
+| 8 конкурентных North/Orbit signed reads | Без пересечения строк и без повреждения SQL pool |
+| North grants: Account без Egress | `shared-account` виден, `shared-egress` скрыт |
+| Orbit grants: Pool без Account | `shared-pool` виден, `shared-account` скрыт |
+| Orbit expired Egress grant | `shared-egress` скрыт |
+| CPA-native key bindings | Native Core key не попадает в SQL routing output |
+| North → Orbit, Orbit → North | 404 до подключения к DB, audit Deny с `tenantId=null` |
+| Auditor → Accounts | 403 до подключения к DB |
+| Wrong JWT issuer/audience/kid, ID-token, unknown subject | 401 до SQL |
+| Forged JWT role/actor/tenant, SQL-like tenant | Не дают доступ, не выполняют пользовательский SQL |
+| Membership revocation или trusted actor mapping revoked ПОСЛЕ COMMIT | No stale rows, generic 404/401, безопасный audit |
+| Audit sink exception после DB query | Generic 503, без уже прочитанных metadata |
+| AbortSignal на завершении COMMIT | Generic 503 без rows; pool quarantined, никакого reuse |
+
+**Разделение прав проверяется настоящим PostgreSQL**, а не
+только картинками демо: отдельный SQL fixture для Orbit выдаёт
+`shared-pool` без Account/Egress grant, а North убирает grant
+на `shared-egress`, оставляя `shared-account`. Изменения
+производятся в одноразовой БД **после** ранее действовавшего 2F
+test suite, чтобы не переписать исторические ожидания драйвера.
+
+Все тестовые SQL statements доступны **только** CI runner; запросы
+пользователя не передаются в `SQL.unsafe`. Запуск скрипта блокируется
+вне `GITHUB_ACTIONS=true` и `SAAS_EPHEMERAL_E2E_CI=true`, вне точных
+`PGHOST=127.0.0.1`, `PGPORT=5432`, `PGDATABASE=saas_ephemeral_test`
+и при обнаружении Railway environment. Внешний процесс
+ограничен `timeout --kill-after`. Это эксплуатационная страховка
+и **не** доказательство индивидуального физического
+`discard(connection)` в Bun.
+
+## Что НЕ доказано даже после успешного CI
+
+- Issuer и JWT RS256 — **SIMULATED**, ключи одноразовые; настоящий
+  OIDC/SSO issuer, JWK rotation, revocation, replay/JTI не подключены.
+- Actor directory и memberships — **SIMULATED in-memory**. Тест
+  отзывает их после настоящего PostgreSQL COMMIT, но не доказывает
+  атомарного согласования membership между двумя хранилищами.
+- PostgreSQL RLS — реальный и защищённый подписанным scope,
+  однако отсутствие строк для suspended tenant пока не имеет
+  отдельного fail-closed domain status (200 empty vs 403/404).
+  Потребуется backend-owned tenant-state gate и связанная snapshot
+  семантика до production.
+- SQL row allowlist — **metadata projection**, не полные
+  `ControlResource` DTO. Публичный HTTP serializer и live Core
+  metadata adapter не подключены.
+- Audit — **in-memory SYNTHETIC/STAGING event**, без durable
+  delivery, retention, tamper evidence и multi-replica guarantees.
+- Bun.SQL 1.3.14 не получил доказанный individual physical discard
+  и bounded cancel; 2G.1b обнаружил ограничения. CI adapter
+  карантинирует **весь** pool и не допускает next tenant reuse.
+- Нет настоящего Core, CPA Key Policy, Data Plane, SDK, клиентов,
+  реальных аккаунтов/credentials/egress, маршрутизации AI.
+
+Следующий инкремент: атомарная проверка snapshot/tenant activity
+между DB и actor directory, тесты физического SQL discard и
+устойчивости к сетевым отказам отдельного будущего backend.
+Не объединять staging contract с production, пока не доказаны
+эти свойства и не проведён отдельный security review.
+
+См. [SECURITY_AUDIT_V1.ru.md](SECURITY_AUDIT_V1.ru.md),
+[TRUSTED_SQL_READ_BOUNDARY_V1.ru.md](TRUSTED_SQL_READ_BOUNDARY_V1.ru.md),
+[BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md),
+[ROADMAP.ru.md](ROADMAP.ru.md).

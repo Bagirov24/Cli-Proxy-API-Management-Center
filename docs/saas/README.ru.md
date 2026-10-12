@@ -399,3 +399,24 @@ boundary подтверждены на `1ea71978abd6abc33263fe460754d7f9dbdd1053
 [Chromium #38265951009](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38265951009):
 **4/4 SUCCESS**. Никакой live DB audit или token replay protection
 этими проверками не подтверждены.
+
+## Этап 2G.4a — настоящий PostgreSQL в общей цепочке (CI-gated)
+
+Добавлен staging-only [E2E PostgreSQL Security Acceptance](E2E_POSTGRES_SECURITY_ACCEPTANCE_V1.ru.md).
+Отдельный GitHub Actions script связывает синтетический pinned RS256
+JWT, server-held identity/role, signed transaction scope, **реальный**
+non-superuser Bun.SQL → PostgreSQL 16.6 FORCE RLS → allowlisted SQL
+metadata → post-read authorization → redacted synchronous audit.
+
+В одноразовой SQL-фикстуре проверяются **независимые** platform
+grants: Pool без Account, Account без Egress, просроченный Egress
+grant, а также отсутствие Core-native CPA routing. Negative checks
+включают unknown issuer/kid/audience/ID-token, чужой tenant,
+SQL-like input, server actor revocation после DB COMMIT, отказ
+audit и stale cancellation.
+
+**Статус:** IMPLEMENTED CI acceptance, **VERIFIED только после
+фактического SUCCESS Actions**. Это не production SaaS API,
+не реальный OIDC, не durable audit и не единая транзакция
+между in-memory actor-directory и PostgreSQL. См. ограничения
+в отдельном E2E документе.

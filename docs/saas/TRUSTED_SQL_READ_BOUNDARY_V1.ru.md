@@ -155,3 +155,12 @@ allow/deny/error events, отсутствие чужих tenant IDs и generic
 503 при сбое audit sink. Только synthetic fake SQL-port и
 in-memory audit, не реальный backend ledger. Полный протокол:
 [SECURITY_AUDIT_V1.ru.md](SECURITY_AUDIT_V1.ru.md).
+
+## 2G.4a — реальный wire-protocol E2E для staging
+
+Проверяемое взаимодействие pinned synthetic JWT, server-held actor,
+signed SQL transaction, PostgreSQL RLS и synchronous audit запущено
+на настоящем disposable PG16 через native Bun.SQL, а не fake port.
+Новый скрипт и acceptance matrix документированы в
+[E2E_POSTGRES_SECURITY_ACCEPTANCE_V1.ru.md](E2E_POSTGRES_SECURITY_ACCEPTANCE_V1.ru.md).
+Это **не** production OIDC, durable actor-store или public HTTP/DTO.

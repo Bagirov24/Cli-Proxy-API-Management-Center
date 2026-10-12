@@ -478,3 +478,28 @@ reuse повреждённого пула.
   multi-replica consistency и real Core/SSO — **PROPOSED**.
 
 См. [SECURITY_AUDIT_V1.ru.md](SECURITY_AUDIT_V1.ru.md).
+
+## Этап 2G.4a — synthetic JWT + actual PG16 signed RLS + audit
+
+- [x] Отдельный CI-only `verify-trusted-pg-e2e.mjs` на существующих
+  JWT, RBAC, signed SQL, sanitization и synchronous audit modules.
+- [x] Синтетический pinned RS256 token→server-held mapping,
+  signed scope HMAC from disposable DB и настоящий non-superuser
+  `saas_ci_runner` PostgreSQL wire-protocol.
+- [x] Дополнительный SQL fixture после 2F теста:
+  Orbit Pool-grant без Account/Egress, North Account-grant без Egress,
+  истёкший Egress-grant. Нет изменений production migrations.
+- [x] Adversarial проверки 8 concurrent North/Orbit, forged
+  JWT role/tenant/actor, foreign issuer/kid/audience, ID-token,
+  SQL-like input, auditor deny, revoke mapping/role after COMMIT,
+  audit failure, cancellation/pool quarantine.
+- [ ] Финальный SHA подтверждён GitHub Actions 4/4. Поставить
+  VERIFIED только после SUCCESS и по точному commit SHA.
+- [ ] **PROPOSED:** trusted tenant-state gate (suspended tenant
+  должен давать явный Deny, не 200 empty), consistent actor-state
+  snapshot across replicas/DB, real OIDC/JTI revocation, real
+  backend SQL physical discard and network-failure recovery.
+- [ ] Полный public HTTP/ControlResource DTO, durable audit
+  ledger, data-plane enforcement и Railway production — NOT IMPLEMENTED.
+
+Подробности: [E2E_POSTGRES_SECURITY_ACCEPTANCE_V1.ru.md](E2E_POSTGRES_SECURITY_ACCEPTANCE_V1.ru.md).

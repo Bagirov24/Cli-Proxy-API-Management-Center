@@ -8,6 +8,7 @@ on:
       - 'tests/sql/saas_rls_signed_scope.test.sql'
       - 'tests/sql/saas_scoped_queries.test.sql'
       - 'tests/sql/saas_driver_fixture.test.sql'
+      - 'tests/sql/saas_e2e_grants_fixture.test.sql'
       - 'scripts/saas-staging/**'
       - 'src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts'
       - 'src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts'
@@ -121,6 +122,22 @@ jobs:
             SAAS_EPHEMERAL_DRIVER_CI=true SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
             SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
             bun scripts/saas-staging/verify-bun-postgres.mjs
+          # All changes below target ONLY the disposable PostgreSQL service.
+          # After the independent 2F probes, add grants proving that Pool,
+          # Account and Egress visibility do NOT automatically inherit.
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_e2e_grants_fixture.test.sql \
+            > /tmp/saas-e2e-grants.log 2>&1 || {
+              tail -n 40 /tmp/saas-e2e-grants.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-e2e-grants.log
+          # Synthetic RS256 keys are generated only in this Bun process.
+          # Real wire SQL uses only saas_ci_runner, never the postgres login.
+          timeout --signal=TERM --kill-after=5s 90s env \
+            SAAS_EPHEMERAL_E2E_CI=true SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-trusted-pg-e2e.mjs
           unset runner_password scope_key
 
       # No deploy, repository secrets, production SQL connections or credentials.

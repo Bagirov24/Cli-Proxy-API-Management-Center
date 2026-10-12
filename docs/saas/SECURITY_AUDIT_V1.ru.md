@@ -135,3 +135,13 @@ OIDC готовыми по результатам synthetic audit unit tests.
 Тестируемая функциональность — **строго синтетический security audit
 contract**, а не production persistent ledger. Нет внешних вызовов
 поставщиков AI, записи в `/data`, Railway deployment и real credentials.
+
+## 2G.4a — E2E staging audit проверка
+
+Staging-only E2E acceptance вызывает тот же обязательный
+`SecurityAuditRecorder` после действительного non-superuser
+PostgreSQL COMMIT/RLS. Проверяются Allow после North/Orbit reads,
+tenantless Deny/Error, ошибки audit sink даже при успешном SQL
+и отмена ответа. Используется исключительно synthetic in-memory
+buffer с `classification=staging` — не persistent audit ledger.
+Результаты: [E2E_POSTGRES_SECURITY_ACCEPTANCE_V1.ru.md](E2E_POSTGRES_SECURITY_ACCEPTANCE_V1.ru.md).
