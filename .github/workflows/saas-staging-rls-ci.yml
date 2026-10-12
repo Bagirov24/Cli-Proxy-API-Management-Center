@@ -298,16 +298,17 @@ jobs:
               exit 1
             }
           tail -n 4 /tmp/saas-outbox-test.log
-          psql -X -v ON_ERROR_STOP=1 \
-            -f tests/sql/saas_token_fingerprint_scope.test.sql \
-            > /tmp/saas-token-test.log 2>&1 || {
-              tail -n 100 /tmp/saas-token-test.log
-              exit 1
-            }
+          # Replay 010 AFTER old 006, so signed token expiry remains active.
           PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
             -f staging/saas-rls/010_token_fingerprint_scope_pilot.sql \
             > /tmp/saas-token-replay.log 2>&1 || {
               tail -n 100 /tmp/saas-token-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_token_fingerprint_scope.test.sql \
+            > /tmp/saas-token-test.log 2>&1 || {
+              tail -n 100 /tmp/saas-token-test.log
               exit 1
             }
           tail -n 5 /tmp/saas-token-test.log
