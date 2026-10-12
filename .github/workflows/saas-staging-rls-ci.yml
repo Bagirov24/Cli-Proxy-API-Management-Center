@@ -15,6 +15,7 @@ on:
       - 'tests/sql/saas_publication_outbox.test.sql'
       - 'tests/sql/saas_token_fingerprint_scope.test.sql'
       - 'tests/sql/saas_issuer_session_provisioning.test.sql'
+      - 'tests/sql/saas_local_audit_reconciliation.test.sql'
       - 'scripts/saas-staging/**'
       - 'src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts'
       - 'src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts'
@@ -209,6 +210,13 @@ jobs:
               exit 1
             }
           tail -n 4 /tmp/saas-issuer-install.log
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/012_committed_local_audit_reconciliation_pilot.sql \
+            > /tmp/saas-audit-reconcile-install.log 2>&1 || {
+              tail -n 110 /tmp/saas-audit-reconcile-install.log
+              exit 1
+            }
+          tail -n 3 /tmp/saas-audit-reconcile-install.log
           # Synthetic RS256 keys are generated only in this Bun process.
           # Real wire SQL uses only saas_ci_runner, never the postgres login.
           timeout --signal=TERM --kill-after=5s 90s env \
@@ -334,6 +342,30 @@ jobs:
               exit 1
             }
           tail -n 5 /tmp/saas-issuer-acceptance.log
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_local_audit_reconciliation.test.sql \
+            > /tmp/saas-audit-reconcile-test.log 2>&1 || {
+              tail -n 120 /tmp/saas-audit-reconcile-test.log
+              exit 1
+            }
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/012_committed_local_audit_reconciliation_pilot.sql \
+            > /tmp/saas-audit-reconcile-replay.log 2>&1 || {
+              tail -n 90 /tmp/saas-audit-reconcile-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 -c "SELECT saas_rls_test.assert_true(
+            (SELECT status='reconciled_local' FROM
+              saas_rls_private.local_audit_reconciliation_state
+              WHERE event_id=(SELECT event_id FROM
+              saas_rls_private.local_publication_audit_outbox
+              WHERE correlation_id='ci-reconcile-seeded')),
+            'Migration 012 replay must preserve terminal local observation')" \
+            > /tmp/saas-audit-reconcile-replay-check.log 2>&1 || {
+              tail -n 90 /tmp/saas-audit-reconcile-replay-check.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-audit-reconcile-test.log
           timeout --signal=TERM --kill-after=5s 50s env \
             SAAS_EPHEMERAL_REVISION_CI=true \
             bash scripts/saas-staging/verify-revision-concurrency.sh

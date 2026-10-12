@@ -8,7 +8,7 @@ BEGIN
  IF current_database()<>'saas_ephemeral_test' OR current_user<>'postgres'
     OR current_setting('saas.staging_only',TRUE) IS DISTINCT FROM 'true'
     OR to_regclass('saas_rls_private.local_publication_audit_outbox') IS NULL
-    OR to_regclass('saas_rls_private.reject_local_audit_mutation()') IS NULL
+    OR to_regprocedure('saas_rls_private.reject_local_audit_mutation()') IS NULL
     OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='saas_rls_owner'
                    AND NOT rolsuper AND NOT rolbypassrls)
  THEN RAISE EXCEPTION 'Refusing audit reconciliation outside disposable PG16'; END IF;
