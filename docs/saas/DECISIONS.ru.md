@@ -262,3 +262,11 @@ query cancellation, серверный statement_timeout/rollback и чтени�
 предоставляет `client.release(true)` как явный путь удаления
 соединения; это кандидат на отдельный backend experiment,
 **PROPOSED, без добавления dependency или runtime endpoint**.
+
+**Наблюдение 2G.1b / PG16:** Bun 1.3.14 `Query.cancel()` завершился
+ошибкой отмены только через 3002 мс при целевом budget 2500 мс.
+Для `reserve({signal})` один из CI-тестов сработал по **собственному**
+probe timer, поэтому нельзя утверждать, что драйвер отменил ожидание.
+Эти исходы записываются как ограничения, а не успешная отмена.
+Production SQL connector остаётся PROPOSED; допустим лишь новый
+экземпляр pool после quarantine, с подтверждённой RLS-изоляцией.

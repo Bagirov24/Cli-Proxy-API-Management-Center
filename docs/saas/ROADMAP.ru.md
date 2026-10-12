@@ -405,3 +405,13 @@ cache invalidation и серверная интеграция остаются *
 [PostgreSQL](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38088984062),
 [Demo](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38088983972),
 [Browser](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38088983952).
+
+### Негативный результат native Bun.SQL
+
+[PG16 CI #38260730407](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38260730407):
+`Query.cancel()` вернул error отмены лишь за 3002 мс (лимит
+2,5 секунды). Сам таймаут ожидания `reserve({signal})` не может
+считаться успехом native abort, поэтому новый probe явно
+отличает driver rejection от собственного deadline. Для любого
+сомнительного исхода **fail-closed quarantine и replacement**, не
+reuse повреждённого пула.

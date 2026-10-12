@@ -283,14 +283,39 @@ let heldReservation;
 try {
   heldReservation = await withProbeDeadline(waitingDb.reserve(), 2500, 'initial reserve');
   const controller = new AbortController();
-  const waiting = assert.rejects(
-    withProbeDeadline(waitingDb.reserve({ signal: controller.signal }), 2500, 'waiting reserve')
-  );
+  let lateReservationAcquired = false;
+  const waiting = waitingDb.reserve({ signal: controller.signal }).then((late) => {
+    // A late reservation from an aborted waiter must never be handed to
+    // an application caller. Its rejection is observed by Promise.race.
+    lateReservationAcquired = true;
+    late.release();
+    throw new Error('Aborted reserve unexpectedly acquired a connection');
+  });
+  const abortAt = Date.now();
   controller.abort();
-  await waiting;
+  let nativeWaitingAbort = false;
+  try {
+    await withProbeDeadline(waiting, 1250, 'waiting reserve');
+    throw new Error('Aborted reservation unexpectedly succeeded');
+  } catch (error) {
+    if (String(error?.message ?? '') === 'Probe deadline exceeded: waiting reserve') {
+      // A probe timer is NOT proof that Bun.reserve honored AbortSignal.
+      console.warn('DRIVER LIMITATION: native reserve abort was not bounded (' +
+        (Date.now() - abortAt) + 'ms); quarantine required');
+    } else if (error === controller.signal.reason ||
+        error?.name === 'AbortError' ||
+        /abort/i.test(String(error?.message ?? ''))) {
+      nativeWaitingAbort = true;
+      console.info('OBSERVED: native reserve rejected on AbortSignal');
+    } else {
+      throw error;
+    }
+  }
   assert.equal(controller.signal.aborted, true);
-  // A cancelled waiter must not steal the reserved connection or prevent a
-  // fresh tenant-scoped read after the rightful holder releases it.
+  assert.equal(lateReservationAcquired, false);
+  // Whatever the native driver's behaviour, no tenant request can reuse
+  // this pool: the test boundary makes it terminally quarantined.
+  // In particular, a JS timeout is not equivalent to a cancelled waiter.
   const heldCheck = await heldReservation.unsafe(
     'SELECT current_user::text AS role_name'
   );
@@ -306,7 +331,9 @@ try {
   waitingDriver.quarantine('acquire-uncertain');
   assert.equal(waitingDriver.stats().poisoned, true);
   await assert.rejects(waitingDriver.connect());
-  console.info('PASS: aborted reserve quarantines pool before any next tenant read');
+  console.info('PASS: waiting reserve classified (' +
+    (nativeWaitingAbort ? 'driver abort' : 'unbounded driver wait') +
+    '); pool quarantined before tenant reads');
 } finally {
   heldReservation?.release();
   await withProbeDeadline(waitingDb.close({ timeout: 2 }), 3000, 'wait pool close');
