@@ -53,3 +53,15 @@ needed. No unbounded locks or live network transports are implemented.
 
 No production OIDC/session store, HTTP handlers, Gateway/Core changes,
 secret storage, egress, Railway deploy or merge is authorized.
+
+## Additional adversarial cancellation check
+
+A second independent signed reader is held at the same epoch barrier
+while another writer tries to grant/revoke an unrelated North Egress.
+The CI fixture deliberately terminates the **disposable PostgreSQL
+backend** holding the read transaction using `pg_terminate_backend`.
+It asserts that the reader is rolled back, the pending writer can
+commit and the epoch advances exactly once; fixture restoration is
+separately versioned. This is a database crash/disconnect property,
+NOT a proof that cancellation from a real HTTP client reliably closes
+an individual Bun.SQL physical connection.
