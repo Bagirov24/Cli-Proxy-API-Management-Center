@@ -1087,8 +1087,11 @@ describe('Stage 2G.4d.7a — strict bearer fingerprint in trusted publication', 
       requireTokenBoundSession: true,
       publisher: { async stage() { throw Error('NEVER_STAGE'); } },
     });
-    const forged = (await accessToken()).replace(/.$/, 'X');
-    const response = await h.published!(h.request(forged));
+    const signed = (await accessToken()).split('.');
+    // Mutate a SIGNIFICANT signature byte; changing the final base64url
+    // character can modify only unused padding bits and leave JWT valid.
+    signed[2] = (signed[2].startsWith('A') ? 'B' : 'A') + signed[2].slice(1);
+    const response = await h.published!(h.request(signed.join('.')));
     expect(response).toMatchObject({ ok: false, status: 401 });
     expect(h.acquired).toBe(0);
     expect(h.queries).toHaveLength(0);
