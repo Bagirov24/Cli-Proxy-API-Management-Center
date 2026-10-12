@@ -451,3 +451,16 @@ COMMIT без изменения project rows.
 Production revocation linearization, физический discard Bun
 connection и многоинстансовый invalidate остаются открытыми.
 См. [SIGNED_REVISION_READER_V1.ru.md](SIGNED_REVISION_READER_V1.ru.md).
+
+## D-041 — metadata projection и links обязаны инвалидировать tenant epoch (2G.4d.4a)
+
+**IMPLEMENTED staging-only; CI PENDING / production SPEC.**
+
+Grant/status trigger в 004 недостаточен, если link/route/project/app/key
+изменяется между двумя одинаковыми LIMITed metadata reads. 005
+подключает PostgreSQL triggers к всем пяти таблицам и транзакционно
+повышает private tenant epoch; для shared link берётся объединение
+владельцев и tenants, получивших гранты на OLD и NEW endpoint.
+Избыточная инвалидация безопаснее пропущенного revocation.
+Истечение `expires_at` по времени без SQL-изменения всё ещё требует
+отдельного временного guard. Production HTTP linearization не доказана.

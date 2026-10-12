@@ -536,3 +536,17 @@ PostgreSQL16. [Main CI #38286207826](https://github.com/Bagirov24/Cli-Proxy-API-
 [Demo #38286208055](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38286208055) и [Chromium #38286207825](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38286207825) — **4/4 SUCCESS** на кодовом SHA `94f8d7a14c24573ff5397fbe1349e0d89fa7c91f`.
 Этап не устраняет race после последнего COMMIT и не является
 production credential/access/session enforcement.
+
+## Этап 2G.4d.4a — DB authorization epoch coverage
+
+[Revision coverage](AUTHORIZATION_REVISION_COVERAGE_V1.ru.md)
+расширяет staging-only миграции PostgreSQL16: `005` транзакционно
+повышает tenant revision при изменениях projects, applications,
+CPA key bindings, routing bindings и resource links. Изменение shared
+Pool→Account связи инвалидирует оба затронутых tenants; ROLLBACK
+откатывает и метаданные, и epoch. Защита остаётся в disposable PG16,
+без нового public API или Core/Gateway.
+
+**IMPLEMENTED, CI PENDING.** Истечение grants только от хода времени,
+финальный revocation/response barrier и production driver остаются
+отдельными задачами.

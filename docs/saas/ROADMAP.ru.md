@@ -649,3 +649,18 @@ atomic revision increments. See
 - [ ] **PROPOSED:** формально упорядоченный revocation/response barrier.
 
 Подробнее: [SIGNED_REVISION_READER_V1.ru.md](SIGNED_REVISION_READER_V1.ru.md).
+
+## Этап 2G.4d.4a — metadata + links revision coverage
+
+- [x] `005` (ephemeral-only) добавляет триггеры epoch для projects,
+  applications, key_bindings, routing_bindings, resource_links.
+- [x] Shared resource link invalidates всех затронутых владельцев и
+  grantee tenants, в том числе независимо выданных Pool/Account.
+- [x] SQL adversarial tests: no-op UPDATE, UPDATE/INSERT/DELETE, tenant
+  fan-out, rollback atomicity и cross-tenant signed scope.
+- [ ] **VERIFIED** после GitHub Actions на точном SHA.
+- [ ] **SPEC:** time-only expiry без SQL writer trigger, deadlock/crash
+  retry tests, multi-instance correctness.
+- [ ] **PROPOSED:** atomic read/revoke/response completion barrier.
+
+См. [AUTHORIZATION_REVISION_COVERAGE_V1.ru.md](AUTHORIZATION_REVISION_COVERAGE_V1.ru.md).
