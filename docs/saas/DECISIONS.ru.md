@@ -667,3 +667,41 @@ ACK и не обещает exactly-once network delivery. В production
 требуется отдельный authenticated worker connection — privileged
 superuser может видеть свои uncommitted события в рамках собственного
 SQL transaction и обойти isolation fixture.
+
+## D-057 — downstream intent рождается только в подписанной PG транзакции (2G.4d.7d)
+
+**IMPLEMENTED / VERIFIED** только в disposable PostgreSQL16 на code SHA
+`6b0bf3189c544cce21ccdfbaf58b7b2f72ba3214`; [PostgreSQL16 #38304607719](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607719).
+
+Migration 013 AFTER INSERT trigger добавляет постоянный
+`event_id+idempotency_key UUID` без payload в той же транзакции,
+где signed Allow 009. При ROLLBACK пропадает и источник, и intent.
+После `reconciled_local` другой worker может получить intent, но
+само наличие intent НЕ подтверждает local handoff или remote delivery.
+Исторические signed audit events backfill только как synthetic labels.
+Legacy synchronous handoff перед failed COMMIT остаётся потенциально
+необратимым; этот разрыв нельзя закрыть audit-only reconciling.
+
+## D-058 — lost MOCK ACK повторяет тот же UUID, но другой lease fence
+
+**IMPLEMENTED / VERIFIED** только isolated synthetic PG16, [PostgreSQL16 #38304607719](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607719),
+[Main #38304607776](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607776) (1 829 PASS), [Demo #38304607709](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607709), [Chromium #38304607769](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607769): **4/4 SUCCESS**.
+
+NOLOGIN `saas_mock_delivery_worker` видит только event ID,
+immutable idempotency UUID, generation, lease UUID и попытку; не может
+читать metadata, signed secrets, private outbox или состояние таблиц.
+После lease expiry + worker crash повтор использует ТОТ ЖЕ
+idempotency UUID при новом generation/fence, чтобы simulated receiver
+Map применил эффект один раз даже при потерянном ACK. Это НЕ
+гарантия реального удалённого consumer dedup и не криптографическое
+подтверждение HTTP клиента.
+
+## D-059 — ограниченные retry и явный `retry_exhausted` вместо ложного ACK
+
+**IMPLEMENTED / VERIFIED** disposable PG16 ([PostgreSQL16 #38304607719](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607719)).
+
+Три короткие попытки claim, четвёртый scan записывает терминальный
+`retry_exhausted`, без `mock_acked`. Stale/wrong-key/double ACK
+отклоняются; rollback отметки не создаёт подтверждения. Реальный
+dead-letter sink, secure scheduler, backpressure и операторская
+эскалация пока SPEC.

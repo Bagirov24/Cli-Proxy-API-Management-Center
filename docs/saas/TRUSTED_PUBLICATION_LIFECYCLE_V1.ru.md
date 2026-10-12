@@ -128,3 +128,15 @@ prove rollback, retry and stale-worker fencing. No code attempts to
 publish HTTP bytes atomically with a SQL COMMIT. This remains SPEC,
 not a production release boundary. See
 [LOCAL_AUDIT_RECONCILIATION_V1.ru.md](LOCAL_AUDIT_RECONCILIATION_V1.ru.md).
+
+## Follow-up 2G.4d.7d — audit/intent post-COMMIT simulated worker
+
+A new PG16 trigger stages a payload-free synthetic delivery intent
+when the signed 009 audit is inserted, and both become externally
+visible only upon successful PostgreSQL COMMIT. A separate 012
+reconciliation COMMIT precedes any 013 mock worker claim. The Bun.SQL
+E2E models a fake receiver accepting once under stable UUID,
+dropping the first mock ACK, and deduplicating the second attempt.
+No actual HTTP send or client ACK is wired to this boundary. A local
+handoff can still precede a failed PG COMMIT and is not retractable.
+See [SYNTHETIC_POST_COMMIT_DELIVERY_V1.ru.md](SYNTHETIC_POST_COMMIT_DELIVERY_V1.ru.md).

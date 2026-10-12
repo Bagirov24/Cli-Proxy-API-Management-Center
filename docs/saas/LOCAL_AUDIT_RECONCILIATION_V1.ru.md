@@ -115,3 +115,14 @@ Safety boundary unchanged: no merge, production Railway/Core/Gateway,
 CPA Key Policy, /data, keys, OAuth, public endpoints, live proxy/VPN
 or network enforcement. See
 [PRODUCTION_READINESS_GATES_V1.ru.md](PRODUCTION_READINESS_GATES_V1.ru.md).
+
+## 2G.4d.7d — separate, downstream synthetic intent protocol
+
+The terminal `reconciled_local` status stays unchanged and is merely
+a PREREQUISITE to a migration-013 claim of the separate synthetic
+event-only intent. The two state machines have separate NOLOGIN
+privileges, leases, attempt histories and terminal statuses. A
+`mock_acked` event records one simulated local ACK; it never means
+HTTP delivery, externally durable remote receipt or real response
+commit. Details:
+[SYNTHETIC_POST_COMMIT_DELIVERY_V1.ru.md](SYNTHETIC_POST_COMMIT_DELIVERY_V1.ru.md).

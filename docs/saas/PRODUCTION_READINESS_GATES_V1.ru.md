@@ -171,3 +171,25 @@ See [ISSUER_SESSION_ENROLLMENT_V1.ru.md](ISSUER_SESSION_ENROLLMENT_V1.ru.md).
 [Main CI #38302392363](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392363) — 1,829 PASS / 0 FAIL, [PG16 #38302392290](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392290), [Demo #38302392314](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392314), [Chromium #38302392437](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38302392437) —
 4/4 SUCCESS. This does not change previous production release blockers;
 see [LOCAL_AUDIT_RECONCILIATION_V1.ru.md](LOCAL_AUDIT_RECONCILIATION_V1.ru.md).
+
+## 2G.4d.7d — synthetic post-COMMIT intent / MOCK ACK only
+
+| Boundary | Proof | Status |
+| --- | --- | --- |
+| Signed Allow audit + immutable synthetic intent atomic on PG COMMIT | 013 trigger/ROLLBACK, [PostgreSQL16 #38304607719](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607719) | VERIFIED ephemeral |
+| No claim before separate `reconciled_local` COMMIT | PG16 ACL/gated lease SQL | VERIFIED ephemeral |
+| Stable idempotency UUID, new generation/lease on retry | PG16 SQL, Bun.SQL + fake Map receiver, [PostgreSQL16 #38304607719](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607719) | VERIFIED synthetic |
+| Independent physical PG crash before claim COMMIT + SKIP LOCKED | Multi-process supervisor [PostgreSQL16 #38304607719](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607719) | VERIFIED ephemeral |
+| Wrong/stale/repeated mock ACK denied; ACK rollback not durable | Signed private function/SQL [PostgreSQL16 #38304607719](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607719) | VERIFIED synthetic |
+| Three attempts then terminal `retry_exhausted`, never false success | PG16 SQL acceptance [PostgreSQL16 #38304607719](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607719) | VERIFIED synthetic |
+| Actual remote HTTP delivery, client idempotency and cryptographic ACK | NO payload/network; fake in-memory receiver only | SPEC |
+| Local handoff before failed SQL COMMIT reconciliation | Source audit+intent both roll back despite possible emitted bytes | SPEC |
+| Durable receiver dedup, queue transport, retries/dead letters/SLO | CI-only fixture, no production dispatch | SPEC |
+| Externally tamper-evident audit, worker auth/multi-instance recovery | Private PG16 only | SPEC |
+| Production OIDC/Vault, CPA/Gateway, egress, billing, release | Unchanged | PROPOSED |
+
+**Evidence on EXACT code SHA `6b0bf3189c544cce21ccdfbaf58b7b2f72ba3214`:** [Main #38304607776](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607776) — 1 829 PASS /
+0 FAIL, [PostgreSQL16 #38304607719](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607719), [Demo #38304607709](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607709), [Chromium #38304607769](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38304607769) — 4/4 SUCCESS.
+This is a **synthetic intent/ACK simulation, NOT actual HTTP delivery,
+NOT a production-ready SaaS release**.
+See [SYNTHETIC_POST_COMMIT_DELIVERY_V1.ru.md](SYNTHETIC_POST_COMMIT_DELIVERY_V1.ru.md).

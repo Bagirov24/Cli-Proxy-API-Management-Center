@@ -61,3 +61,14 @@ tenant/actor/correlation and authorized revision never change.
 Local observation is not delivery to a remote client and MUST NOT be
 reported as a network ACK. Real PG16 Bun.SQL E2E and crash/rollback
 tests pass; see [LOCAL_AUDIT_RECONCILIATION_V1.ru.md](LOCAL_AUDIT_RECONCILIATION_V1.ru.md).
+
+## Follow-up 2G.4d.7d — immutable synthetic intent downstream of local observation
+
+Migration 013 creates only an event-ID/UUID synthetic intent in the
+SAME transaction as signed 009 audit. An independent NOLOGIN worker
+may claim it only AFTER migration-012 `reconciled_local` COMMIT.
+Lost mock ACK retries reuse immutable idempotency UUID but rotate
+lease generation and fencing UUID; three exhausted attempts have a
+separate non-ACK terminal status. These labels are never HTTP
+deliveries and never include SQL payload or real credentials.
+See [SYNTHETIC_POST_COMMIT_DELIVERY_V1.ru.md](SYNTHETIC_POST_COMMIT_DELIVERY_V1.ru.md).
