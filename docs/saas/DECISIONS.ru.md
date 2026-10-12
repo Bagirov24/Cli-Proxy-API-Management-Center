@@ -511,3 +511,18 @@ locks на медленных клиентах.
 callback остаются вне доказанного контракта; не представлять как
 production-ready HTTP. См.
 [BOUNDED_PUBLICATION_HANDOFF_V1.ru.md](BOUNDED_PUBLICATION_HANDOFF_V1.ru.md).
+
+## D-045 — trusted read→publication не должен отдавать DTO наружу до audit и signed epoch barrier (2G.4d.5b)
+
+**IMPLEMENTED / VERIFIED synthetic + ephemeral PG16, production SPEC.**
+
+В дополнение к D-044, stage 2G.4d.5b не доверяет внешнему
+caller формирование actor/role/revision/scope. Server-only published
+entrypoint повторно использует JWT→actor→RBAC и обе metadata reads,
+сверяет одну и ту же server-owned revision до публикации, под lock
+повторяет trusted identity и завершает синхронный audit перед
+локальным handoff. Возвращает только безресурсный receipt.
+Синхронность audit не равна durable audit; последний actor lookup
+вне authoritative PG actor directory всё ещё гоняется с revoke,
+а TCP delivery после callback не доказана. См.
+[TRUSTED_PUBLICATION_LIFECYCLE_V1.ru.md](TRUSTED_PUBLICATION_LIFECYCLE_V1.ru.md).

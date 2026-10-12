@@ -64,3 +64,14 @@ Evidence: [stage contract](BOUNDED_PUBLICATION_HANDOFF_V1.ru.md).
 This closes the **local staged-handoff vs revoker COMMIT** experiment,
 but not true HTTP delivery, session/audit authority or durable publish.
 The HTTP publication readiness checkbox remains **SPEC**, not VERIFIED.
+
+## 2G.4d.5b — trusted receipt integration is still staging-only
+
+The new `createTrustedSqlPublishedBoundary` combines synthetic
+JWT/actor/RBAC, signed PostgreSQL epochs, bounded local FOR SHARE,
+synchronous audit and receipt-only response; real PG16 E2E passes.
+Evidence: [TRUSTED_PUBLICATION_LIFECYCLE_V1.ru.md](TRUSTED_PUBLICATION_LIFECYCLE_V1.ru.md).
+The **production HTTP publication** and **durable audit** blockers
+remain OPEN: independent actor stores may race, audit can exist
+without durable delivery, an external callback is not a proven
+atomic transport, and no physical connection discard proof exists.

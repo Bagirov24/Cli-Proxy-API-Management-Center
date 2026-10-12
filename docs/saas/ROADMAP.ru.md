@@ -740,3 +740,28 @@ atomic revision increments. See
 - [ ] **PROPOSED**: production completion semantics and release approvals.
 
 См. [BOUNDED_PUBLICATION_HANDOFF_V1.ru.md](BOUNDED_PUBLICATION_HANDOFF_V1.ru.md).
+
+## Этап 2G.4d.5b — единый staging trusted publication entrypoint
+
+- [x] Новый `createTrustedSqlPublishedBoundary` принимает только
+  client token/tenant/collection/limit/signal, сам выводит trusted
+  actor/RBAC/signed baseline и не отдаёт SQL rows в receipt.
+- [x] Последовательная JWT/actor/session revalidation внутри
+  PostgreSQL `FOR SHARE` lease до и после private stage.
+- [x] Синхронный обязательный audit gate под DB lock перед локальным
+  `commit()`: отказ аудита или SQL не публикует bytes.
+- [x] Synthetic tests (в том числе forged tenant/role, пропажа
+  directory и membership во время stage, audit failure, cancellation).
+- [x] Actual PG16 E2E from synthetic JWT through non-superuser
+  signed revocation check to receipt-only handoff.
+- [x] **VERIFIED** SHA `71688ebe6d17a0139a2363609f807ce49640e8be`:
+  [CI #38291187218](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38291187218)
+  1 809 PASS, 0 FAIL; [PG16 #38291187422](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38291187422),
+  Demo, Chromium — 4/4 SUCCESS.
+- [ ] **SPEC:** actor/session revocation must be transactionally
+  invalidated within PostgreSQL epoch; durable audit outbox.
+- [ ] **SPEC:** transport adapter with proven nonthrowing bounded
+  publication, crash/retry/backpressure and per-socket discard semantics.
+- [ ] **PROPOSED:** public SaaS control API and production approvals.
+
+См. [TRUSTED_PUBLICATION_LIFECYCLE_V1.ru.md](TRUSTED_PUBLICATION_LIFECYCLE_V1.ru.md).

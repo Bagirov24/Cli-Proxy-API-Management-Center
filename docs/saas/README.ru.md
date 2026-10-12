@@ -616,3 +616,23 @@ production-hardening необходимы до любых live credentials.
 и Demo/Chromium — 4/4 SUCCESS. Публичных HTTP endpoints нет:
 remote delivery, audit/outbox, crashes и production credentials остаются
 отдельными блокерами.
+
+## Этап 2G.4d.5b — JWT/RBAC + audit + receipt-only publication
+
+[Trusted publication lifecycle](TRUSTED_PUBLICATION_LIFECYCLE_V1.ru.md)
+объединяет в одном server-only staging entrypoint
+`createTrustedSqlPublishedBoundary` проверенный synthetic JWT/actor,
+RBAC, две подписанные metadata транзакции, server revision/expiry,
+signed PostgreSQL `FOR SHARE`, дополнительный identity recheck и
+обязательный синхронный audit **до** локальной передачи. Внешний
+вызов получает только `published:true` + correlationId без SQL rows.
+
+**IMPLEMENTED / VERIFIED** на кодовом SHA `71688ebe6d17a0139a2363609f807ce49640e8be`:
+[CI #38291187218](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38291187218)
+(1 809 tests PASS, 0 fail),
+[PG16 #38291187422](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38291187422),
+[Demo #38291187093](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38291187093),
+[Chromium #38291187313](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38291187313)
+— 4/4 SUCCESS. Не является публичным HTTP endpoint; in-memory
+actor store, durable audit, remote receipt и production driver
+остаются открытыми security gates.

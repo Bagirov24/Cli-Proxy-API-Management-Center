@@ -94,3 +94,13 @@ server-side session revocation, multi-process SQL driver discard
 proof, operational bounded leases, secrets/vault, data-plane egress
 enforcement and explicit release approval. See
 [PRODUCTION_READINESS_GATES_V1.ru.md](PRODUCTION_READINESS_GATES_V1.ru.md).
+
+## 2G.4d.5b follow-up
+
+The 5a isolated primitive is now consumed by
+`createTrustedSqlPublishedBoundary` in 5b, which derives scope and
+initial revision from pinned synthetic JWT/actor/RBAC and returns
+**receipt only** after a redacted synchronous audit immediately before
+the local handoff. This is VERIFIED in real ephemeral PostgreSQL
+and synthetic unit tests, but not durable audit or HTTP delivery.
+See [TRUSTED_PUBLICATION_LIFECYCLE_V1.ru.md](TRUSTED_PUBLICATION_LIFECYCLE_V1.ru.md).
