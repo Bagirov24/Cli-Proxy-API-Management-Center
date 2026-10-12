@@ -9,7 +9,7 @@ import { createPinnedAccessTokenVerifier } from
   '../../src/features/saasBlueprint/controlApi/server/trustedAccessToken.ts';
 import { createTrustedSqlReadBoundary } from
   '../../src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts';
-import { createPinnedHmacScopeIssuer, CONTROL_READ_SELECT_SQL } from
+import { createPinnedHmacScopeIssuer, CONTROL_READ_SELECT_SQL, SCOPED_READ_GATE_SQL } from
   '../../src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts';
 import { createSecurityAuditRecorder, createSyntheticAuditBuffer } from
   '../../src/features/saasBlueprint/controlApi/server/securityAudit.ts';
@@ -58,7 +58,8 @@ function safeStatement(sql, params) {
   return typeof sql === 'string' && Array.isArray(params) &&
     (FIXED.has(sql) && (sql === 'SELECT set_config($1::text, $2::text, true)'
       ? params.length === 2 : params.length === 0) ||
-     SELECTS.has(sql) && params.length === 2);
+     SELECTS.has(sql) && params.length === 2 ||
+     sql === SCOPED_READ_GATE_SQL && params.length === 4);
 }
 
 /** A disposable adapter, NOT proof of per-connection Bun discard safety. */
@@ -165,11 +166,19 @@ const actors = new Map([
   ['actor-auditor', {
     id: 'actor-auditor', memberships: [member('demo-north', 'tenant-auditor')],
   }],
+  ['actor-paused', {
+    id: 'actor-paused', memberships: [member('demo-paused', 'tenant-owner')],
+  }],
+  ['actor-db-revoked', {
+    id: 'actor-db-revoked', memberships: [member('demo-north', 'tenant-viewer')],
+  }],
 ]);
 const directory = new Map([
   [issuer + ':sub-north', 'actor-north'],
   [issuer + ':sub-orbit', 'actor-orbit'],
   [issuer + ':sub-auditor', 'actor-auditor'],
+  [issuer + ':sub-paused', 'actor-paused'],
+  [issuer + ':sub-db-revoked', 'actor-db-revoked'],
 ]);
 const sink = createSyntheticAuditBuffer(128);
 const audit = createSecurityAuditRecorder(sink, { classification: 'staging' });
@@ -318,6 +327,47 @@ try {
   }
   assert.equal(driver.stats().reservations, beforeDenied);
   console.info('PASS: IDOR, wrong access-token, auditor and malicious input deny before SQL');
+
+  // E2E 2G.4b: synthetic actor snapshot says "active" but PostgreSQL is
+  // authoritative. Suspended tenant, revoked DB membership, and DB role
+  // mismatch all cause generic 404 instead of a successful empty 200.
+  const paused = await token('sub-paused');
+  const dbRevoked = await token('sub-db-revoked');
+  for (const [bearer, tenantId, actorId] of [
+    [paused, 'demo-paused', 'actor-paused'],
+    [dbRevoked, 'demo-north', 'actor-db-revoked'],
+  ]) {
+    const result = await read(request(bearer, tenantId, 'projects'));
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 404);
+    assert.equal('rows' in result, false);
+    assert.equal('tenantId' in result, false);
+    assertAudit(result, {
+      reason: 'authorization-changed', actorId, tenantId: null,
+    });
+    assert.equal(driver.stats().poisoned, false);
+  }
+  // The database role for auditor is viewer-restricted. Simulate a stale
+  // server-side claim to tenant-admin: project SELECT could pass old RLS
+  // but the exact membership-role attestation must reject it.
+  actors.set('actor-auditor', {
+    id: 'actor-auditor',
+    memberships: [member('demo-north', 'tenant-admin')],
+  });
+  const mismatchedRole = await read(request(auditor, 'demo-north', 'projects'));
+  assert.equal(mismatchedRole.status, 404);
+  assert.equal('rows' in mismatchedRole, false);
+  assertAudit(mismatchedRole, {
+    reason: 'authorization-changed', actorId: 'actor-auditor', tenantId: null,
+  });
+  actors.set('actor-auditor', {
+    id: 'actor-auditor',
+    memberships: [member('demo-north', 'tenant-auditor')],
+  });
+  assert.deepEqual(visibleIds(await read(request(orbit, 'demo-orbit')),
+    'Healthy pool reuse after confirmed DB authz ROLLBACK'), ['orbit-project']);
+  assert.equal(driver.stats().discarded, 0);
+  console.info('PASS: suspended tenant, DB-revoked member and stale role deny 404 before output');
 
   const auditorAllowed = await read(request(auditor, 'demo-north', 'projects'));
   assert.deepEqual(visibleIds(auditorAllowed, 'Auditor allowed projects'),

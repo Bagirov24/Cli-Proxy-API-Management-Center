@@ -5,6 +5,7 @@ import type {
 } from '../contracts';
 import {
   CONTROL_READ_SELECT_SQL, readSignedScopedMetadata,
+  ScopedSqlAuthorizationDenied,
   type ScopedSqlPool, type SignedTransactionIssuer, type SqlRow,
 } from './signedSqlBoundary';
 import {
@@ -195,10 +196,17 @@ export function createTrustedSqlReadBoundary(deps: TrustedSqlReadDependencies) {
         ok: true, status: 200, source: 'staging-signed-rls', correlationId,
         tenantId: scope.tenantId, collection: request.collection, rows,
       }, 'read-allowed');
-    } catch {
+    } catch (error) {
+      if (request?.signal?.aborted) {
+        return finish(response(UNAVAILABLE), 'request-cancelled');
+      }
+      // The signed PG gate may deny a tenant/membership that the in-memory
+      // actor store still believes active. Hide its existence as generic 404.
+      if (error instanceof ScopedSqlAuthorizationDenied) {
+        return finish(response(NOT_FOUND), 'authorization-changed');
+      }
       // No SQL/driver, JWT, identity directory or sink details escape.
-      return finish(response(UNAVAILABLE),
-        request?.signal?.aborted ? 'request-cancelled' : 'source-unavailable');
+      return finish(response(UNAVAILABLE), 'source-unavailable');
     }
   };
 }

@@ -135,3 +135,14 @@ mapping с настоящим PG16 RLS и redacted in-memory audit на врем
 Эти проверки НЕ подтверждают production OIDC, согласование
 membership в разных хранилищах, durable audit, индивидуальный
 physical discard Bun.SQL или настоящий Gateway/Core data-plane.
+
+## 2G.4b — дополнение: active tenant и точная роль в БД
+
+В E2E сценарий добавлены: suspended `demo-paused` при active server
+membership, revoked `actor-db-revoked` в PostgreSQL при active
+server actor snapshot, stale server `tenant-admin` против реальной
+DB `tenant-auditor`. Два fixed SQL read gates до/после metadata
+SELECT возвращают explicit generic 404 вместо `200 []` без раскрытия
+tenant/resource IDs. Полный протокол и ограничения consistency:
+[TENANT_DB_AUTHZ_GATE_V1.ru.md](TENANT_DB_AUTHZ_GATE_V1.ru.md).
+**Только staging CI, пока не VERIFIED**.

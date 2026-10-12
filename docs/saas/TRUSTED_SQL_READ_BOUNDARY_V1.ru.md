@@ -171,3 +171,12 @@ Bun.SQL/PostgreSQL 16 FORCE RLS, синтетическими JWT и
 redacted in-memory audit. Actor mapping остаётся synthetic,
 полные ControlResource DTO/production OIDC и согласование
 между хранилищами не реализованы.
+
+## 2G.4b — DB authoritative authorization denial
+
+`ScopedSqlAuthorizationDenied` — внутренний типизированный
+отказ новой SQL read-gate проверки (active tenant, actor membership,
+exact role). Он превращается в generic `404 NOT_FOUND` и безопасный
+audit reason `authorization-changed` без tenant ID. Не путать с
+неисправностью PostgreSQL (generic 503 + quarantine).
+Подробнее: [TENANT_DB_AUTHZ_GATE_V1.ru.md](TENANT_DB_AUTHZ_GATE_V1.ru.md).

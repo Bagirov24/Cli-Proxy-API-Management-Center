@@ -8,7 +8,8 @@ import { SQL } from 'bun';
 import {
   createPinnedHmacScopeIssuer,
   readSignedScopedMetadata,
-  CONTROL_READ_SELECT_SQL,
+  CONTROL_READ_SELECT_SQL, SCOPED_READ_GATE_SQL,
+  ScopedSqlAuthorizationDenied,
 } from '../../src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts';
 
 const expected = process.env.SAAS_EPHEMERAL_DRIVER_CI === 'true' &&
@@ -63,7 +64,8 @@ function canExecuteSql(sql, params) {
     return (sql === 'SELECT set_config($1::text, $2::text, true)')
       ? params.length === 2 : params.length === 0;
   }
-  return SELECT_ALLOWLIST.has(sql) && params.length === 2;
+  return SELECT_ALLOWLIST.has(sql) && params.length === 2 ||
+    sql === SCOPED_READ_GATE_SQL && params.length === 4;
 }
 
 function createBoundedDriver(sql) {
@@ -126,8 +128,12 @@ function createBoundedDriver(sql) {
 }
 
 function read(pool, actorId, tenantId, collection, options = {}) {
+  const testOnlyRole = {
+    'actor-north': 'tenant-admin', 'actor-orbit': 'tenant-viewer',
+    'actor-auditor': 'tenant-auditor', 'actor-paused': 'tenant-owner',
+  }[actorId];
   return readSignedScopedMetadata(pool, signer, {
-    scope: { actorId, tenantId, role: options.role ?? 'tenant-viewer',
+    scope: { actorId, tenantId, role: options.role ?? testOnlyRole,
       correlationId: 'ci-isolated-driver' },
     collection,
     limit: options.limit ?? 20,
@@ -180,13 +186,20 @@ try {
 
   const keys = await read(driver, 'actor-north', 'demo-north', 'client-keys');
   assert.deepEqual(keys.map(row => row.id), ['north-binding']);
-  const auditorAccounts = await read(driver, 'actor-auditor', 'demo-north', 'accounts', {
-    role: 'tenant-auditor',
-  });
-  assert.deepEqual(auditorAccounts, []);
-  const rogue = await read(driver, 'actor-north', 'demo-orbit', 'projects');
-  assert.deepEqual(rogue, []);
-  assert.deepEqual(await read(driver, 'actor-paused', 'demo-paused', 'projects'), []);
+  await assert.rejects(
+    read(driver, 'actor-auditor', 'demo-north', 'accounts',
+      { role: 'tenant-auditor' }),
+    error => error instanceof ScopedSqlAuthorizationDenied
+  );
+  await assert.rejects(read(driver, 'actor-north', 'demo-orbit', 'projects'),
+    error => error instanceof ScopedSqlAuthorizationDenied);
+  await assert.rejects(read(driver, 'actor-paused', 'demo-paused', 'projects'),
+    error => error instanceof ScopedSqlAuthorizationDenied);
+  // Current DB truth denies with an explicit result, and a fully rolled
+  // back transaction remains available for the next authorized tenant.
+  assert.equal(driver.stats().poisoned, false);
+  assert.deepEqual((await read(driver, 'actor-orbit', 'demo-orbit', 'projects'))
+    .map(row => row.id), ['orbit-project']);
 
   const northRoutes = await read(driver, 'actor-north', 'demo-north', 'routing');
   assert.deepEqual(northRoutes.map(row => row.id).sort(), ['north-route','north-shared']);

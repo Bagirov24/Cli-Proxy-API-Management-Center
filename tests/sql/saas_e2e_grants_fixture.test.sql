@@ -27,6 +27,12 @@ UPDATE saas_rls.resource_grants
 SET status = 'disabled'
 WHERE id = 'grant-egress' AND grantee_tenant_id = 'demo-north';
 
+-- Independently revoked in the PRIVATE PostgreSQL membership table, while
+-- the synthetic server actor directory will intentionally claim it is active.
+-- The SQL attestation must refuse the stale server-side snapshot.
+INSERT INTO saas_rls.memberships(actor_id, tenant_id, role, status)
+VALUES ('actor-db-revoked', 'demo-north', 'tenant-viewer', 'revoked');
+
 -- Orbit receives access to a shared POOL only, not to any account or egress
 -- inside it. Granting a pool MUST NOT leak its account or routing references.
 INSERT INTO saas_rls.resource_grants
@@ -45,7 +51,9 @@ SELECT saas_rls_test.assert_true(
        WHERE id = 'ci-e2e-orbit-pool' AND status = 'active')
   AND (SELECT count(*) = 1 FROM saas_rls.resource_grants
        WHERE id = 'ci-e2e-orbit-expired-egress'
-         AND expires_at < statement_timestamp()),
+         AND expires_at < statement_timestamp())
+  AND (SELECT count(*)=1 FROM saas_rls.memberships
+       WHERE actor_id='actor-db-revoked' AND status='revoked'),
   '2G.4 independent grants fixture must be active and expired as intended'
 );
 COMMIT;

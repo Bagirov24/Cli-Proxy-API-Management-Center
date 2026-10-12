@@ -425,3 +425,21 @@ audit и stale cancellation.
 не реальный OIDC, не durable audit и не единая транзакция
 между in-memory actor-directory и PostgreSQL. См. ограничения
 в отдельном E2E документе.
+
+## Этап 2G.4b — явный DB-side AuthZ Deny (CI PENDING)
+
+[DB tenant/membership read gate](TENANT_DB_AUTHZ_GATE_V1.ru.md) добавляет
+в изолированный signed SQL boundary проверку статуса tenant, текущего
+membership и **точного совпадения** server-authorized role с
+PostgreSQL. Отрицательный результат до/после SELECT выдаёт generic
+**404**, а не `200 []`; аудируется `authorization-changed` с
+`tenantId:null`. Подтверждённый ROLLBACK позволяет продолжить работу
+изолированного пула; неизвестное состояние connection → quarantine.
+
+Дополнительная миграция `003_explicit_read_gate_pilot.sql` имеет guard
+только для временной `saas_ephemeral_test` и запускается CI-отдельно,
+без пути к Railway. Проверяются suspended tenant, DB-revoked actor,
+stale server role, RLS и повторное использование исправного пула.
+**Статус: IMPLEMENTED / NOT VERIFIED до GitHub Actions**; механизм не
+устраняет атомарную race window после SQL/COMMIT и не является
+production OIDC, real accounts либо сетевым enforcement.

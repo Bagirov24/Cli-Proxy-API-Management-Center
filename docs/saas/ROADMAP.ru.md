@@ -510,3 +510,25 @@ reuse повреждённого пула.
   ledger, data-plane enforcement и Railway production — NOT IMPLEMENTED.
 
 Подробности: [E2E_POSTGRES_SECURITY_ACCEPTANCE_V1.ru.md](E2E_POSTGRES_SECURITY_ACCEPTANCE_V1.ru.md).
+
+## Этап 2G.4b — authoritative tenant/membership gate в PostgreSQL
+
+- [x] Staging-only миграция `003_explicit_read_gate_pilot.sql`:
+  HMAC-verified actor+tenant и приватный active membership/exact role
+  подтверждаются BOOLEAN security-definer, не чтением таблицы reader.
+- [x] Fixed `SCOPED_READ_GATE_SQL` подтверждает active tenant через
+  FORCE RLS и capability collection. Запуск до и после metadata SELECT
+  в одной подписанной transaction, SQL значения параметризованы.
+- [x] Fail-closed преобразование DB Deny в generic 404 и redacted
+  `authorization-changed` audit, никаких чужих IDs; malformed gate,
+  SQL timeout и rollback failure продолжают вызывать quarantine.
+- [x] Adversarial unit и actual PostgreSQL CI probes: suspended tenant,
+  revoked DB membership, role mismatch, deny-after-SELECT, healthy
+  rollback/reuse, malformed SQL gate.
+- [ ] Финальный commit SHA и 4/4 GitHub Actions SUCCESS — до
+  подтверждения CI **IMPLEMENTED, NOT VERIFIED**.
+- [ ] PROPOSED: атомарная revocation consistency между actor directory
+  и DB после второго gate/COMMIT, production OIDC, физический
+  connection discard, durable audit, public API/data plane.
+
+Детали: [TENANT_DB_AUTHZ_GATE_V1.ru.md](TENANT_DB_AUTHZ_GATE_V1.ru.md).

@@ -349,3 +349,19 @@ physical discard SQL соединения. Suspended tenant activity gate
 
 Подробнее:
 [E2E_POSTGRES_SECURITY_ACCEPTANCE_V1.ru.md](E2E_POSTGRES_SECURITY_ACCEPTANCE_V1.ru.md).
+
+## D-036 — видимость пустых строк не означает разрешённый SQL scope
+
+**2G.4b: IMPLEMENTED in isolated CI, verification pending.** В staging
+SQL boundary **нельзя** считать активный запрос разрешённым только
+потому, что PostgreSQL RLS вернул пустой набор. До/после SELECT
+обязателен signed DB read gate: active tenant, active membership,
+совпадение role и collection capability. Отказ gate означает
+generic 404+tenantless Deny audit; подтверждённый ROLLBACK позволяет
+использовать безопасное соединение повторно. Недостоверный ответ gate
+или cleanup — generic 503 и quarantine.
+
+Не подключаем 003 migration к production, не предоставляем reader
+прямой SELECT в private tables и не объявляем атомарность revocation
+после COMMIT. См.
+[TENANT_DB_AUTHZ_GATE_V1.ru.md](TENANT_DB_AUTHZ_GATE_V1.ru.md).

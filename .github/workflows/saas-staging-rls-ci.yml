@@ -118,6 +118,15 @@ jobs:
               exit 1
             }
           tail -n 6 /tmp/saas-driver-fixture.log
+          # CI-only signed tenant/membership/role gate, never Railway.
+          # Explicit custom GUC is local to this single psql invocation.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/003_explicit_read_gate_pilot.sql \
+            > /tmp/saas-read-gate.log 2>&1 || {
+              tail -n 70 /tmp/saas-read-gate.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-read-gate.log
           timeout --signal=TERM --kill-after=5s 90s env \
             SAAS_EPHEMERAL_DRIVER_CI=true SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
             SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \

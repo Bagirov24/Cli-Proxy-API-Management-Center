@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
 import {
   createPinnedHmacScopeIssuer, readSignedScopedMetadata,
+  SCOPED_READ_GATE_SQL, ScopedSqlAuthorizationDenied,
   type ScopedSqlConnection, type ScopedSqlPool, type SignedTransactionIssuer,
   type SqlRow, type SqlValue,
 } from '../src/features/saasBlueprint/controlApi/server/signedSqlBoundary';
@@ -17,7 +18,8 @@ type Call = { sql: string; params: readonly SqlValue[] };
 function harness(rows: readonly SqlRow[] = [
   { id: 'project-north', tenant_id: 'demo-north',
     name: 'North Project', status: 'active', hidden_token: 'NEVER_RETURN' },
-]) {
+], gateAnswers: readonly boolean[] = [true, true]) {
+  let gateIndex = 0;
   const calls: Call[] = [];
   const releases: boolean[] = [];
   const quarantines: string[] = [];
@@ -30,6 +32,9 @@ function harness(rows: readonly SqlRow[] = [
       if (afterCall) afterCall(sql);
       if (sql.includes('txid_current')) {
         return { rows: [{ transaction_id: '123456789' }] };
+      }
+      if (sql === SCOPED_READ_GATE_SQL) {
+        return { rows: [{ allowed: gateAnswers[gateIndex++] ?? true }] };
       }
       if (sql.startsWith('SELECT id, ')) return { rows };
       return { rows: [] };
@@ -184,6 +189,7 @@ describe('Stage 2E — signed SQL scoped query boundary (fake pool, no network)'
       async query(sql) {
         if (sql === 'BEGIN') return { rows: [] };
         if (sql.includes('txid_current')) return { rows: [{ transaction_id: '123456789' }] };
+        if (sql === SCOPED_READ_GATE_SQL) return { rows: [{ allowed: true }] };
         if (sql.startsWith('SELECT id, ')) {
           queryStarted = true;
           return new Promise(() => {}); // deliberately ignores AbortSignal
@@ -211,6 +217,7 @@ describe('Stage 2E — signed SQL scoped query boundary (fake pool, no network)'
         if (sql === 'ROLLBACK') return new Promise(() => {});
         if (sql === 'BEGIN') return { rows: [] };
         if (sql.includes('txid_current')) return { rows: [{ transaction_id: '123456789' }] };
+        if (sql === SCOPED_READ_GATE_SQL) return { rows: [{ allowed: true }] };
         if (sql.startsWith('SELECT id, ')) throw new Error('PRIVATE SQL DETAILS');
         return { rows: [] };
       },
@@ -262,6 +269,57 @@ describe('Stage 2E — signed SQL scoped query boundary (fake pool, no network)'
     }, () => now)).rejects.toThrow('Scoped metadata unavailable');
     expect(h.quarantines).toEqual(['read-failed']);
     expect(h.releases.at(-1)).toBe(true);
+  });
+
+  test('missing active tenant or DB membership denies BEFORE SELECT with clean ROLLBACK', async () => {
+    const h = harness(undefined, [false]);
+    await expect(readSignedScopedMetadata(h.pool, signer, {
+      scope, collection: 'projects',
+    }, () => now)).rejects.toBeInstanceOf(ScopedSqlAuthorizationDenied);
+    expect(h.calls.filter(x => x.sql === SCOPED_READ_GATE_SQL)).toHaveLength(1);
+    expect(h.calls.find(x => x.sql.startsWith('SELECT id, '))).toBeUndefined();
+    expect(h.calls.at(-1)?.sql).toBe('ROLLBACK');
+    expect(h.releases).toEqual([false]);
+    expect(h.quarantines).toEqual([]);
+    // A confirmed, successful rollback does not poison a healthy pool.
+    const rows = await readSignedScopedMetadata(h.pool, signer, {
+      scope, collection: 'projects',
+    }, () => now);
+    expect(rows.map(row => row.id)).toEqual(['project-north']);
+    expect(h.releases).toEqual([false, false]);
+  });
+
+  test('revocation AFTER SELECT fails post-read SQL gate and never commits rows', async () => {
+    const h = harness(undefined, [true, false]);
+    await expect(readSignedScopedMetadata(h.pool, signer, {
+      scope, collection: 'projects',
+    }, () => now)).rejects.toBeInstanceOf(ScopedSqlAuthorizationDenied);
+    expect(h.calls.some(x => x.sql.startsWith('SELECT id, '))).toBe(true);
+    expect(h.calls.filter(x => x.sql === SCOPED_READ_GATE_SQL)).toHaveLength(2);
+    expect(h.calls.some(x => x.sql === 'COMMIT')).toBe(false);
+    expect(h.calls.at(-1)?.sql).toBe('ROLLBACK');
+    expect(h.quarantines).toEqual([]);
+    expect(h.releases).toEqual([false]);
+  });
+
+  test('malformed SQL authorization result quarantines rather than granting access', async () => {
+    const events: string[] = [];
+    const conn: ScopedSqlConnection = {
+      async query(sql) {
+        if (sql.includes('txid_current')) return { rows: [{ transaction_id: '123456789' }] };
+        if (sql === SCOPED_READ_GATE_SQL) return { rows: [{ allowed: 'true' }] };
+        return { rows: [] };
+      },
+      release(discard) { events.push('release:' + discard); },
+    };
+    const pool: ScopedSqlPool = {
+      async connect() { return conn; },
+      quarantine(reason) { events.push('quarantine:' + reason); },
+    };
+    await expect(readSignedScopedMetadata(pool, signer, {
+      scope, collection: 'projects',
+    }, () => now)).rejects.toThrow('Scoped metadata unavailable');
+    expect(events).toEqual(['quarantine:read-failed', 'release:true']);
   });
 
   test('every resource category is a fixed, read-only SQL template', async () => {

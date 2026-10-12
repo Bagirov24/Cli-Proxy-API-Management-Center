@@ -10,7 +10,7 @@ import {
   createPinnedAccessTokenVerifier,
 } from '../src/features/saasBlueprint/controlApi/server/trustedAccessToken';
 import {
-  createPinnedHmacScopeIssuer, CONTROL_READ_SELECT_SQL,
+  createPinnedHmacScopeIssuer, CONTROL_READ_SELECT_SQL, SCOPED_READ_GATE_SQL,
   type ScopedSqlPool, type SignedTransactionIssuer, type SqlValue,
 } from '../src/features/saasBlueprint/controlApi/server/signedSqlBoundary';
 import {
@@ -56,6 +56,7 @@ interface TestHarnessOptions {
   readonly onSelect?: () => Promise<void> | void;
   readonly failSelect?: boolean;
   readonly rows?: readonly Record<string, unknown>[];
+  readonly gateAnswers?: readonly boolean[];
   readonly auditSink?: SecurityAuditSink;
 }
 
@@ -80,6 +81,7 @@ function harness(options: TestHarnessOptions = {}) {
     classification: 'synthetic', nowMs: () => 1_800_000_000_000,
   });
   let acquired = 0;
+  let gateIndex = 0;
   let poisoned = false;
   const pool: ScopedSqlPool = {
     quarantine(reason) { quarantines.push(reason); poisoned = true; },
@@ -91,6 +93,9 @@ function harness(options: TestHarnessOptions = {}) {
           queries.push({ sql, params });
           if (sql === 'SELECT txid_current()::text AS transaction_id') {
             return { rows: [{ transaction_id: '424242' }] };
+          }
+          if (sql === SCOPED_READ_GATE_SQL) {
+            return { rows: [{ allowed: options.gateAnswers?.[gateIndex++] ?? true }] };
           }
           if (sql.startsWith('SELECT id, ')) {
             await options.onSelect?.();
@@ -324,6 +329,39 @@ describe('Stage 2G.2 — trusted JWT -> actor -> AuthZ -> signed SQL (synthetic 
     expect(JSON.stringify(result)).not.toContain('north-project');
     expect(h.released).toEqual([true]);
     expect(h.quarantines).toContain('read-failed');
+  });
+
+  test('DB suspension/revocation overrides a stale active server actor snapshot', async () => {
+    const h = harness({ gateAnswers: [false] });
+    const result = await h.read(h.request(await accessToken()));
+    expect(result).toMatchObject({
+      ok: false, status: 404, error: { code: 'NOT_FOUND' },
+    });
+    expect(JSON.stringify(result)).not.toContain('north-project');
+    expect(JSON.stringify(result)).not.toContain('demo-north');
+    expect(h.queries.filter(q => q.sql === SCOPED_READ_GATE_SQL)).toHaveLength(1);
+    expect(h.queries.some(q => q.sql.startsWith('SELECT id, '))).toBe(false);
+    expect(h.queries.at(-1)?.sql).toBe('ROLLBACK');
+    expect(h.released).toEqual([false]);
+    expect(h.quarantines).toEqual([]);
+    expect(h.auditEvents()).toMatchObject([{
+      result: 'deny', reason: 'authorization-changed',
+      actorId: 'actor-north', tenantId: null,
+    }]);
+  });
+
+  test('database authorization change after SELECT revokes output, not DB connection', async () => {
+    const h = harness({ gateAnswers: [true, false] });
+    const result = await h.read(h.request(await accessToken()));
+    expect(result).toMatchObject({ ok: false, status: 404 });
+    expect(JSON.stringify(result)).not.toContain('north-project');
+    expect(h.queries.filter(q => q.sql === SCOPED_READ_GATE_SQL)).toHaveLength(2);
+    expect(h.queries.some(q => q.sql === 'COMMIT')).toBe(false);
+    expect(h.queries.at(-1)?.sql).toBe('ROLLBACK');
+    expect(h.released).toEqual([false]);
+    expect(h.auditEvents()).toMatchObject([{
+      result: 'deny', reason: 'authorization-changed', tenantId: null,
+    }]);
   });
 
   test('a compromised SQL adapter cannot smuggle another tenant row into output', async () => {

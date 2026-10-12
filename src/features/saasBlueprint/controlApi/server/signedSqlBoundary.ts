@@ -41,6 +41,22 @@ export const CONTROL_READ_SELECT_SQL: Readonly<Record<ControlCollection, string>
   routing: 'SELECT id, application_id, key_binding_id, pool_id, provider_id, requested_model_id, status, egress_policy FROM saas_rls.routing_bindings WHERE tenant_id = $1 ORDER BY id LIMIT $2',
 };
 
+/** Fixed, authenticated DB-side read gate: active tenant, signed actor,
+ * current active membership, exact role and collection capability.
+ * A boolean only: never expose private membership or tenant existence. */
+export const SCOPED_READ_GATE_SQL =
+  "SELECT (EXISTS (SELECT 1 FROM saas_rls.tenants AS t WHERE t.id = $1) " +
+  "AND saas_rls.scope_membership_matches($1::text, $2::text, $3::text) " +
+  "AND saas_rls.read_allowed($1::text, $4::text)) AS allowed";
+
+/** Safe generic denial: never attach tenant, actor, resource or PG details. */
+export class ScopedSqlAuthorizationDenied extends Error {
+  constructor() {
+    super('Scoped metadata denied');
+    this.name = 'ScopedSqlAuthorizationDenied';
+  }
+}
+
 const FIELDS: Readonly<Record<ControlCollection, readonly string[]>> = {
   tenant: ['id', 'name', 'status'],
   projects: ['id', 'tenant_id', 'name', 'status'],
@@ -188,7 +204,7 @@ export async function readSignedScopedMetadata(
   let connection: ScopedSqlConnection | undefined;
   let acquireAbandoned = false;
   let started = false;
-  let committed = false;
+  let transactionEnded = false;
   let activeQueries = 0;
   let discard = false;
   try {
@@ -226,6 +242,7 @@ export async function readSignedScopedMetadata(
 
     let output: readonly SqlRow[] = [];
     let releaseFailed = false;
+    let denied = false;
     try {
       if (controller.signal.aborted) throw new Error('Scoped SQL cancelled');
       await query('BEGIN', []);
@@ -252,40 +269,68 @@ export async function readSignedScopedMetadata(
         await query('SELECT set_config($1::text, $2::text, true)', [name, value]);
       }
       await query('SET LOCAL ROLE saas_rls_reader', []);
-      const result = await query(CONTROL_READ_SELECT_SQL[collection], [scope.tenantId, limit]);
-      if (controller.signal.aborted || !Array.isArray(result.rows) || result.rows.length > limit) {
-        throw new Error('Invalid scoped database response');
-      }
-      const safe = result.rows.map((item) => {
-        if (!item || typeof item !== 'object' || Array.isArray(item)) {
-          throw new Error('Invalid row shape');
+      // A valid HMAC alone is not current database authorization.
+      // In the SAME READ COMMITTED transaction require PG's active tenant
+      // and exact role/membership before and after the metadata SELECT.
+      const dbAllows = async () => {
+        const result = await query(SCOPED_READ_GATE_SQL, [
+          scope.tenantId, scope.actorId, scope.role, collection,
+        ]);
+        if (!Array.isArray(result.rows) || result.rows.length !== 1 ||
+            typeof result.rows[0]?.allowed !== 'boolean') {
+          throw new Error('Malformed SQL authorization attestation');
         }
-        const row: Record<string, unknown> = {};
-        for (const field of FIELDS[collection]) {
-          const value = item[field];
-          if (value !== null && (typeof value !== 'string' || value.length > 256)) {
-            throw new Error('Invalid row field');
+        return result.rows[0].allowed;
+      };
+      if (!await dbAllows()) {
+        denied = true;
+      } else {
+        const result = await query(CONTROL_READ_SELECT_SQL[collection], [scope.tenantId, limit]);
+        if (controller.signal.aborted || !Array.isArray(result.rows) || result.rows.length > limit) {
+          throw new Error('Invalid scoped database response');
+        }
+        const safe = result.rows.map((item) => {
+          if (!item || typeof item !== 'object' || Array.isArray(item)) {
+            throw new Error('Invalid row shape');
           }
-          row[field] = value;
+          const row: Record<string, unknown> = {};
+          for (const field of FIELDS[collection]) {
+            const value = item[field];
+            if (value !== null && (typeof value !== 'string' || value.length > 256)) {
+              throw new Error('Invalid row field');
+            }
+            row[field] = value;
+          }
+          if (typeof row.id !== 'string' || row.id.length === 0 ||
+              ('tenant_id' in row && row.tenant_id !== scope.tenantId)) {
+            throw new Error('Cross-tenant or malformed database row');
+          }
+          return row;
+        });
+        if (controller.signal.aborted) throw new Error('Scoped SQL cancelled');
+        if (!await dbAllows()) {
+          denied = true;
+        } else {
+          await query('COMMIT', []);
+          transactionEnded = true;
+          if (controller.signal.aborted) throw new Error('Scoped SQL cancelled');
+          output = safe;
         }
-        if (typeof row.id !== 'string' || row.id.length === 0 ||
-            ('tenant_id' in row && row.tenant_id !== scope.tenantId)) {
-          throw new Error('Cross-tenant or malformed database row');
-        }
-        return row;
-      });
-      if (controller.signal.aborted) throw new Error('Scoped SQL cancelled');
-      await query('COMMIT', []);
-      committed = true;
-      if (controller.signal.aborted) throw new Error('Scoped SQL cancelled');
-      output = safe;
+      }
+      if (denied) {
+        // Read-only scope denied by current PostgreSQL truth. A confirmed
+        // ROLLBACK ends the transaction and permits safe connection reuse;
+        // rollback failure still quarantines the entire uncertain pool.
+        await query('ROLLBACK', []);
+        transactionEnded = true;
+      }
     } catch {
       discard = true;
       quarantine('read-failed');
       // Never issue ROLLBACK concurrently with a possibly still-running
       // BEGIN/SELECT/COMMIT on the same socket. A driver that ignores cancel
       // must be destroyed, not returned to a tenant's reservation queue.
-      if (started && !committed && activeQueries === 0) {
+      if (started && !transactionEnded && activeQueries === 0) {
         await boundedCleanup(
           () => reserved.query('ROLLBACK', [], AbortSignal.timeout(cleanupMs)),
           cleanupMs
@@ -300,8 +345,10 @@ export async function readSignedScopedMetadata(
       }
     }
     if (releaseFailed) throw new Error('Scoped metadata unavailable');
+    if (denied) throw new ScopedSqlAuthorizationDenied();
     return output;
-  } catch {
+  } catch (error) {
+    if (error instanceof ScopedSqlAuthorizationDenied) throw error;
     throw new Error('Scoped metadata unavailable');
   } finally {
     clearTimeout(timer);
