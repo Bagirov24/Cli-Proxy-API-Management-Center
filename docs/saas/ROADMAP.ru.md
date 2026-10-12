@@ -811,3 +811,24 @@ atomic revision increments. See
   delivery state, crash/backpressure recovery and physical driver discard.
 - [ ] **PROPOSED:** real SaaS endpoints, Vault/BYOK, CPA/Gateway,
   egress enforcement, billing and release/security approvals.
+
+## 2G.4d.7a — verified token fingerprint authorization
+
+- [x] Verified JWT bearer SHA-256 bound to 5-field HMAC and scoped
+  signed SQL transaction; no client-supplied jti/session/actor/role.
+- [x] Private PG16 token registry, token/actor check, clock expiry,
+  tenant epoch invalidation on per-token write.
+- [x] Permanent tombstone blocks downgrade after deleting tokens or
+  recycling actor ID; legacy scope for never-enrolled fixture only.
+- [x] PG16 signed A revoke / B continues / raw RLS deny / expiry /
+  rollback; independent reader/writer/observer COMMIT ordering.
+- [x] **VERIFIED** code SHA `772a29be5b855f31e65e28b30144adddbe776bb1`
+  — [Main 1 822 PASS](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38296991853),
+  [PG16](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38296991811),
+  Demo, Chromium — 4/4 SUCCESS.
+- [ ] **SPEC:** OIDC-backed session enrollment/revocation API with
+  durable issuer/subject directory and mandatory strict rollout.
+- [ ] **SPEC:** monotonic migration execution, multi-process failover,
+  physical connection discard, token-specific audit correlation.
+- [ ] **SPEC/PROPOSED:** crash-safe bounded HTTP/outbox delivery,
+  tamper-evident audit, Vault, CPA/Gateway, egress and billing.

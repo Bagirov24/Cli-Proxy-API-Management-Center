@@ -681,3 +681,21 @@ active actor state независимо от TypeScript boundary.
 Signed audit/outbox в migration 009 сохраняет минимальное redacted
 событие после COMMIT, не превращая его в remote-delivery receipt.
 Публичных SaaS endpoints, production OIDC и live-network changes нет.
+
+## 2G.4d.7a — per-token revocation, без actor-wide logout
+
+[Token fingerprint authority](TOKEN_FINGERPRINT_REVOCATION_V1.ru.md):
+только opt-in server-only scope подписывает SHA-256 полного ранее
+проверенного access token. В закрытой PG16 token registry можно
+отозвать A, сохранив B того же actor; все writes транзакционно
+инвалидируют tenant epoch. Постоянная tombstone запрещает downgrade
+к actor-only HMAC даже после actor ID recycling.
+
+**IMPLEMENTED / VERIFIED** (disposable CI, 4/4 SUCCESS на code SHA
+`772a29be5b855f31e65e28b30144adddbe776bb1`):
+[Main CI](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38296991853) —
+1 822 PASS, 0 FAIL;
+[real PG16](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38296991811),
+[Demo](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38296991833),
+[Chromium](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38296991887).
+Не является production OIDC/session manager или HTTP receipt.
