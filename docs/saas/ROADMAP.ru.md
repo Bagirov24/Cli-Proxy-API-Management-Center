@@ -605,7 +605,15 @@ atomic revision increments. See
 - [x] Добавлены SQL acceptance и отдельные concurrent `psql` writer /
   read tests: rollback atomicity, shared-resource fan-out, отсутствие
   lost bump, изоляция North/Orbit.
-- [ ] **VERIFIED** только после финального SHA и GitHub Actions.
+- [x] **VERIFIED** synthetic baseline + disposable PG16 на кодовом SHA
+  `6ea4546a6953d10baa42f7dcdc6ec5495f9f9517`:
+  [CI #38284819714](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38284819714)
+  (1 777 tests PASS, 0 fail, lint/TS/Vite),
+  [PG16 #38284819774](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38284819774)
+  (signed epoch, rollback, concurrent writer lock/no lost bump),
+  [Demo #38284819723](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38284819723),
+  [Browser #38284819716](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38284819716).
+  Это не verification production revocation linearizability.
 - [ ] **SPEC:** server-only native driver adapter для включения этой
   revision в TypeScript read boundary; expiry-time invalidation,
   policy coverage и multi-instance transaction/crash/deadlock QA.

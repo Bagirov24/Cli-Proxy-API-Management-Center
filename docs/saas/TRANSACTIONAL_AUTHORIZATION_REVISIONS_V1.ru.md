@@ -2,7 +2,13 @@
 
 **IMPLEMENTED: staging-only migration 004, signed revision attestation, SQL
 adversarial acceptance and independent-session concurrency tests.**
-**VERIFIED only after successful GitHub Actions on the exact SHA.**
+**VERIFIED in ephemeral PG16 CI** on code SHA
+`6ea4546a6953d10baa42f7dcdc6ec5495f9f9517`, not in production.
+[Main CI #38284819714](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38284819714),
+[PG16 #38284819774](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38284819774),
+[Demo #38284819723](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38284819723)
+and [Chromium #38284819716](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38284819716)
+are 4/4 SUCCESS. Bun unit tests: 1,777 pass, 0 fail.
 Not production auth or a linearizable HTTP revocation barrier.
 
 ## Boundary and schema

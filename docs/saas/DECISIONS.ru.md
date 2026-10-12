@@ -413,7 +413,10 @@ role/grant/status writes и отдельная доказанная линейр
 
 ## D-039 — PostgreSQL tenant revision является транзакционным writer state, но не HTTP revocation barrier
 
-**IMPLEMENTED staging-only SQL pilot / CI PENDING; production SPEC.**
+**IMPLEMENTED / VERIFIED для staging-only PG16**
+([PG16 #38284819774](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38284819774),
+SHA `6ea4546a6953d10baa42f7dcdc6ec5495f9f9517`);
+production SPEC.
 
 После 2G.4d opt-in TS guard вводится отдельный узкий PostgreSQL 16
 proof: private monotonic tenant epoch, триггеры membership/role/tenant

@@ -504,7 +504,14 @@ denial, cross-tenant isolation, drift между двумя транзакция
 раздельный Pool/Account/Egress; две отдельные PostgreSQL writer-сессии
 проверяют блокировку общего epoch, отсутствие dirty read и lost update.
 
-**Статус: IMPLEMENTED / CI PENDING.** Это PostgreSQL storage/writer proof:
+**Статус: IMPLEMENTED / VERIFIED для ephemeral PG16.** [Main CI #38284819714](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38284819714)
+(1 777 Bun tests PASS, 0 fail, ESLint, TypeScript, default-off Vite 3 305.72 KB),
+[PG16 #38284819774](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38284819774)
+(signed tenant/member/grant/catalog epoch, rollback, cross-session lock/no lost increments),
+[Demo #38284819723](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38284819723)
+и [Chromium #38284819716](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38284819716)
+— **4/4 SUCCESS** для кодового SHA `6ea4546a6953d10baa42f7dcdc6ec5495f9f9517`.
+Это PostgreSQL storage/writer proof:
 действующий TypeScript `ServerAuthorizationRevisionSource` пока
 не привязан к новой функции. TTL expiry по времени и гонка между
 final check и ответом остаются SPEC. Нет новых HTTP endpoints,
