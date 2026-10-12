@@ -619,7 +619,7 @@ describe('Stage 2G.4d — opt-in server-owned revision guard (SYNTHETIC)', () =>
   test('grant revision bump during SELECT denies old rows without poisoning safe SQL', async () => {
     const rev = syntheticRevision();
     const h = harness({ revisions: rev.source, onSelect() { rev.set('8'); } });
-    const denied = await h.read(h.request(await accessToken(), { collection: 'accounts' }));
+    const denied = await h.read(h.request(await accessToken()));
     expect(denied).toMatchObject({ ok: false, status: 404 });
     expect(JSON.stringify(denied)).not.toContain('north-project');
     expect(h.released).toEqual([false, false]);
