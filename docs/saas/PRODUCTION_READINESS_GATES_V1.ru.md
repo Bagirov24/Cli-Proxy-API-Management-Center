@@ -123,3 +123,14 @@ token/session registration API, durable audit, real HTTP transport,
 Vault, CPA/Gateway, network enforcement and billing. Zero live
 production endpoints, credentials, Railway, /data or Core changes.
 See [TOKEN_FINGERPRINT_REVOCATION_V1.ru.md](TOKEN_FINGERPRINT_REVOCATION_V1.ru.md).
+
+## Additional 2G.4d.7a irreversible fingerprint acceptance
+
+Guarded staging migration 010 now includes permanent
+`token_fingerprint_tombstones` so a previously spent fingerprint
+cannot be re-enrolled after DELETE, revived from revoked status, or
+extended to a later expiry. [Real PG16 acceptance #38297886638](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38297886638)
+and [Main CI #38297886508](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38297886508)
+(1,822 PASS) verified these tests, with Demo and Chromium successful.
+This is not an operational retention/compliance or production-token
+issuance policy; those remain **SPEC**.

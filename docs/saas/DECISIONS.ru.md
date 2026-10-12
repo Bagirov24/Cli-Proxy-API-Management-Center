@@ -588,3 +588,17 @@ Private `token_bound_actor_tombstones` переживает удаление в�
 применяться ПОСЛЕ 006, поскольку replay более старой версии
 перезаписывает token-aware expiry attestation. Production требует
 монотонной migration registry, без out-of-order replay.
+
+## D-051 — fingerprint одноразовый и необратимый (2G.4d.7a hardening)
+
+**IMPLEMENTED / VERIFIED** только в disposable PG16, код
+`38dc64e466a119000b0067e4f5e74217c96dabfb`,
+[PG16 #38297886638](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38297886638).
+
+Даже privileged fixture writer не должен восстанавливать
+отозванный bearer. Private `token_fingerprint_tombstones` сохраняет
+каждый зарегистрированный fingerprint после DELETE; повторный INSERT,
+обход через actor reassignment, UPDATE `revoked→active` и продление
+`expires_at` запрещены. Отзыв конкретного токена окончателен в
+рамках этого staging DB. Срок хранения tombstones и резервное
+восстановление в production ещё не спроектированы.

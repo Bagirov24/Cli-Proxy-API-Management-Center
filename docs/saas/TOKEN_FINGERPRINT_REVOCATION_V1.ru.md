@@ -82,3 +82,28 @@ egress firewall and billing. A synchronous local handoff before a
 failed SQL COMMIT cannot be undone, and database ordering is NOT
 proof of remote receipt. No production credentials, Railway, /data,
 Core/Gateway/CPA, real proxy/egress or merge were touched.
+
+## 2G.4d.7a hardening — used fingerprint is never reusable
+
+**IMPLEMENTED / VERIFIED** in disposable PG16, code SHA
+`38dc64e466a119000b0067e4f5e74217c96dabfb`:
+[PostgreSQL16 #38297886638](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38297886638),
+[Main CI #38297886508](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38297886508)
+(1,822 PASS, 0 FAIL), [Demo #38297886653](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38297886653),
+[Chromium #38297886773](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38297886773)
+— four of four SUCCESS.
+
+The private `token_fingerprint_tombstones` table permanently records
+each previously enrolled SHA-256 fingerprint and its original actor,
+including after the active token row is deleted. A privileged fixture
+writer cannot `DELETE` + `INSERT` an old fingerprint, migrate it to
+another actor, update `revoked` back to `active`, or extend
+`expires_at` for an enrolled token. Shortening expiry is allowed.
+Direct reader/CI app table access remains denied. Synthetic PostgreSQL
+adversarial acceptance asserts these failure paths and rollback;
+actual Bun.SQL two-token E2E continues to pass.
+
+These tombstones are deliberately *not* a production token directory,
+issuer, key vault or tamper-evident audit log. Their lifetime,
+retention/compliance requirements and disaster recovery remain
+production SPEC. Never store raw bearer strings in this registry.
