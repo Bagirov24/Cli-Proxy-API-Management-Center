@@ -168,6 +168,15 @@ jobs:
               exit 1
             }
           tail -n 3 /tmp/saas-expiry-revision-install.log
+          # The E2E below requires signed FOR SHARE from the guarded 007
+          # migration BEFORE its existing cross-process PG acceptance tests.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/007_read_publication_barrier_pilot.sql \
+            > /tmp/saas-publication-before-e2e.log 2>&1 || {
+              tail -n 65 /tmp/saas-publication-before-e2e.log
+              exit 1
+            }
+          tail -n 3 /tmp/saas-publication-before-e2e.log
           # Synthetic RS256 keys are generated only in this Bun process.
           # Real wire SQL uses only saas_ci_runner, never the postgres login.
           timeout --signal=TERM --kill-after=5s 90s env \

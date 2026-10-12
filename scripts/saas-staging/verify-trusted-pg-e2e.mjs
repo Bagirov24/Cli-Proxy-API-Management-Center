@@ -10,12 +10,15 @@ import { createPinnedAccessTokenVerifier } from
 import { createTrustedSqlReadBoundary } from
   '../../src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts';
 import { createPinnedHmacScopeIssuer, CONTROL_READ_SELECT_SQL, SCOPED_READ_GATE_SQL,
-  SCOPED_AUTHORIZATION_REVISION_SQL } from
+  SCOPED_AUTHORIZATION_REVISION_SQL, SCOPED_PUBLICATION_BARRIER_SQL,
+  withSignedScopedPublicationBarrier } from
   '../../src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts';
 import { createSecurityAuditRecorder, createSyntheticAuditBuffer } from
   '../../src/features/saasBlueprint/controlApi/server/securityAudit.ts';
 import { createSignedPgAuthorizationRevisionSource } from
   '../../src/features/saasBlueprint/controlApi/server/signedPgAuthorizationRevision.ts';
+import { captureServerAuthorizationRevision } from
+  '../../src/features/saasBlueprint/controlApi/server/authorizationRevision.ts';
 
 const ciOnly = process.env.GITHUB_ACTIONS === 'true' &&
   process.env.SAAS_EPHEMERAL_E2E_CI === 'true' &&
@@ -63,7 +66,8 @@ function safeStatement(sql, params) {
       ? params.length === 2 : params.length === 0) ||
      SELECTS.has(sql) && params.length === 2 ||
      sql === SCOPED_READ_GATE_SQL && params.length === 4 ||
-     sql === SCOPED_AUTHORIZATION_REVISION_SQL && params.length === 4);
+     sql === SCOPED_AUTHORIZATION_REVISION_SQL && params.length === 4 ||
+     sql === SCOPED_PUBLICATION_BARRIER_SQL && params.length === 4);
 }
 
 /** A disposable adapter, NOT proof of per-connection Bun discard safety. */
@@ -162,6 +166,7 @@ function changeEphemeralFixture(action) {
     expireSharedAccountSoon: "UPDATE saas_rls.resource_grants SET expires_at=clock_timestamp()+interval '3500 milliseconds' WHERE id='grant-account' AND grantee_tenant_id='demo-north' AND status='active'",
     restoreSharedAccountExpiry: "UPDATE saas_rls.resource_grants SET expires_at=NULL WHERE id='grant-account' AND grantee_tenant_id='demo-north'",
     waitWithoutAuthorizationWrite: "SELECT pg_sleep(4.2)",
+    restorePoolAfterPublication: "UPDATE saas_rls.resource_grants SET status='active' WHERE id='grant-pool' AND grantee_tenant_id='demo-north' AND status='disabled'",
   };
   if (!Object.prototype.hasOwnProperty.call(statements, action)) {
     throw new Error('Unrecognized staging-only fixture mutation');
@@ -591,6 +596,93 @@ try {
     'Orbit unaffected by North clock-only grant expiry'
   ), ['orbit-project']);
   console.info('PASS: real PG16 clock-only grant expiry denies unchanged rows and unchanged epoch');
+
+  // Stage 2G.4d.5a: server-only publication proof on the real least-privilege
+  // Bun.SQL pool. No HTTP network listener, bytes or user-controlled scope.
+  // Publication baseline originates in trusted signed PG revision and the
+  // payload is the already-sanitized result of trusted JWT+actor+RLS read.
+  const publicationScope = Object.freeze({
+    actorId: 'actor-north', tenantId: 'demo-north',
+    role: 'tenant-admin', correlationId: 'ci-publication-proof',
+  });
+  const publicationSource = createSignedPgAuthorizationRevisionSource(driver, signer);
+  const publicationBaseline = await captureServerAuthorizationRevision(
+    publicationSource, publicationScope, 'projects', AbortSignal.timeout(5000)
+  );
+  const publishable = await revisionGuardedRead(
+    request(north, 'demo-north', 'projects', { limit: 1 })
+  );
+  assert.deepEqual(visibleIds(publishable, 'Signed publication staging North'),
+    ['north-project']);
+  const publicationEvents = [];
+  let publicationWriter = null;
+  try {
+    await withSignedScopedPublicationBarrier(driver, signer, {
+      scope: publicationScope, collection: 'projects',
+      baseline: publicationBaseline, timeoutMs: 7000,
+      signal: AbortSignal.timeout(8000),
+      handoff: {
+        async prepare(signal) {
+          assert.equal(signal.aborted, false);
+          // External test writer runs as ephemeral Postgres fixture only,
+          // never on the application pool or a client-defined query.
+          publicationWriter = Bun.spawn({
+            cmd: ['psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-c',
+              "UPDATE saas_rls.resource_grants SET status='disabled' WHERE id='grant-pool' AND grantee_tenant_id='demo-north' AND status='active'"],
+            env: { ...process.env, PGAPPNAME: 'ci_local_handoff_revoke' },
+            stdout: 'ignore', stderr: 'ignore',
+          });
+          let blocked = false;
+          for (let i = 0; i < 30; i++) {
+            if (signal.aborted) throw new Error('Publication cancelled');
+            const observation = Bun.spawnSync([
+              'psql', '-X', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-c',
+              "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name='ci_local_handoff_revoke' AND wait_event_type='Lock'",
+            ], { stderr: 'ignore' });
+            assert.equal(observation.exitCode, 0);
+            if (Buffer.from(observation.stdout).toString('utf8').trim() === '1') {
+              blocked = true;
+              break;
+            }
+            await Bun.sleep(80);
+          }
+          assert.equal(blocked, true, 'Revoke must block on signed shared epoch');
+          assert.equal(publicationEvents.length, 0, 'prepare never publishes bytes');
+          return () => {
+            publicationEvents.push('local-handoff:' +
+              publishable.rows.map(row => row.id).join(','));
+          };
+        },
+      },
+    });
+    assert.deepEqual(publicationEvents, ['local-handoff:north-project']);
+    assert.equal(await publicationWriter.exited, 0, 'Writer commits after handoff');
+    assert.notEqual(readEphemeralNorthEpoch(), publicationBaseline.value,
+      'Revocation must bump epoch after held publication transaction');
+    let stalePrepared = false;
+    await assert.rejects(withSignedScopedPublicationBarrier(driver, signer, {
+      scope: publicationScope, collection: 'projects',
+      baseline: publicationBaseline, timeoutMs: 4000,
+      handoff: { async prepare() {
+        stalePrepared = true;
+        return () => { publicationEvents.push('STALE_HANDOFF'); };
+      } },
+    }), { name: 'ScopedSqlAuthorizationDenied' });
+    assert.equal(stalePrepared, false);
+    assert.deepEqual(publicationEvents, ['local-handoff:north-project']);
+    assert.equal(driver.stats().poisoned, false);
+  } finally {
+    if (publicationWriter) {
+      // The CI-only writer is required to finish before a fixture restore.
+      assert.equal(await publicationWriter.exited, 0);
+    }
+    changeEphemeralFixture('restorePoolAfterPublication');
+  }
+  assert.deepEqual(visibleIds(
+    await revisionGuardedRead(request(orbit, 'demo-orbit', 'projects')),
+    'Orbit independent after completed publication revoke'
+  ), ['orbit-project']);
+  console.info('PASS: real PG16 signed local publication precedes revoke COMMIT; stale epoch cannot republish');
 
   const brokenAudit = createSecurityAuditRecorder({
     write() { throw new Error('HIDDEN_TEST_ONLY_REFRESH_TOKEN'); },
