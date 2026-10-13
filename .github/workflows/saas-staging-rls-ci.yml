@@ -11,6 +11,7 @@ on:
       - 'tests/sql/saas_m1_project_metadata.test.sql'
       - 'tests/sql/saas_m1_pg_driver_role.test.sql'
       - 'tests/sql/saas_m1_project_atomic_audit.test.sql'
+      - 'tests/sql/saas_m1_physical_disconnect.test.sql'
       - 'tests/sql/saas_m1_project_authorization_fence.test.sql'
       - 'tests/sql/saas_e2e_grants_fixture.test.sql'
       - 'tests/sql/saas_authorization_coverage.test.sql'
@@ -209,9 +210,20 @@ jobs:
           tail -n 3 /tmp/saas-m1c-audit-install.log
           timeout --signal=TERM --kill-after=5s 90s env \
             SAAS_EPHEMERAL_M1_PG_CI=true \
+            SAAS_EPHEMERAL_M1E_DISCONNECT_CI=true \
             SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
             SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
             bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
+          # M1e: the Bun driver above really killed the reserved PG backend
+          # before COMMIT, aborted another signed write, and quarantined both
+          # disposable pools; an independent superuser checks project/audit.
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1_physical_disconnect.test.sql \
+            > /tmp/saas-m1e-physical-disconnect.log 2>&1 || {
+              tail -n 85 /tmp/saas-m1e-physical-disconnect.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-m1e-physical-disconnect.log
           # Inspect ACTUAL native Bun.SQL COMMIT, including the lost ACK
           # project. Audit failure must abort provisional project mutations.
           psql -X -v ON_ERROR_STOP=1 \
