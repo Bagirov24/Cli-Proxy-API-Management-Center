@@ -1016,3 +1016,24 @@ witness подписи/предшественника. В опционально
 production issuer/delivery, архива, UUID reuse или GC.
 `gcPermitted=false`.
 [Детальный контракт 7q](SYNTHETIC_IPC_HIGHWATER_FENCE_V1.ru.md).
+
+
+## Stage 2G.4d.7r — read-only UNKNOWN outcome observation (CI only)
+
+**IMPLEMENTED staging proof, NOT a recovery/reissue API:** новый offline
+`archive-witness-unknown-observer.mjs` не получает PG credentials,
+не выпускает UUID и проверяет три pinned Ed25519 signatures: PostgreSQL
+source snapshot, Unix witness checkpoint и separate local journal receipt.
+Для заранее подготовленного commitment различает `NOT_OBSERVED_IN_ONE_SNAPSHOT_UNKNOWN`,
+`PG_SNAPSHOT_ONLY_UNWITNESSED` и
+`DUAL_LOCAL_SIGNED_IDENTITY_OBSERVED`, но **ВСЕ** статусы всегда
+возвращают `authorizationGranted=false`, `reissuePermitted=false`,
+`retryPermitted=false`, `deliveryPermitted=false`,
+`gcPermitted=false`.
+
+Физические PG16 pre/post-COMMIT loss, lost witness ACK, signature replay,
+rollback, fork и multi-COMMIT drift проверяются в отдельном 7r CI шаге;
+предыдущие 7l–7q не заменяются. Одного локального CI runner недостаточно
+для off-host durability/atomicity, реального production issuer,
+outbound ACK, retention или GC.
+[7r технический контракт](SYNTHETIC_UNKNOWN_OUTCOME_OBSERVATION_V1.ru.md).

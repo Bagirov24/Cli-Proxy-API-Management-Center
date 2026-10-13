@@ -1178,3 +1178,26 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
   remote authenticated ACK, retention/GC/security signoff
 - [ ] **NOT PERMITTED:** production release/deployment, merge,
   migration 019, UUID delete/reuse, retention lifetime-cap reset
+
+
+## Stage 2G.4d.7r — UNKNOWN outcome proof without reissue
+
+- [x] **IMPLEMENTED CI-only:** offline verifier принимает signed
+  PG projector attestation, direct witness signed checkpoint,
+  signed separate local high-water receipt и untrusted prepared UUID
+  **commitment**, но не SQL credentials/raw UUID/actor/tenant/payload
+- [x] **ADVERSARIAL:** физическое отключение PostgreSQL backend
+  ДО/ПОСЛЕ COMMIT, signed source-only identity, lost IPC ACK и
+  signature/head/predecessor/nonce/candidate replay/tamper DENY,
+  crash/rollback/multiple COMMIT paths
+- [x] **ALWAYS DENY ACTION:** snapshot observation НЕ даёт
+  `authorizationGranted`, `retryPermitted`,
+  `reissuePermitted`, `deliveryPermitted` и `gcPermitted`
+- [ ] **PRODUCTION SPEC:** независимый durable off-host source/witness,
+  WAL proof, atomic/fenced COMMIT→witness,
+  unknown/out-of-sync journal reconciliation, trusted revocation,
+  issuer auth, partition/PITR/failover and remote ACK
+- [ ] **NOT ALLOWED:** migration 019, production deployment,
+  outbound delivery, UUID deletion/reuse or retention-cap/GC reset
+
+- [x] **CODE VERIFIED:** 4/4 Actions SUCCESS на SHA `602398c8`; финальный documentation SHA проверяется отдельно

@@ -1060,3 +1060,26 @@ public key. Protected witness закрепляет journal public key, свер�
 если внешний pinned head утрачен. Блокеры сохраняются; никакого
 архива/tombstone deletion/GC, `gcPermitted=false`.
 [Контракт 7q](SYNTHETIC_IPC_HIGHWATER_FENCE_V1.ru.md).
+
+
+## D-075 — UNKNOWN не превращается в разрешение retry или выдачи нового UUID
+
+2G.4d.7r добавляет только **offline evidence observation** поверх
+7o signer → 7p witness → 7q local high-water. Для prepared UUID
+commitment независимо проверяются свежий challenge-bound signed
+PostgreSQL snapshot, current signed witness head/direct predecessor и
+подписанный separate local journal head. Доказательства позволяют
+отличать UUID, не найденный в одном snapshot, физически COMMITTED,
+но не засвидетельствованный, и отмеченный обоими LOCAL signed heads.
+Однако все три состояния запрещают автоматический reissue,
+dispatch/retry, GC и изменение retention.
+
+**Решение:** новая процедура — read-only CI инспектор для
+разбирательства UNKNOWN, а **не recovery executor**. Успешная
+проверка не подтверждает реальный producer actor/issuer,
+отсутствие другого COMMIT или durable off-host root. Потеря
+external pin с совместным rollback обоих локальных хранилищ,
+физическая journal inconsistency и PG→witness атомарность
+остаются release blockers. Конфликты и multi-UUID drift
+DENY вместо угадывания. `gcPermitted=false`.
+[Контракт 7r](SYNTHETIC_UNKNOWN_OUTCOME_OBSERVATION_V1.ru.md).

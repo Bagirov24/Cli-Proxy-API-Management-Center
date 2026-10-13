@@ -476,3 +476,22 @@ UNKNOWN recovery, WAL/PITR/replica promotion, partition resilience,
 durable outbound delivery и authenticated recipient ACK.
 Требуются отдельные privacy/retention/security gates.
 No GC, UUID reuse, physical tombstone deletion or cap reset.
+
+
+## 2G.4d.7r — observation после UNKNOWN не завершает recovery
+
+**CI-only implemented:** offline без PG credentials сверяет
+подписанный PG16 source, direct witness checkpoint и signed
+local high-water для заранее подготовленного UUID commitment.
+Physical pre-/post-COMMIT backend termination, lost ACK,
+crash, stale pin, signature forgery и multiple COMMIT DENY
+дополняют прежние 7l–7q проверки.
+
+**Production release gate остаётся OPEN:** все локальные статусы
+являются только observations, никогда не actor-authorized
+settlement/retry/delivery/GC. Нужны независимый внешний
+WORM/trusted head с удалённой key custody, rollback-resistant
+nonce/anti-replay, fenced/atomic PostgreSQL COMMIT, безопасное
+разрешение orphan journal / partition / PITR / WAL / failover,
+production OIDC/issuer authorization, delivery ACK и privacy
+retention sign-off. No migration 019, no production, no GC.
