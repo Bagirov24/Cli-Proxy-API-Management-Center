@@ -20,6 +20,7 @@ on:
       - 'tests/sql/saas_synthetic_receiver_ledger.test.sql'
       - 'tests/sql/saas_synthetic_producer_operations.test.sql'
       - 'tests/sql/saas_synthetic_operation_issuance.test.sql'
+      - 'tests/sql/saas_synthetic_operation_abuse_limits.test.sql'
       - 'scripts/saas-staging/**'
       - 'src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts'
       - 'src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts'
@@ -253,6 +254,14 @@ jobs:
               exit 1
             }
           tail -n 4 /tmp/saas-operation-issue-install.log
+          # 017: rate-limited fixed issuance/status templates, no tombstone GC.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/017_synthetic_operation_abuse_controls_pilot.sql \
+            > /tmp/saas-operation-abuse-install.log 2>&1 || {
+              tail -n 120 /tmp/saas-operation-abuse-install.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-operation-abuse-install.log
           # Synthetic RS256 keys are generated only in this Bun process.
           # Real wire SQL uses only saas_ci_runner, never the postgres login.
           timeout --signal=TERM --kill-after=5s 90s env \
@@ -501,6 +510,34 @@ jobs:
               exit 1
             }
           tail -n 5 /tmp/saas-operation-issue-test.log
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_synthetic_operation_abuse_limits.test.sql \
+            > /tmp/saas-operation-abuse-test.log 2>&1 || {
+              tail -n 150 /tmp/saas-operation-abuse-test.log
+              exit 1
+            }
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/017_synthetic_operation_abuse_controls_pilot.sql \
+            > /tmp/saas-operation-abuse-replay.log 2>&1 || {
+              tail -n 120 /tmp/saas-operation-abuse-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 -c "SELECT saas_rls_test.assert_true(
+            (SELECT COUNT(*)=48 FROM saas_rls_private.synthetic_operation_issues
+             WHERE tenant_id='demo-north')
+            AND (SELECT COUNT(*)=12 FROM saas_rls_private.synthetic_operation_issues
+             WHERE tenant_id='demo-orbit' AND actor_id='actor-orbit')
+            AND (SELECT COUNT(*)=2 FROM saas_rls_private.synthetic_operation_budgets
+             WHERE tenant_id='demo-orbit' AND action_kind='status'),
+            '017 replay must not purge tombstones or reset private budget rows')" \
+            > /tmp/saas-operation-abuse-replay-check.log 2>&1 || {
+              tail -n 100 /tmp/saas-operation-abuse-replay-check.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-operation-abuse-test.log
+          timeout --signal=TERM --kill-after=5s 35s env \
+            SAAS_EPHEMERAL_ABUSE_CI=true \
+            bash scripts/saas-staging/verify-operation-abuse-concurrency.sh
           timeout --signal=TERM --kill-after=5s 35s env \
             SAAS_EPHEMERAL_PRODUCER_CI=true \
             bash scripts/saas-staging/verify-producer-operation-concurrency.sh

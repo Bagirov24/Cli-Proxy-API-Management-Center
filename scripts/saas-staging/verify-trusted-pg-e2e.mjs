@@ -1717,6 +1717,78 @@ try {
   }
   console.info('PASS: real PG16 pinned issuer enroll/revoke: token A denied, B survives, subject revoke denies all');
 
+  // Stage 2G.4d.7h: only the NEW 017 fixed template is bounded.
+  // Private SQL quota must persist on unknown-ID generic-404, not vanish
+  // with a would-be ROLLBACK; status is otherwise an ID probing oracle.
+  const budgetCount=(tenant,actor,action,kind='actor')=>
+    Number(syntheticDeliveryFixtureSql(safeEventId,()=>(
+      "SELECT COALESCE((SELECT used_count::text FROM "+
+      "saas_rls_private.synthetic_operation_budgets WHERE tenant_id='"+
+      tenant+"' AND actor_id='"+actor+"' AND scope_kind='"+kind+
+      "' AND action_kind='"+action+"'), '0')"
+    )));
+  const northQuotaBefore=budgetCount('demo-north','actor-north','status');
+  assert.ok(northQuotaBefore>0 && northQuotaBefore<=16);
+  const northIssueBefore=budgetCount('demo-north','actor-north','issue');
+  assert.equal(northIssueBefore,3,
+    'Three distinct signed 016 issuances already consumed a real PG budget');
+  const isolatedOrbitBefore=budgetCount('demo-orbit','actor-orbit','status');
+  const foreignBudgetProbe=await statusOperation(
+    stagingRequest(issued.operationId,orbit,'demo-orbit'));
+  assert.equal(foreignBudgetProbe.status,404);
+  assert.equal(budgetCount('demo-orbit','actor-orbit','status'),
+    isolatedOrbitBefore+1,
+    'Wrong-tenant UUID lookup MUST charge only authenticated tenant/actor');
+  assert.equal(budgetCount('demo-north','actor-north','status'),
+    northQuotaBefore,'Orbit may never consume North status quota');
+  const beforeAbuseOutbox=readPrivateOutboxCount();
+  let sameDenialCode=null;
+  for(let attempt=0;attempt<20;attempt++) {
+    const denied=await statusOperation(stagingRequest(crypto.randomUUID()));
+    assert.equal(denied.ok,false);
+    assert.equal(denied.status,404);
+    assert.equal('operationState' in denied,false);
+    assert.equal('eventId' in denied,false);
+    assert.equal('tenantId' in denied,false);
+    sameDenialCode ??=denied.error.code;
+    assert.equal(denied.error.code,sameDenialCode,
+      'Guessed vs throttled IDs have same tenantless generic 404');
+  }
+  assert.equal(budgetCount('demo-north','actor-north','status'),16,
+    'Even denied/unknown UUID polling MUST commit a bounded PG budget');
+  const rateDeniedOwner=await statusOperation(stagingRequest(issued.operationId));
+  assert.equal(rateDeniedOwner.status,404);
+  assert.equal(rateDeniedOwner.error.code,sameDenialCode);
+  assert.equal('operationState' in rateDeniedOwner,false);
+  assert.equal(readPrivateOutboxCount(),beforeAbuseOutbox,
+    'Unknown-ID status spam may never mint a signed outbox or synthetic effect');
+  assert.equal(Number(syntheticDeliveryFixtureSql(safeEventId,()=>
+    "SELECT COUNT(*) FROM saas_rls_private.synthetic_operation_budgets "+
+    "WHERE tenant_id='demo-north' AND action_kind='status'")),2,
+    'Actor + tenant windows use fixed two rows, not an unbounded attempt log');
+
+  // Three genuine issuances above + one allowed = 4 / 5min actor cap.
+  // The next call is denied with NO new tombstone and NO audit/intent.
+  const finalAllowedIssue=await issueOperation(
+    request(north,'demo-north','projects',{limit:1}));
+  assert.equal(finalAllowedIssue.ok,true);
+  assert.equal(budgetCount('demo-north','actor-north','issue'),4);
+  const tombstonesAtCap=Number(syntheticDeliveryFixtureSql(safeEventId,()=>
+    "SELECT COUNT(*) FROM saas_rls_private.synthetic_operation_issues "+
+    "WHERE tenant_id='demo-north' AND actor_id='actor-north'"));
+  const extraDeniedIssue=await issueOperation(
+    request(north,'demo-north','projects',{limit:1}));
+  assert.equal(extraDeniedIssue.ok,false);
+  assert.equal(extraDeniedIssue.status,404);
+  assert.equal('operationId' in extraDeniedIssue,false);
+  assert.equal(budgetCount('demo-north','actor-north','issue'),4);
+  assert.equal(Number(syntheticDeliveryFixtureSql(safeEventId,()=>
+    "SELECT COUNT(*) FROM saas_rls_private.synthetic_operation_issues "+
+    "WHERE tenant_id='demo-north' AND actor_id='actor-north'")),tombstonesAtCap,
+    'Denied issuance cannot consume unbounded tombstone storage');
+  assert.equal(readPrivateOutboxCount(),beforeAbuseOutbox);
+  console.info('PASS: PG16 signed status 404 persists private quota; IDOR isolation and bounded issuer hard-stop');
+
   const brokenAudit = createSecurityAuditRecorder({
     write() { throw new Error('HIDDEN_TEST_ONLY_REFRESH_TOKEN'); },
   }, { classification: 'staging' });

@@ -78,7 +78,7 @@ export const SCOPED_PRODUCER_OPERATION_SQL =
 
 /** Staging 016: issue / commit reserved / read status under signed RLS. */
 export const SCOPED_PRODUCER_ISSUE_SQL =
-  'SELECT saas_rls.issue_signed_synthetic_operation(' +
+  'SELECT saas_rls.issue_signed_synthetic_operation_bounded(' +
   '$1::text, $2::text, $3::text, $4::text, ' +
   '$5::uuid, $6::integer, $7::integer) AS recorded';
 export const SCOPED_PRODUCER_RESERVED_SQL =
@@ -86,10 +86,12 @@ export const SCOPED_PRODUCER_RESERVED_SQL =
   '$1::text, $2::text, $3::text, $4::text, $5::text, ' +
   '$6::uuid, $7::integer) AS recorded';
 export const SCOPED_PRODUCER_STATUS_SQL =
-  'SELECT saas_rls.read_signed_synthetic_operation_status(' +
+  'SELECT saas_rls.read_signed_synthetic_operation_status_bounded(' +
   '$1::text, $2::text, $3::text, $4::text, ' +
   '$5::uuid, $6::integer) AS operation_state';
-export type ScopedOperationState = 'issued' | 'committed' | 'expired';
+export type ScopedOperationState =
+  | 'issued' | 'committed' | 'expired'
+  | 'absent' | 'throttled';
 
 /** A DB-signed epoch with the next cutoff for any active expiring grant. */
 export interface ScopedSqlRevisionState {
@@ -494,7 +496,8 @@ async function executeSignedScopedRead(
                 if (state === null) {
                   denied = true;
                 } else if (state === 'issued' || state === 'committed' ||
-                           state === 'expired') {
+                           state === 'expired' || state === 'absent' ||
+                           state === 'throttled') {
                   operationState = state;
                 } else {
                   throw new Error('Malformed signed operation state');
@@ -691,7 +694,8 @@ export async function withSignedScopedPublicationBarrier(
   if (request.operationMode !== 'status') return undefined;
   const state = rows[0]?.operation_state;
   if (rows.length !== 1 || (state !== 'issued' &&
-      state !== 'committed' && state !== 'expired')) {
+      state !== 'committed' && state !== 'expired' &&
+      state !== 'absent' && state !== 'throttled')) {
     throw new Error('Malformed post-COMMIT operation status');
   }
   return state;

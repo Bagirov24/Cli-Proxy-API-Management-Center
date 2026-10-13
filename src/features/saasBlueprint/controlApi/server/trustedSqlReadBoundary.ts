@@ -375,6 +375,11 @@ function createTrustedSqlReadBoundaryEngine(
           // Read-only outcome is truthful only after signed PostgreSQL COMMIT.
           // A failed audit still denies without exposing even the state enum.
           if (!operationState) return finish(response(UNAVAILABLE), 'source-unavailable');
+          // 017: DENY only AFTER COMMIT so unknown-ID polling consumes its
+          // private signed PG budget. Neither sentinel is a public enum.
+          if (operationState === 'absent' || operationState === 'throttled') {
+            return finish(response(NOT_FOUND), 'authorization-changed');
+          }
           return finish({
             ok: true, status: 200, source: 'staging-signed-rls',
             correlationId, tenantId: scope.tenantId,
