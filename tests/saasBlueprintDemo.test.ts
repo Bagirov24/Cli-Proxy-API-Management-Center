@@ -212,6 +212,17 @@ describe('SaaS opt-in UI and no-live-API safeguards', () => {
     const vite = read('../vite.config.ts');
     expect(vite).toContain("process.env.VITE_ENABLE_SAAS_BLUEPRINT_DEMO === 'true'");
     expect(vite).toContain('SaasDemoRouteDisabled.tsx');
+    // The Vite flag by itself must fail an ordinary production build.
+    expect(vite).toContain("command === 'serve' && mode === 'development'");
+    expect(vite).toContain("process.env.GITHUB_ACTIONS === 'true'");
+    expect(vite).toContain("process.env.GITHUB_EVENT_NAME === 'pull_request'");
+    expect(vite).toContain("process.env.SAAS_BLUEPRINT_SYNTHETIC_CI_BUILD === 'true'");
+    expect(vite).toContain('SAAS BLUEPRINT DEMO DENIED');
+    const previewWorkflow = read('../.github/workflows/saas-blueprint-demo-ci.yml');
+    expect(previewWorkflow).toContain('Deny accidental SaaS demo enablement in release build');
+    expect(previewWorkflow).toContain('Verify default-off bundle excludes synthetic SaaS fixtures');
+    expect(previewWorkflow).toContain("SAAS_BLUEPRINT_SYNTHETIC_CI_BUILD: 'true'");
+    expect(previewWorkflow).not.toMatch(/railway (up|deploy)|deploy to production/i);
     expect(flag).toContain('__SAAS_BLUEPRINT_DEMO_ENABLED__');
     expect(routes).toContain('...(SAAS_BLUEPRINT_DEMO_ENABLED');
     expect(routes).toContain("path: '/saas-demo'");

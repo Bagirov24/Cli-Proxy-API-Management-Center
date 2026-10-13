@@ -30,9 +30,35 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Compile explicitly enabled synthetic SaaS UI
+      - name: Deny accidental SaaS demo enablement in release build
+        shell: bash
         env:
           VITE_ENABLE_SAAS_BLUEPRINT_DEMO: 'true'
+          SAAS_BLUEPRINT_SYNTHETIC_CI_BUILD: ''
+        run: |
+          set -euo pipefail
+          if bun run build > /tmp/saas-demo-denied-build.log 2>&1; then
+            echo "ERROR: ordinary bundle accepted an unsafe SaaS demo opt-in" >&2
+            exit 1
+          fi
+          grep -q 'SAAS BLUEPRINT DEMO DENIED' /tmp/saas-demo-denied-build.log
+
+      - name: Verify default-off bundle excludes synthetic SaaS fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset VITE_ENABLE_SAAS_BLUEPRINT_DEMO SAAS_BLUEPRINT_SYNTHETIC_CI_BUILD
+          bun run build
+          test -s dist/index.html
+          if grep -q 'saas-demo-tenant' dist/index.html; then
+            echo "ERROR: synthetic SaaS fixture included in default bundle" >&2
+            exit 1
+          fi
+
+      - name: Compile explicitly enabled synthetic SaaS UI in PR CI only
+        env:
+          VITE_ENABLE_SAAS_BLUEPRINT_DEMO: 'true'
+          SAAS_BLUEPRINT_SYNTHETIC_CI_BUILD: 'true'
         run: |
           bun run build
           test -s dist/index.html

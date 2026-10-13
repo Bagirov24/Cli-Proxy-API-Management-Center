@@ -36,9 +36,31 @@ function getVersion(): string {
 }
 
 // https://vitejs.dev/config/
-const saasDemoEnabled = process.env.VITE_ENABLE_SAAS_BLUEPRINT_DEMO === 'true';
+// The build flag alone must NEVER turn an ordinary/release bundle into a
+// synthetic SaaS UI. A preview is allowed only for local DEV or an explicitly
+// isolated pull-request CI job that never deploys an artifact.
+const saasDemoRequested = process.env.VITE_ENABLE_SAAS_BLUEPRINT_DEMO === 'true';
 
-export default defineConfig({
+export default defineConfig(({ command, mode }) => {
+  const localDevPreview = command === 'serve' && mode === 'development';
+  const isolatedPullRequestPreview =
+    command === 'build' &&
+    process.env.GITHUB_ACTIONS === 'true' &&
+    process.env.GITHUB_EVENT_NAME === 'pull_request' &&
+    process.env.SAAS_BLUEPRINT_SYNTHETIC_CI_BUILD === 'true';
+
+  if (saasDemoRequested && !localDevPreview && !isolatedPullRequestPreview) {
+    throw new Error(
+      'SAAS BLUEPRINT DEMO DENIED: opt-in is allowed only in local DEV ' +
+      'or an explicitly isolated synthetic pull-request CI build; ' +
+      'never in an ordinary production/release bundle.'
+    );
+  }
+
+  const saasDemoEnabled =
+    saasDemoRequested && (localDevPreview || isolatedPullRequestPreview);
+
+  return {
   plugins: [
     react(),
     viteSingleFile({
@@ -85,4 +107,5 @@ export default defineConfig({
       }
     }
   }
+  };
 });
