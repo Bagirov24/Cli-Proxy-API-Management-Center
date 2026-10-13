@@ -1362,3 +1362,20 @@ production PostgreSQL migration. Роль M1 executor предоставляет
 семантика recover/idempotency/fencing, атомарный audit outbox и physical
 connection discard остаются **открытыми security requirements**.
 [Наблюдаемые CI сценарии и ограничения](M1B_SIGNED_PG_DRIVER_E2E.ru.md).
+
+
+## M1c — решение о транзакционном audit-пилоте (PROPOSED, не release)
+
+В M1b уже есть реальный CI-only PG16 COMMIT без отдельной атомарной audit
+записи в write transaction. В M1c закрываем **только этот локальный разрыв**:
+приватный audit outbox, принадлежащий отдельному NOLOGIN SQL role,
+пополняется AFTER ROW trigger в той же транзакции, что и изменяемый project.
+Отказ аудита приводит к отказу записи без скрытого fallback; CAS/duplicate
+не создают подтверждений и не включают автоматический retry.
+
+Приватная таблица на том же PostgreSQL не защищена от admin/DDL/backup rollback,
+потери whole DB или shared trust-domain; append-only SQL trigger не заменяет
+independent WORM/HSM, signer, recipient ACK, production audit ledger,
+идемпотентность и fencing между репликами. Ни новый endpoint, ни production
+sign-off этой реализацией не одобрены.
+[M1c boundaries](M1C_PROJECT_ATOMIC_AUDIT_PG16.ru.md).
