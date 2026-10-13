@@ -440,3 +440,21 @@ atomic PostgreSQL COMMIT→external signed head, genuine
 PITR/network partition/failover and remote delivery/ACK,
 privacy/legal/GC/capacity sign-off, real API readiness
 and independent security review. No SQL 019 or production.
+
+
+## 2G.4d.7p — source-bound append is a CI security proof only
+
+**IMPLEMENTED staging:** the opt-in protected Unix-socket path
+requires a fresh daemon-issued challenge and Ed25519 projection
+proof from pinned read-only PG16 projector before signing a
+successor. Persisted proofs are revalidated at startup; identical
+ACK-loss replay is supported. Raw client projection append is
+refused in protected mode; legacy 7n test mode remains separate.
+
+**STILL BLOCKED:** independent durable off-host witness and trusted
+head, out-of-runner nonce/key custody and source integrity, full
+issuer/actor auth, atomic/fenced COMMIT→witness publication,
+UNKNOWN-COMMIT/PITR/WAL/replica promotion and network recovery,
+durable outbound delivery+recipient ACK, signed retention/non-reuse
+and security release approval. No independent host or production
+security guarantee, no deletion/GC/cap reset.

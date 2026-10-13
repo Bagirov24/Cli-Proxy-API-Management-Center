@@ -981,3 +981,21 @@ PG COMMIT certificate или атомарное external settlement; 7n
 IPC append остаётся test-only и НЕ использует этот gate.
 Никаких GC/архива/UUID reuse/production.
 [Детальный контракт 7o](SYNTHETIC_PG_PROJECTION_ATTESTATION_V1.ru.md).
+
+
+## Stage 2G.4d.7p — signed PostgreSQL witness append (CI only)
+
+**IMPLEMENTED / staging proof:** 7p добавляет отдельный opt-in
+`challenge-pg` → `append-pg` к Unix-socket witness.
+Публичный ключ PostgreSQL projector закрепляется при запуске;
+проверка nonce, request ID, predecessor, source, signature и точного
+projection digest выполняется **в witness перед подписанием**.
+В этом режиме клиентский `append` запрещён; старый 7n
+`append` остаётся только в отдельном тестовом режиме.
+Тот же signed receipt восстанавливается после потерянного IPC ACK;
+подделка proof, stale/replay, fork и отсутствие projector DENY.
+
+**NOT PRODUCTION:** один CI runner, без off-host durability,
+PG→witness atomic settlement, issuer authorization, external ACK,
+архива/GC. Всегда `gcPermitted=false`.
+[Контракт 7p](SYNTHETIC_PG_ATTESTED_IPC_APPEND_V1.ru.md).

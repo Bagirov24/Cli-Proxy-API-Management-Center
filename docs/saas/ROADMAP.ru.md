@@ -1141,3 +1141,21 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
 - [ ] **SPEC:** fenced PG COMMIT→external witness atomic
   settlement, WAL/PITR/failover, partition resilience,
   remote delivery ACK, safe archive/non-reuse/GC approval
+
+
+## Stage 2G.4d.7p — source-attested IPC witness append
+
+- [x] **IMPLEMENTED staging only:** pinned Ed25519 projector trust root,
+  daemon-owned challenge nonce, `append-pg` verification prior to
+  witness signature; opt-in mode refuses client-only `append`
+- [x] **TEST COVERAGE:** real PG16 read-only projection after COMMIT,
+  modified proof/request ID/replayed challenge/stale head DENY,
+  concurrent publishers, ACK-loss idempotent restart, unavailable
+  projector, revoked SELECT and tampered disk evidence DENY
+- [x] **CODE VERIFIED:** 4/4 GitHub Actions SUCCESS on \`7bbfc07d\`; final docs HEAD requires separate 4/4 verification
+- [ ] **PRODUCTION BLOCKERS:** independent off-host attestor/witness,
+  durable anti-rollback trust root and nonces, signed issuer authority,
+  fenced/atomic PG settlement, WAL/PITR/failover/partition recovery,
+  authenticated delivery ACK, safe retention/GC sign-off
+- [ ] **NOT AUTHORIZED:** production API/deployment, UUID reuse,
+  tombstone removal, migration 019 or lifetime-cap reset

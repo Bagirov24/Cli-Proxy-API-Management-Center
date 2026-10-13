@@ -1017,3 +1017,25 @@ PG→witness atomic fencing остаются SPEC.
 `gcPermitted=false`; production, GC, archive,
 UUID reuse, migration 019 ЗАПРЕЩЕНЫ.
 [Контракт](SYNTHETIC_PG_PROJECTION_ATTESTATION_V1.ru.md).
+
+
+## D-073 — witness validates signed PG source before protected append
+
+Stage 2G.4d.7p binds a server-generated challenge to the
+request ID and expected signed head. In an isolated opt-in
+Unix-socket witness mode the server pins the projector Ed25519
+public key at startup and requires a signed `append-pg`
+attestation from read-only PostgreSQL16 role 7o; client-supplied
+projection through legacy `append` is rejected in that mode.
+Every source proof persists alongside its signed witness checkpoint
+and is re-verified at daemon restart. Same request ID + exact
+source proof recovers the prior receipt after lost ACK; modified
+request, forged source, stale head and competitor fork DENY.
+
+**Decision boundary:** the opt-in proof does not harden production
+issuer paths, prove independent PostgreSQL state, prevent
+shared-runner rollback, or atomically fence a database COMMIT
+against witness publication. Genuine off-host trusted durable
+head, cross-system recovery and actor-scoped authorization remain
+SPEC / PRODUCTION BLOCKER. `gcPermitted=false`.
+[Контракт 7p](SYNTHETIC_PG_ATTESTED_IPC_APPEND_V1.ru.md).
