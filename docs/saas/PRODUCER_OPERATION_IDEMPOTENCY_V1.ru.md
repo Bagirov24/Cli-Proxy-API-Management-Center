@@ -246,3 +246,16 @@ A killed pre-COMMIT writer leaves an unobserved UUID,
 which this proof also DENIES rather than declaring a
 safe-to-reissue key.
 [7m proof](SYNTHETIC_UNKNOWN_COMMIT_SETTLEMENT_V1.ru.md).
+
+
+## 2G.4d.7n — witness request-ID replay is not SQL producer retry
+
+A separate offline IPC signer returns exactly one signed
+receipt for the same hashed projection, expected signed
+head and client-generated request ID after a lost ACK.
+Parallel stale writers cannot both append; malformed or
+conflicting replays DENY. This is not a real 015 issuer,
+tenant authorization, external ACK or database non-reuse
+registry, and it does not change transactional 015/016
+UUID idempotency or enable archive GC.
+[7n contract](SYNTHETIC_IPC_WITNESS_LOST_ACK_V1.ru.md).

@@ -941,3 +941,23 @@ key reside on ONE runner, candidate is not signed actor approval,
 there is no atomic PG→external witness protocol or production
 identity/failover guarantee. No archive/GC/UUID reuse.
 [7m contract](SYNTHETIC_UNKNOWN_COMMIT_SETTLEMENT_V1.ru.md).
+
+
+## Stage 2G.4d.7n — отдельный Unix-socket witness (CI only)
+
+Новый синтетический PostgreSQL16 CI запускает долгоживущий
+Node witness process с Unix-сокетом, собственным временным
+Ed25519 ключом, fsynced checkpoint/head и подписанным
+receipt для каждого request ID. Реальный PG COMMIT до
+обновления witness даёт DENY; потеря IPC ACK **после**
+фиксации head восстанавливает ТОТ ЖЕ receipt после restart,
+а не выпускает другой UUID. Конкурентные stale writers,
+подмена request ID, незаписанный UUID и orphaned checkpoint
+после SIGKILL блокируются.
+
+Signer НЕ получает PG credentials, но signer и client всё
+ещё находятся на одном GitHub runner и в одном OS trust
+domain; PostgreSQL projection приходит от клиента и не
+подтверждается независимым источником. Никакого external
+durable witness, production, GC, архива, реальной delivery.
+[Контракт 7n](SYNTHETIC_IPC_WITNESS_LOST_ACK_V1.ru.md).

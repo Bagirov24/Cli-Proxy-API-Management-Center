@@ -210,3 +210,16 @@ first-use and two-hour recovery windows remain unchanged.
 No new authenticated HTTP endpoint, client recovery token,
 issuer trust root, GC, removal or lifetime-cap refill.
 [7m contract](SYNTHETIC_UNKNOWN_COMMIT_SETTLEMENT_V1.ru.md).
+
+
+## 2G.4d.7n — separate signer recovers witness receipt only
+
+A long-lived offline Unix-socket signer can outlive the
+application's IPC connection and recover the same signed
+checkpoint+receipt after restart. A real committed UUID
+not yet signed by the witness remains DENIED to the
+strict read-only verifier. Existing 016 signed issue
+TTL and recovery windows are unchanged. This is not a
+public status endpoint, true post-PITR non-reuse guard or
+issuer authorization; no deletion or GC.
+[7n contract](SYNTHETIC_IPC_WITNESS_LOST_ACK_V1.ru.md).

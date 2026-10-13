@@ -964,3 +964,28 @@ gate принимает только ровно один ожидаемый hash
 Даже успешное локальное settlement не означает ACK получателя.
 Граница `gcPermitted=false` и lifetime caps неизменны.
 [Контракт 7m](SYNTHETIC_UNKNOWN_COMMIT_SETTLEMENT_V1.ru.md).
+
+
+## D-071 — подписанный IPC receipt не доказывает независимый PG COMMIT
+
+Stage 2G.4d.7n добавляет отдельный долгоживущий
+Unix-domain socket свидетельский процесс без PostgreSQL
+credentials. Он подписывает Ed25519 checkpoint и
+request-id receipt, пишет fsync file/head и проверяет
+историю при restart. При потере клиентского ACK после
+подписания повтор идентичного request ID/predecessor/
+projection возвращает ТОТ ЖЕ receipt. Конкурирующая
+публикация со stale head и orphan после SIGKILL до
+head update закрываются через DENY.
+
+**Решение:** Unix-socket процесс не означает внешнего
+trust domain, так как он работает на том же CI runner,
+а ключ доступен владельцу того же OS account. Истинность
+PostgreSQL projection подписыватель НЕ подтверждает,
+issuer tenant/actor/role не связан с receipt, PG COMMIT
+и local head НЕ атомарны. Совместный rollback доверенных
+файлов и клиентского pin всё ещё возможен. Поэтому нет
+разрешения на external ACK, production, tombstone GC,
+non-reuse archival или новый SQL migration. Всегда
+`gcPermitted=false`.
+[Контракт 7n](SYNTHETIC_IPC_WITNESS_LOST_ACK_V1.ru.md).

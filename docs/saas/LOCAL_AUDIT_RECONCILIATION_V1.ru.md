@@ -253,3 +253,15 @@ It creates no 009 Allow, 012 reconciled observation,
 013 intent, 014 ACK or remote effect and cannot replace
 local audit reconciliation or settle unknown network delivery.
 [7l contract](SYNTHETIC_WITNESS_HIGHWATER_GAP_V1.ru.md).
+
+
+## 2G.4d.7n — separate IPC witness is not 012 audit settlement
+
+The 7n daemon has no PostgreSQL environment or driver and
+cannot mint 009 signed Allow audit or 012 reconciliation.
+The adversarial PG16 test confirms the existing audit count
+is unchanged after signing local checkpoint heads, replaying
+a lost IPC ACK, competing writers and a crash. The signed
+receipt is not a 013 event intent, a 014 recipient ACK or
+a remote delivery proof, and cannot authorize any GC.
+[7n contract](SYNTHETIC_IPC_WITNESS_LOST_ACK_V1.ru.md).

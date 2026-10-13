@@ -314,3 +314,16 @@ no payload is sent, and no external exactly-once delivery
 is claimed. Missing journal, partial publications and
 stale projections DENY; all-local rollback remains possible.
 [7l details](SYNTHETIC_WITNESS_HIGHWATER_GAP_V1.ru.md).
+
+
+## 2G.4d.7n — signed IPC receipt is not a receiver ACK
+
+The separate job-local witness signs only the SHA-256
+commitment of a caller-supplied synthetic UUID snapshot.
+The signed witness receipt can be replayed exactly after
+an IPC reply loss, but it neither schedules 013 mock
+delivery nor creates a 014 receiver record or real
+authenticated delivery/ACK. No network sender or client
+payload is introduced. Real post-COMMIT transport and
+pre-COMMIT local-handoff safety remain production gates.
+[7n contract](SYNTHETIC_IPC_WITNESS_LOST_ACK_V1.ru.md).

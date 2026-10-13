@@ -402,3 +402,22 @@ during partitions and lag, immutable WORM/non-reuse across
 actual PITR and host failover, external payload/delivery/ACK,
 privacy retention, pre-COMMIT handoff remediation and final
 independent security signoff. SQL 015–018 unchanged.
+
+
+## 2G.4d.7n — separate local IPC process is not an external witness
+
+**Disposable code only:** separate Unix-domain socket signer with
+no PostgreSQL credentials, canonical Ed25519 checkpoint and
+signed receipt, single-writer expected-head CAS, durable-to-runner
+fsync and identical lost-ACK replay across process restart.
+Pending checkpoint before head publication fails closed.
+All immutable 015–018 SQL remains unchanged.
+
+**Production gate OPEN:** separate host/operator/credential
+authority and physically durable rollback-resistant trust root;
+independent source authenticity (PG signed current snapshot,
+issuer tenant/actor scope), true cross-system fenced COMMIT,
+network partition/consensus recovery, persistent key rotation,
+actual PITR/WAL failover, real delivery/recipient ACK, privacy
+retention/GC approval and security review. No API, deployment,
+reuse, archive or quota relief.

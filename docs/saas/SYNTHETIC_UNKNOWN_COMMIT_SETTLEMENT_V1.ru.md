@@ -154,3 +154,18 @@ or live traffic is authorized.**
 [synthetic Chromium #38373532525](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38373532525).
 The final documentation SHA requires its own checks. This evidence
 does not authorize independent durable witness, remote ACK, GC or production.
+
+
+## Follow-on Stage 2G.4d.7n — witness ACK may also be UNKNOWN
+
+The new long-lived Unix-socket signer can sign and fsync
+a checkpoint, publish its head, and then lose the IPC ACK
+before the client learns the result. Restarting from the
+same unmodified local signed state and re-sending the same
+128-bit request ID, predecessor and projection returns the
+same signed receipt. It does NOT create another operation
+or authorize a retry of a real producer UUID. A changed
+idempotency request or stale expected head is denied.
+The 7m lost PostgreSQL COMMIT response remains separate:
+the new IPC daemon is not transactionally bound to SQL.
+[7n proof](SYNTHETIC_IPC_WITNESS_LOST_ACK_V1.ru.md).

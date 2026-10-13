@@ -226,3 +226,16 @@ network ACK or an external exactly-once delivery.
 An unswept post-COMMIT identity DENIES until its witness
 is sealed. `gcPermitted=false` and no real payload.
 [7m proof](SYNTHETIC_UNKNOWN_COMMIT_SETTLEMENT_V1.ru.md).
+
+
+## 2G.4d.7n — IPC witness signature cannot commit audit/intent
+
+The witness signs canonical synthetic issued/producer UUID
+commitment sets supplied by a client without DB access.
+It does not create 009 signed audit, 013 event-only intent,
+012 reconciliation, 014 delivery receipt or recipient ACK.
+IPC receipt replay establishes only the LOCAL signed
+checkpoint identity, not a real external effect or
+committed actor authorization. Pre-COMMIT side effect
+and production transport remain blocked.
+[7n contract](SYNTHETIC_IPC_WITNESS_LOST_ACK_V1.ru.md).

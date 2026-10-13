@@ -1100,3 +1100,22 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
   atomic PG→external settlement, verified live issuer rules
 - [ ] **SPEC:** real partitions/WAL/PITR, full production recovery,
   durable operation payload/ACK, safe archive/non-reuse and GC
+
+
+## Stage 2G.4d.7n — witness process and idempotent IPC ACK recovery
+
+- [x] **IMPLEMENTED CI-only:** separate long-lived Unix-socket
+  Ed25519 signer, signed request-id receipt, per-checkpoint
+  exclusive/fsynced append and atomically published head
+- [x] **TESTED:** real PG COMMIT while signer is offline DENY;
+  signer restart/pinned public key; lost ACK after durable head
+  resumes exact same signed receipt by idempotent request ID
+- [x] **ADVERSARIAL:** stale/forked head, changed request payload,
+  zero-delta append, concurrent writers racing one head,
+  crash before head publication leaves orphan and startup DENY
+- [ ] **SPEC:** independent durable off-host signer/trust
+  domain, authenticated DB projection, real network partition,
+  tenant/actor binding, atomic/fenced COMMIT-to-witness settlement,
+  PITR/failover/keeper recovery and safe production operation
+- [ ] **NOT AUTHORIZED:** tombstone deletion/reuse, GC, capacity
+  reset, public producer endpoints and production deployment

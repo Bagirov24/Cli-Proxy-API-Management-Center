@@ -167,3 +167,18 @@ be rolled back together** still applies. No external
 independent signer, physical other host, atomic settlement
 or real issuer non-reuse rule is supplied. `gcPermitted=false`.
 [7m details](SYNTHETIC_UNKNOWN_COMMIT_SETTLEMENT_V1.ru.md).
+
+
+## Follow-on Stage 2G.4d.7n — local process, same trust failure domain
+
+7n runs a long-lived Ed25519 signer as a separate Unix-socket
+process and persists signed request-id receipts. A lost IPC ACK
+after fsync can be resolved via the same signed checkpoint
+without a new UUID; concurrent clients cannot both advance
+an expected local head. But the daemon is on the SAME runner,
+not the independently owned WORM/monotonic witness imagined
+by future production designs. Its canonical UUID projection
+comes from the untrusted caller. Combined rollback of signer
+state and external trusted pin remains possible; no atomic PG
+COMMIT witness publication or GC.
+[7n proof](SYNTHETIC_IPC_WITNESS_LOST_ACK_V1.ru.md).
