@@ -35,6 +35,7 @@
 | [M1B_SIGNED_PG_DRIVER_E2E.ru.md](M1B_SIGNED_PG_DRIVER_E2E.ru.md) | M1b stacked Draft: CI-only pinned RS256 → server actor → signed SQL project writes на одноразовой PG16; UNKNOWN COMMIT quarantine, не production |
 | [M1C_PROJECT_ATOMIC_AUDIT_PG16.ru.md](M1C_PROJECT_ATOMIC_AUDIT_PG16.ru.md) | M1c stacked Draft: SQL 021 private project audit in SAME PG16 transaction, rollback and conflict tests, NOT independent WORM |
 | [M1D_PROJECT_AUTHORIZATION_FENCE_PG16.ru.md](M1D_PROJECT_AUTHORIZATION_FENCE_PG16.ru.md) | M1d Draft: reuse signed tenant revision FOR SHARE to serialize project COMMIT vs membership/tenant revoke, PostgreSQL16 CI-only |
+| [M1E_PG_PHYSICAL_DISCONNECT_CI.ru.md](M1E_PG_PHYSICAL_DISCONNECT_CI.ru.md) | M1e Draft: actual Bun.SQL PostgreSQL16 backend loss and cancellation before COMMIT, quarantined CI pool, no ghost audit or automatic retry |
 
 ## Что добавлено в код
 
@@ -1224,3 +1225,16 @@ project/audit для запрещённого write, отказ при stale sna
 переигрывания старого SQL021 после установки fence.
 Это НЕ глобальный OIDC-session fence, safe UNKNOWN COMMIT recovery,
 WORM или готовый SaaS API. [M1d acceptance](M1D_PROJECT_AUTHORIZATION_FENCE_PG16.ru.md).
+
+
+## M1e — real physical PostgreSQL16 disconnect/cancellation (CI-only)
+
+M1b native signed Bun.SQL driver in disposable CI now tests a genuine
+`pg_terminate_backend()` against its reserved PID after mutation+M1c
+private audit but before COMMIT. Another fault aborts via AbortSignal.
+Both require a generic 503, quarantined whole CI pool, no extra
+reservation and zero project/audit, with physical PG backend PID gone.
+Independent M1b lost ACK AFTER committed COMMIT retains exactly one
+project and one private audit: `503` never authorizes a retry.
+Not a production pool, HTTP API, partition simulation or independent WORM.
+[M1e acceptance](M1E_PG_PHYSICAL_DISCONNECT_CI.ru.md).
