@@ -42,7 +42,7 @@ function guard() {
       name==='DATABASE_URL'||name==='SAAS_PRODUCTION_DATABASE_URL'),
     'Refusing witness daemon with DB, Railway or production credentials');
   check(process.argv.length===4,'daemon requires only state-dir and local socket');
-  const [dir,socket]=process.argv.slice(2).map(resolve);
+  const [dir,socket]=process.argv.slice(2).map(path=>resolve(path));
   const prefix=resolve(tmpdir(),'saas-ipc-witness-');
   check(dir.startsWith(prefix)&&socket.startsWith(prefix) &&
     !dir.startsWith(socket+'/')&&!socket.startsWith(dir+'/')&&
