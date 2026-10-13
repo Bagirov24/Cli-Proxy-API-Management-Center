@@ -712,4 +712,22 @@ jobs:
             node scripts/saas-staging/verify-archive-witness-pg-projection.mjs
 
 
+      - name: Verify PostgreSQL-attested witness append, replay and crash boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7p: separate, opt-in Unix witness proof-path.
+          # Ephemeral restricted PG projector; no production issuer, keys,
+          # Railway, external payload/recipient, GC or deployment.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 125s env \
+            SAAS_EPHEMERAL_PROJECTOR_APPEND_CI=true \
+            node scripts/saas-staging/verify-archive-witness-pg-append.mjs
+
       # No deploy, repository secrets, production SQL connections or credentials.

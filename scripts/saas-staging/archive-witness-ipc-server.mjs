@@ -12,7 +12,7 @@ import { dirname, resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   generateKeyPairSync, createPrivateKey, createPublicKey, createHash,
-  sign as edSign, verify as edVerify, randomUUID,
+  sign as edSign, verify as edVerify, randomUUID, randomBytes,
 } from 'node:crypto';
 import {
   canonicalProjection, envelopeDigest, verifyEnvelope, verifyCheckpoint,
@@ -23,6 +23,9 @@ const AUDIENCE='ephemeral-pg16-proof-only';
 const RECEIPT='saas-synthetic-ipc-witness-receipt-v1';
 const HEX=/^[0-9a-f]{64}$/;
 const ID=/^[0-9a-f]{32}$/;
+const PG_ATTEST='saas-synthetic-pg-projection-attestation-v1';
+const PG_CHALLENGE='saas-synthetic-pg-projection-challenge-v1';
+const PG_PIN='saas-synthetic-ipc-pg-projector-pin-v1';
 const check=(v,why)=>{if(!v)throw Error(why);};
 const exact=(x,names)=>x!==null&&typeof x==='object'&&!Array.isArray(x)&&
   Object.keys(x).sort().join(',')===names.slice().sort().join(',');
@@ -49,7 +52,23 @@ function guard() {
     !dir.includes('/../')&&!socket.includes('/../')&&
     !existsSync(socket),
     'Refusing witness state outside disposable private CI directory');
-  return {dir,socket};
+  // 7p is a separate opt-in proof-only daemon. Its trust root is configured
+  // at startup, NEVER received from an IPC caller. Old 7n append stays
+  // available only in the deliberately unprotected legacy test mode.
+  const proofMode=process.env.SAAS_EPHEMERAL_PG_WITNESS_PROOF_CI==='true';
+  const pinPath=process.env.SAAS_EPHEMERAL_PROJECTOR_PUBKEY_PATH;
+  let projectorPem=null;
+  if(proofMode) {
+    check(typeof pinPath==='string'&&
+      resolve(pinPath).startsWith(dirname(dir)+'/')&&
+      resolve(pinPath)!==dir&&existsSync(pinPath),
+      'Only a private disposable projector trust root may be pinned');
+    projectorPem=readFileSync(pinPath,'utf8');
+    check(projectorPem.length>0&&projectorPem.length<16000&&
+      createPublicKey(projectorPem).asymmetricKeyType==='ed25519',
+      'Malformed pinned ephemeral Ed25519 projector key');
+  } else check(!pinPath,'Projector key only allowed in proof-only mode');
+  return {dir,socket,proofMode,projectorPem};
 }
 function fsyncDir(path) {
   const fd=openSync(path,'r');
@@ -117,7 +136,38 @@ function exactSingleNew(current,previous) {
   }
   check(total===1,'Only exactly ONE newly committed synthetic UUID per successor');
 }
-function initialize(dir) {
+function projectorFingerprint(pem) {
+  return hash(createPublicKey(pem).export({type:'spki',format:'der'}));
+}
+function sourceProjection(proof,challenge,projectorPem) {
+  check(exact(challenge,['protocol','nonce','expected'])&&
+    challenge.protocol===PG_CHALLENGE&&ID.test(challenge.nonce)&&
+    canonicalHead(challenge.expected),
+    'Wrong witness-issued source challenge');
+  check(exact(proof,['statement','signature'])&&
+    typeof proof.signature==='string'&&
+    /^[A-Za-z0-9_-]{80,120}$/.test(proof.signature),
+    'Missing or malformed source signature');
+  const signed=proof.statement;
+  check(exact(signed,['protocol','audience','challenge','expected','source','projection'])&&
+    signed.protocol===PG_ATTEST&&signed.audience===AUDIENCE&&
+    signed.challenge===challenge.nonce&&
+    equal(signed.expected,challenge.expected)&&
+    exact(signed.source,['database','snapshot'])&&
+    signed.source.database==='saas_ephemeral_test'&&
+    typeof signed.source.snapshot==='string'&&
+    /^[0-9:,]{3,256}$/.test(signed.source.snapshot),
+    'Source identity, nonce or predecessor not bound');
+  const projection=canonicalProjection(signed.projection);
+  check(equal(projection,signed.projection),
+    'Noncanonical signed PostgreSQL projection');
+  const sig=Buffer.from(proof.signature,'base64url');
+  check(sig.length===64&&edVerify(null,
+    Buffer.from(PG_ATTEST+'\n'+JSON.stringify(signed)),projectorPem,sig),
+    'Untrusted source signature or signed projection');
+  return projection;
+}
+function initialize(dir,proofMode,projectorPem) {
   if(!existsSync(dir)) {
     mkdirSync(join(dir,'checkpoints'),{recursive:true,mode:0o700});
     chmodSync(dir,0o700);
@@ -127,9 +177,14 @@ function initialize(dir) {
       pair.privateKey.export({type:'pkcs8',format:'pem'}));
     exclusive(join(dir,'public.pem'),
       pair.publicKey.export({type:'spki',format:'pem'}));
+    if(proofMode)exclusive(join(dir,'projector-pin.json'),JSON.stringify({
+      protocol:PG_PIN,fingerprint:projectorFingerprint(projectorPem),
+    })+'\n');
   }
   const files=readdirSync(dir).sort();
-  const expected=['checkpoints','private.pem','public.pem',...(existsSync(join(dir,'head.json'))?['head.json']:[])].sort();
+  const expected=['checkpoints','private.pem','public.pem',
+    ...(proofMode?['projector-pin.json']:[]),
+    ...(existsSync(join(dir,'head.json'))?['head.json']:[])].sort();
   check(equal(files,expected),'Witness orphan, pending file, or foreign state: DENY');
   const privatePem=readFileSync(join(dir,'private.pem'),'utf8');
   const publicPem=readFileSync(join(dir,'public.pem'),'utf8');
@@ -137,15 +192,24 @@ function initialize(dir) {
   check(createPublicKey(createPrivateKey(privatePem))
       .export({type:'spki',format:'pem'}).toString()===publicPem,
     'Witness key pair mismatch');
+  if(proofMode) {
+    const pin=readJson(join(dir,'projector-pin.json'));
+    check(exact(pin,['protocol','fingerprint'])&&pin.protocol===PG_PIN&&
+      pin.fingerprint===projectorFingerprint(projectorPem),
+      'Projector trust root changed on restart: DENY');
+  }
   const entries=readdirSync(join(dir,'checkpoints')).sort();
   check(entries.length<=128,'Witness history capacity exhausted');
-  const state={history:[],head:null,privatePem,publicPem};
+  const state={history:[],head:null,privatePem,publicPem,
+    proofMode,projectorPem,pending:new Map(),seenNonces:new Set()};
   const ids=new Set();
   for(let i=0;i<entries.length;i++) {
     check(entries[i]===String(i+1).padStart(8,'0')+'.json',
       'Non-monotonic or orphan witness checkpoint');
     const row=readJson(getPath(dir,i+1));
-    check(exact(row,['requestId','expected','envelope','receipt'])&&
+    check(exact(row,proofMode?
+      ['requestId','expected','envelope','receipt','challenge','attestation']:
+      ['requestId','expected','envelope','receipt'])&&
       ID.test(row.requestId)&&canonicalHead(row.expected)&&
       !ids.has(row.requestId),'Duplicate or malformed persistent request');
     const previous=state.history.at(-1);
@@ -156,6 +220,16 @@ function initialize(dir) {
       payload.projection,previous?.envelope??null);
     if(previous)exactSingleNew(payload.projection,previous.envelope.payload.projection);
     verifyReceipt(row.receipt,publicPem,row);
+    if(proofMode) {
+      check(equal(row.challenge.expected,row.expected)&&
+        !state.seenNonces.has(row.challenge.nonce),
+        'Duplicate, wrong or rolled-back source challenge');
+      const fromPg=sourceProjection(row.attestation,row.challenge,projectorPem);
+      check(equal(fromPg,payload.projection)&&
+        payload.projectionRoot===hash(JSON.stringify(fromPg)),
+        'Persistent witness does not match verified PG proof digest');
+      state.seenNonces.add(row.challenge.nonce);
+    }
     state.history.push(row);
     ids.add(row.requestId);
   }
@@ -191,18 +265,54 @@ function handle(message,state,dir) {
       'Unsigned, stale or missing committed UUID: DENY');
     return sealed(latest);
   }
-  if(message.op==='append') {
-    check(exact(message,['op','requestId','expected','projection'])&&
+  if(message.op==='challenge-pg') {
+    check(state.proofMode&&
+      exact(message,['op','requestId','expected'])&&
+      ID.test(message.requestId)&&canonicalHead(message.expected)&&
+      equal(message.expected,state.head)&&
+      !state.history.some(row=>row.requestId===message.requestId),
+      'Wrong, stale or duplicate source challenge request');
+    let challenge=state.pending.get(message.requestId);
+    if(challenge)check(equal(challenge.expected,message.expected),
+      'Challenge idempotency conflict');
+    else {
+      check(state.pending.size<32,'Outstanding challenge capacity exhausted');
+      let nonce;
+      do {nonce=randomBytes(16).toString('hex');}
+      while(state.seenNonces.has(nonce));
+      state.seenNonces.add(nonce);
+      challenge={protocol:PG_CHALLENGE,nonce,expected:message.expected};
+      state.pending.set(message.requestId,challenge);
+    }
+    return {ok:true,state:'CHALLENGE',requestId:message.requestId,
+      challenge,gcPermitted:false};
+  }
+  if(message.op==='append'||message.op==='append-pg') {
+    const protectedAppend=message.op==='append-pg';
+    check(protectedAppend===state.proofMode&&
+      exact(message,protectedAppend?
+        ['op','requestId','expected','attestation']:
+        ['op','requestId','expected','projection'])&&
       ID.test(message.requestId)&&canonicalHead(message.expected),
-      'Malformed append or untrusted request identifier');
-    const now=canonicalProjection(message.projection);
-    // Idempotent recovery after a lost COMMIT/receipt response: the
-    // same operation + same predecessor + same projection yields EXACT
-    // original signed receipt. A changed replay is always rejected.
+      'Malformed append, wrong mode, or untrusted request identifier');
     const prior=state.history.find(x=>x.requestId===message.requestId);
+    const challenge=protectedAppend?
+      (prior?.challenge??state.pending.get(message.requestId)):null;
+    if(protectedAppend)check(challenge&&
+      equal(challenge.expected,message.expected),
+      'Missing witness-issued challenge: DENY');
+    // Projector signature and source identity are validated INSIDE this
+    // daemon, before any successor is signed. Client projections are
+    // forbidden in protected mode, including on idempotent replay.
+    const now=protectedAppend?
+      sourceProjection(message.attestation,challenge,state.projectorPem):
+      canonicalProjection(message.projection);
+    // A lost ACK may recover ONLY an identical request/attestation from
+    // the already fsynced record, including after a daemon restart.
     if(prior) {
       check(equal(prior.expected,message.expected)&&
-        equal(prior.envelope.payload.projection,now),
+        equal(prior.envelope.payload.projection,now)&&
+        (!protectedAppend||equal(prior.attestation,message.attestation)),
         'Idempotency key conflict: DENY');
       return sealed(prior);
     }
@@ -213,13 +323,16 @@ function handle(message,state,dir) {
     if(last)exactSingleNew(now,last.envelope.payload.projection);
     const envelope=signEnvelope(now,last?.envelope??null,
       state.privatePem,state.publicPem);
-    verifyEnvelope(envelope,state.publicPem);
+    verifyCheckpoint(envelope,state.publicPem,headOf(envelope),
+      now,last?.envelope??null);
     const receipt=signReceipt({
       protocol:RECEIPT,requestId:message.requestId,
       sequence:envelope.payload.sequence,digest:envelopeDigest(envelope),
     },state.privatePem);
-    const row={requestId:message.requestId,expected:message.expected,
-      envelope,receipt};
+    const row=protectedAppend?
+      {requestId:message.requestId,expected:message.expected,envelope,
+        receipt,challenge,attestation:message.attestation}:
+      {requestId:message.requestId,expected:message.expected,envelope,receipt};
     // This is a single-writer Unix-socket daemon: synchronous processing
     // serializes contenders. It is NOT consensus/atomicity with PostgreSQL.
     exclusive(getPath(dir,envelope.payload.sequence),
@@ -229,6 +342,7 @@ function handle(message,state,dir) {
     atomic(join(dir,'head.json'),headOf(envelope));
     state.history.push(row);
     state.head=headOf(envelope);
+    if(protectedAppend)state.pending.delete(message.requestId);
     // Simulate a durable witness ACK lost AFTER fsync+rename, BEFORE any
     // bytes of the receipt reach caller. Restart must replay same receipt.
     if(process.env.SAAS_WITNESS_TEST_LOSE_ACK===
@@ -237,9 +351,9 @@ function handle(message,state,dir) {
   }
   throw Error('Unknown operation');
 }
-const {dir,socket}=guard();
+const {dir,socket,proofMode,projectorPem}=guard();
 let state;
-try {state=initialize(dir);}
+try {state=initialize(dir,proofMode,projectorPem);}
 catch(error) {
   process.stderr.write('IPC WITNESS DENIED: '+error.message+'\n');
   process.exit(2);
