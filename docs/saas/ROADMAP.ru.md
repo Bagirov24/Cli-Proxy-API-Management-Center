@@ -1367,3 +1367,16 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
 - [ ] M1 live SSO/Control CRUD/PG/Core; M2 runtime tenant/egress;
   M3 independent settlement; M4 ops/security — separate PRs
 [M0 merge readiness checklist](MERGE_READINESS_M0.ru.md).
+
+
+## Stage M1b — signed native PG16 command transaction (STACKED DRAFT / CI-only)
+
+- [x] Новый отдельный M1b branch от HEAD M1a Draft PR №4, без merge M0/M1a.
+- [x] Guarded disposable PG16 SQL role, Bun.SQL private write harness, verified synthetic RS256 access token → issuer/subject actor → tenant RBAC → signed transaction HMAC → fixed M1a project functions.
+- [x] Скрипт и GitHub Actions SQL E2E test добавлены; фактический результат CI на финальном SHA — проверять отдельно.
+- [ ] Подтвердить 4/4 GitHub Actions SUCCESS на окончательном M1b SHA, including SQL16 E2E logs.
+- [ ] Durable atomic write-audit outbox / epoch fence / UNKNOWN COMMIT reconciliation without reissue.
+- [ ] Independent physical connection discard/timeout/cancel and partition tests, trusted durable sessions, security review before any real API.
+
+Этап не подключён к production, публичному HTTP, Core/Gateway, Railway,
+CPA keys и SQL019. [M1b acceptance and limitations](M1B_SIGNED_PG_DRIVER_E2E.ru.md).
