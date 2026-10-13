@@ -361,3 +361,25 @@ Old pre-COMMIT handoff, production HTTP, payloads and ACK
 remain release blockers.
 
 **CODE VERIFIED at `9af3b8d5b29ebceb6a433468c650f01be913a148`:** [Main CI #38367994239](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994239), [ephemeral PG16 #38367994247](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994247), [Demo #38367994191](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994191), [Chromium #38367994196](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994196) — **4/4 SUCCESS**. The final documentation HEAD must pass its own CI; no archive/GC/deployment authorization.
+
+
+## 2G.4d.7l — third local high-water file still NOT durable witness
+
+**IMPLEMENTED only in synthetic PG16 CI:** two offline
+signed witness verifier processes with independently fsynced
+local heads, third local high-water journal with monotonic
+links and a publication lock, DENY for partially published
+heads, missing/torn journal, double replica rollback, and
+unsigned real PG COMMIT. CI explicitly checks the negative
+counterexample: all three local files plus old projection
+can rewind together and still pass internal consistency.
+
+**Production gates remain OPEN:** separately managed durable
+high-water with WORM or equivalent independent rollback
+resistance, multiple hosts/trust domains, issuer-level
+non-reuse fence after PostgreSQL restore, transactional
+PG-to-witness outbox protocol with unknown-outcome settlement,
+actual PITR/failover/partition tests, true live projection
+binding, key rotation and custody, retention/privacy signoff
+and explicit security authorization for any archive/GC.
+No deletion, migration 019, real delivery or Railway.

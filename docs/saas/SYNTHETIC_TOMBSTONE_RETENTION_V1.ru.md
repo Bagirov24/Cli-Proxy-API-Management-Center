@@ -183,3 +183,16 @@ original 015/016 tombstone and does not grant capacity relief.
 [Full 7k contract](SYNTHETIC_WITNESS_RESTORE_PROOF_V1.ru.md).
 
 **CODE VERIFIED at `9af3b8d5b29ebceb6a433468c650f01be913a148`:** [Main CI #38367994239](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994239), [ephemeral PostgreSQL16 #38367994247](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994247), [Demo #38367994191](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994191), [Chromium #38367994196](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994196) — **4/4 SUCCESS**. Final docs SHA must be separately verified. No archive or GC authorization.
+
+
+## 2G.4d.7l — local high-water is NOT safe tombstone retention
+
+Even a three-file witness arrangement detects only partial
+rollback or an unsigned COMMIT when a fresh authoritative
+projection is supplied. The CI deliberately demonstrates
+that jointly reverting witness A/B, high-water journal and
+the presented projection can recreate a valid old head.
+Therefore lifetime 016/015 UUID rows remain immutable;
+no GC/archive delete, reset of 017/018 caps or reissue
+permission is added. `gcPermitted=false` remains fixed.
+[7l proof](SYNTHETIC_WITNESS_HIGHWATER_GAP_V1.ru.md).

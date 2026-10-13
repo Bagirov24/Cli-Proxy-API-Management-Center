@@ -1061,3 +1061,24 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
   cross-instance non-reuse enforcement on every issuance
 
 **CODE VERIFIED at `9af3b8d5b29ebceb6a433468c650f01be913a148`:** [Main CI #38367994239](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994239), [ephemeral PG16 #38367994247](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994247), [Demo #38367994191](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994191), [Chromium #38367994196](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994196) — **4/4 SUCCESS**. The final documentation HEAD must pass its own CI; no archive/GC/deployment authorization.
+
+
+## Stage 2G.4d.7l — offline head quorum and commit-gap fail-closed
+
+- [x] **IMPLEMENTED (disposable CI only):** two separate signed
+  head histories, two offline verification processes and independent
+  *local* fsynced append-only-convention high-water journal;
+  all three must agree on latest signed sequence and UUID set
+- [x] **TESTED:** real PG16 COMMIT-to-witness gap DENY; one
+  replica advanced DENY; both advanced without journal DENY;
+  complete seq2/seq3 PASS; double replica rollback, lost/torn
+  journal, SIGKILL before journal lock release all DENY
+- [x] **Explicit negative acceptance:** rewind both replicas
+  AND local journal plus matching old projection may PASS;
+  this shows why there is no external rollback-resistant root
+- [ ] **SPEC:** independently administered durable append-only
+  high-water, key custody, external monotonic anti-rollback,
+  atomic/fenced producer COMMIT+witness settlement, authenticated
+  live DB projection and real PITR/failover
+- [ ] **NOT ALLOWED:** tombstone GC/deletion/reuse, capacity reclaim,
+  production deployment, public issue/status or external sender

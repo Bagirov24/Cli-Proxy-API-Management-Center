@@ -917,3 +917,27 @@ failover, предотвращения общего rollback head+anchor,
 [Контракт 7k](SYNTHETIC_WITNESS_RESTORE_PROOF_V1.ru.md).
 
 **CODE VERIFIED at `9af3b8d5b29ebceb6a433468c650f01be913a148`:** [Main CI #38367994239](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994239), [ephemeral PG16 #38367994247](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994247), [Demo #38367994191](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994191), [Chromium #38367994196](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994196) — **4/4 SUCCESS**. The final documentation HEAD must pass its own CI; no archive/GC/deployment authorization.
+
+
+## D-069 — local high-water quorum не является независимой durable root
+
+Для Stage 2G.4d.7l введены два файловых signed witness replicas
+и отдельный fsynced `highwater.log` с последовательными
+`sequence/digest/previous`. Проверяющий запускает отдельные
+offline процессы для обоих witness roots, сверяет последний
+digest, весь Ed25519 chain, signed UUID set и high-water tip.
+Пропажа журнала, его порча, неоконченная публикация или
+возврат ОБОИХ replicas к прошлому seq при сохранённом
+третьем журнале блокируются. Реальный PG16 COMMIT, ещё
+не включённый в signed head, также приводит к DENY.
+
+**Решение:** это только *локальная симуляция* независимости.
+Журнал НЕ WORM и НЕ находится на другом хосте/у
+независимого администратора. CI отдельно показывает, что
+общий rollback обоих replicas, журнала и old projection
+может выглядеть корректным. Разрыв PG COMMIT → publication
+не закрыт атомарно, лишь обнаруживается при точном
+доступном snapshot. Поэтому 7l **НЕ разрешает** delete/GC,
+restore lifetime capacity, production commit, public API
+или новый SQL migration. `gcPermitted=false` неизменно.
+[Контракт 7l](SYNTHETIC_WITNESS_HIGHWATER_GAP_V1.ru.md).

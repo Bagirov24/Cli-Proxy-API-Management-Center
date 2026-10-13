@@ -215,3 +215,18 @@ remains SPEC.
 [7k strict restore proof](SYNTHETIC_WITNESS_RESTORE_PROOF_V1.ru.md).
 
 **CODE VERIFIED at `9af3b8d5b29ebceb6a433468c650f01be913a148`:** [Main CI #38367994239](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994239), [ephemeral PostgreSQL16 #38367994247](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994247), [Demo #38367994191](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994191), [Chromium #38367994196](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994196) — **4/4 SUCCESS**. Final docs SHA must be separately verified. No archive or GC authorization.
+
+
+## 2G.4d.7l — PostgreSQL COMMIT / witness publication is not atomic
+
+CI commits a new issued operation to real disposable PG16
+while two signed witness stores and a third high-water
+journal still pin a preceding checkpoint. A strict verifier
+rejects the mismatch, then rejects one-store and two-store
+partial publication until the latest high-water is appended.
+None of these local files participates in the signed
+015 producer COMMIT, nor can it prevent a restored future
+issuer from reusing a deleted UUID. Exact old-ID replay
+remains governed by the original immutable SQL mapping;
+GC stays forbidden.
+[7l details](SYNTHETIC_WITNESS_HIGHWATER_GAP_V1.ru.md).

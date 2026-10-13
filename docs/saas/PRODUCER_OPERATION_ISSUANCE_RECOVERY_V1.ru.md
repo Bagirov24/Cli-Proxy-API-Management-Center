@@ -183,3 +183,17 @@ production non-reuse authority.
 [7k proof](SYNTHETIC_WITNESS_RESTORE_PROOF_V1.ru.md).
 
 **CODE VERIFIED at `9af3b8d5b29ebceb6a433468c650f01be913a148`:** [Main CI #38367994239](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994239), [ephemeral PostgreSQL16 #38367994247](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994247), [Demo #38367994191](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994191), [Chromium #38367994196](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994196) — **4/4 SUCCESS**. Final docs SHA must be separately verified. No archive or GC authorization.
+
+
+## 2G.4d.7l — signed head lag must fail closed
+
+The CI-only witness explicitly detects a real PG COMMIT
+with an as-yet unsigned new issued UUID when a fresh
+PostgreSQL projection is provided. Separate replica
+publication is not sufficient until high-water advances;
+a crash leaves DENY until adjudicated. This changes
+neither 120-second issue-use nor 2-hour status semantics,
+does not create a public witness API, and never authorizes
+tombstone deletion or post-restore issuance against an
+independent non-reuse registry.
+[7l contract](SYNTHETIC_WITNESS_HIGHWATER_GAP_V1.ru.md).

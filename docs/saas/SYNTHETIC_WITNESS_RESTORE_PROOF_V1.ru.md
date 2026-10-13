@@ -173,3 +173,23 @@ Railway, production credentials/traffic, `/data`,
 `management.html`, public SaaS endpoints or real delivery.
 
 **CODE VERIFIED on `9af3b8d5b29ebceb6a433468c650f01be913a148`:** [Main CI #38367994239](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994239), [ephemeral PG16 #38367994247](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994247), [Demo #38367994191](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994191), [Chromium #38367994196](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994196) — **4/4 SUCCESS**. The final documentation SHA requires independent CI; GC and production remain forbidden.
+
+
+## Follow-on 2G.4d.7l — local tri-compartment coverage
+
+Stage 7k established actual old/current PostgreSQL `pg_restore`
+and local fsynced signed-head continuity. The 7l CI adds
+a second signed history replica and a third, separate local
+high-water journal. A real PostgreSQL COMMIT not yet signed
+is DENIED; first-only and both-replicas-without-journal
+publication deny until every compartment agrees.
+A rolled-back pair of signed histories is detected while
+the latest high-water remains intact. Journal loss, torn
+rows and a SIGKILL-pending writer marker deny.
+
+All records are **on the same ephemeral runner** and can be
+reset together: the tested all-compartments rollback
+counterexample illustrates the remaining trust-root risk.
+The old 7k actual full `pg_dump`/`pg_restore` tests remain
+enabled and unchanged; none of these tests permit GC.
+[Detailed 7l contract](SYNTHETIC_WITNESS_HIGHWATER_GAP_V1.ru.md).

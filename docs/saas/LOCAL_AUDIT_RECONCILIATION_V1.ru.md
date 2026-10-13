@@ -241,3 +241,15 @@ non-reuse. No source UUID is removed.
 [7k proof](SYNTHETIC_WITNESS_RESTORE_PROOF_V1.ru.md).
 
 **CODE VERIFIED at `9af3b8d5b29ebceb6a433468c650f01be913a148`:** [Main CI #38367994239](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994239), [ephemeral PostgreSQL16 #38367994247](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994247), [Demo #38367994191](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994191), [Chromium #38367994196](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994196) — **4/4 SUCCESS**. Final docs SHA must be separately verified. No archive or GC authorization.
+
+
+## 2G.4d.7l — publication-gap DENY is not 012 audit recovery
+
+The offline quorum fails closed when a real PG16 committed
+UUID is not yet included in the two signed witness stores
+and latest high-water record. Once signed, the witness
+checks hashed issued/producer UUID continuity only.
+It creates no 009 Allow, 012 reconciled observation,
+013 intent, 014 ACK or remote effect and cannot replace
+local audit reconciliation or settle unknown network delivery.
+[7l contract](SYNTHETIC_WITNESS_HIGHWATER_GAP_V1.ru.md).

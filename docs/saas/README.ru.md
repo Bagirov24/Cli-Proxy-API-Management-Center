@@ -904,3 +904,22 @@ rename; новый OS-процесс заново сверяет Ed25519 signatu
 [Полный контракт 7k](SYNTHETIC_WITNESS_RESTORE_PROOF_V1.ru.md).
 
 **CODE VERIFIED at `9af3b8d5b29ebceb6a433468c650f01be913a148`:** [Main CI #38367994239](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994239), [ephemeral PG16 #38367994247](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994247), [Demo #38367994191](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994191), [Chromium #38367994196](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994196) — **4/4 SUCCESS**. The final documentation HEAD must pass its own CI; no archive/GC/deployment authorization.
+
+
+## Stage 2G.4d.7l — three local witness compartments (CI only)
+
+**IMPLEMENTED only for ephemeral PG16:** two distinct offline
+Ed25519-verified witness replicas and a separately fsynced, sequential
+high-water journal. A real PG COMMIT made before its signed successor
+is DENIED; incomplete publication of one/both witness replicas or
+missing high-water pin also DENIES. Rollback of both signed replicas
+is detectable while the independent-to-replicas local high-water
+retains the newer head. A journal crash after fsync leaves a lock
+and DENIES on fresh verifier process.
+
+The test explicitly demonstrates the **remaining vulnerability**:
+rolling back all three job-local histories together can recreate an
+old consistent view. All copies and the signer still share one CI host,
+not a durable independently administered witness. No migration 019,
+GC, archive removal, real traffic or endpoint. Read
+[stage 7l contract](SYNTHETIC_WITNESS_HIGHWATER_GAP_V1.ru.md).

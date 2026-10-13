@@ -201,3 +201,16 @@ blocker remain.
 [Restore proof](SYNTHETIC_WITNESS_RESTORE_PROOF_V1.ru.md).
 
 **CODE VERIFIED at `9af3b8d5b29ebceb6a433468c650f01be913a148`:** [Main CI #38367994239](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994239), [ephemeral PostgreSQL16 #38367994247](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994247), [Demo #38367994191](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994191), [Chromium #38367994196](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994196) — **4/4 SUCCESS**. Final docs SHA must be separately verified. No archive or GC authorization.
+
+
+## 2G.4d.7l — local witness quorum cannot attest external intent receipt
+
+Two signed UUID witness files and a third local high-water
+journal verify only operation-ID continuity of the
+already-committed synthetic 015/016 mapping sets.
+Neither a complete seq=3 nor a quorum PASS indicates
+recipient ACK, 012 reconciliation, worker fencing or
+real external delivery. The actual transaction and
+unsafe pre-COMMIT local handoff remain independent,
+unresolved release gates.
+[7l details](SYNTHETIC_WITNESS_HIGHWATER_GAP_V1.ru.md).

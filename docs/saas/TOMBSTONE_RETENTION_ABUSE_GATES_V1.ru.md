@@ -183,3 +183,16 @@ The fsynced head still lives on a single CI runner.
 [7k restore witness contract](SYNTHETIC_WITNESS_RESTORE_PROOF_V1.ru.md).
 
 **CODE VERIFIED at `9af3b8d5b29ebceb6a433468c650f01be913a148`:** [Main CI #38367994239](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994239), [ephemeral PostgreSQL16 #38367994247](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994247), [Demo #38367994191](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994191), [Chromium #38367994196](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994196) — **4/4 SUCCESS**. Final docs SHA must be separately verified. No archive or GC authorization.
+
+
+## 2G.4d.7l — high-water quorum does not refill quotas
+
+An updated pair of Ed25519 signed heads plus local
+high-water marker does not remove old 015/016 bindings or
+restore the 12/48 issued and 64/256 producer lifetime limits.
+It does not enforce edge quotas, authorize new UUIDs,
+or provide an independent global idempotency root.
+Source PG16 may commit a UUID before the witness observes it;
+the exact restore verifier then rejects that unsigned gap
+instead of treating it as covered archival history.
+[7l contract](SYNTHETIC_WITNESS_HIGHWATER_GAP_V1.ru.md).

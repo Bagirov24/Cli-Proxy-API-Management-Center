@@ -170,3 +170,20 @@ and all 015–018 immutability remain unchanged.
 [Detailed 7k test contract](SYNTHETIC_WITNESS_RESTORE_PROOF_V1.ru.md).
 
 **CODE VERIFIED at `9af3b8d5b29ebceb6a433468c650f01be913a148`:** [Main CI #38367994239](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994239), [ephemeral PG16 #38367994247](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994247), [Demo #38367994191](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994191), [Chromium #38367994196](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994196) — **4/4 SUCCESS**. The final documentation HEAD must pass its own CI; no archive/GC/deployment authorization.
+
+
+## Follow-on 2G.4d.7l — third local high-water journal
+
+The offline Ed25519 checkpoint format of 7j remains unchanged.
+7l adds two local fsynced witness copies, independently spawned
+verification and a third local high-water sequence/digest journal.
+Partial mirror publication and a real uncheckpointed PG COMMIT
+fail closed. Two rolled-back witness copies are denied if the
+separate journal remains newer.
+
+**Critical negative case:** all three local copies rolled back
+together with a stale supplied PG projection can still pass.
+No independent durable off-host root, globally immutable log,
+cross-system atomicity, hardware key, remote delivery or
+new UUID reuse/GC is provided.
+[7l details](SYNTHETIC_WITNESS_HIGHWATER_GAP_V1.ru.md).
