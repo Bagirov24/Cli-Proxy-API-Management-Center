@@ -953,3 +953,25 @@ atomic revision increments. See
 [Demo #38351833546](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833546),
 [Chromium #38351833571](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833571) — **4/4 SUCCESS**.
 The documentation commit must be checked independently on its own SHA.
+
+
+## 2G.4d.7g — server-issued operation and signed recovery
+
+- [x] **IMPLEMENTED (staging-only):** guarded 016 signed UUID issuance;
+  immutable issue/actor/tenant/role/collection/limit binding;
+  issued/committed/expired signed status-only recovery; no pre-COMMIT
+  receiver callback or audit+intent during issuance
+- [x] **TESTED BY CI:** real PG16 status/TTL, delayed/duplicate replay,
+  rolled-back reserved commit, unknown successful COMMIT, strict IDOR,
+  private ACL, tombstone/migration replay; legacy 015 concurrency retained
+- [ ] **SPEC:** authenticated public issue/status API, client UUID
+  persistence and retries, quotas, safe tombstone archiving/retention,
+  payload hash/durability, external delivery semantics
+- [ ] **PROPOSED:** transport, external attested ACK and release approvals
+
+**CODE VERIFIED on `0d9214b8b41deb1ab97a43f71bb76bdf9d661a7d`:**
+[Main CI #38354372696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372696),
+[ephemeral PostgreSQL16 #38354372709](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372709),
+[Demo #38354372683](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372683),
+[Chromium #38354372700](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372700) — **4/4 SUCCESS**.
+The final documentation SHA requires its own independent CI; this does not authorize production delivery.

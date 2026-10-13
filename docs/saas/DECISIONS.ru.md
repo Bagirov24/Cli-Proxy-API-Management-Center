@@ -775,3 +775,32 @@ staging-only synthetic contract, не public HTTP idempotency API.
 [Demo #38351833546](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833546),
 [Chromium #38351833571](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833571) — **4/4 SUCCESS**.
 The documentation commit must be checked independently on its own SHA.
+
+
+## D-064 — DB-issued idempotency UUID имеет срок USE, но не reuse
+
+Для нового **изолированного staging 016** UUIDv4 создаёт backend,
+а signed PG16 защищает registry выданных `synthetic_operation_issues`.
+Только совпадение текущих actor, tenant, member-role, collection и
+canonical limit допускает запись первого 009/013 события.
+UUID не является credential, capability или основанием доступа.
+
+Первое использование разрешено до DB `issue_expires_at`
+(сервер запрашивает 120 секунд); уже committed intent остаётся
+доступен через подписанный status/retry до двух часов после issued_at.
+После этого ответ `expired`, но **запись не удаляется** — иначе
+очистка открыла бы повторное использование ключа с другим эффектом.
+
+Read-only status возвращает только issued/committed/expired; любые
+чужие или несовпадающие ключи generic Deny. Из-за неизвестного
+COMMIT исхода клиент всё равно может увидеть 503. Старый 015
+event-only synthetic path сохранён для совместимости и не требует
+предварительной выдачи. Production retention и публичные API — SPEC.
+[См. bounded recovery](PRODUCER_OPERATION_ISSUANCE_RECOVERY_V1.ru.md).
+
+**CODE VERIFIED on `0d9214b8b41deb1ab97a43f71bb76bdf9d661a7d`:**
+[Main CI #38354372696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372696),
+[ephemeral PostgreSQL16 #38354372709](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372709),
+[Demo #38354372683](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372683),
+[Chromium #38354372700](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372700) — **4/4 SUCCESS**.
+The final documentation SHA requires its own independent CI; this does not authorize production delivery.

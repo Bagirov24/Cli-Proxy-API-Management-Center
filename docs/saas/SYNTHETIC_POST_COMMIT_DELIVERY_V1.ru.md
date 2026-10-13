@@ -225,3 +225,21 @@ See [PRODUCER_OPERATION_IDEMPOTENCY_V1.ru.md](PRODUCER_OPERATION_IDEMPOTENCY_V1.
 [Demo #38351833546](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833546),
 [Chromium #38351833571](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833571) — **4/4 SUCCESS**.
 The documentation commit must be checked independently on its own SHA.
+
+
+## 016 producer issuance is not receiver delivery
+
+The new DB-issued producer UUID and bounded read-only status operate
+strictly **upstream** of the already committed 013 intent and 014
+local receiver effect. An `issued` state means NO committed
+production intent; `committed` means a signed event exists,
+not that a remote recipient processed it. `expired` never frees a
+UUID for reuse. Separate 012/013/014 worker fencing remains required.
+[Issuer/recovery contract](PRODUCER_OPERATION_ISSUANCE_RECOVERY_V1.ru.md).
+
+**CODE VERIFIED on `0d9214b8b41deb1ab97a43f71bb76bdf9d661a7d`:**
+[Main CI #38354372696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372696),
+[ephemeral PostgreSQL16 #38354372709](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372709),
+[Demo #38354372683](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372683),
+[Chromium #38354372700](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372700) — **4/4 SUCCESS**.
+The final documentation SHA requires its own independent CI; this does not authorize production delivery.

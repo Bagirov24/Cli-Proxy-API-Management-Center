@@ -795,3 +795,26 @@ idempotency вне этого пилота.
 [Demo #38351833546](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833546),
 [Chromium #38351833571](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833571) — **4/4 SUCCESS**.
 The documentation commit must be checked independently on its own SHA.
+
+
+## Stage 2G.4d.7g — выдача UUID и bounded recovery (STAGING)
+
+**IMPLEMENTED:** guarded миграция 016 выдаёт случайный UUIDv4
+только через подписанный SQL после проверки actor/tenant/role/RBAC.
+Выдача не создаёт 009 audit и 013 intent. Отдельный reserved-only
+event path создаёт intent лишь при действующем issued key.
+Read-only recovery показывает только `issued`, `committed`,
+`expired`; никакого event ID, клиента, payload или HTTP ACK.
+
+DB срок первого использования — не более 120 секунд; signed recovery
+допускается до двух часов от выдачи. После expiry идентификатор остаётся
+неудаляемым tombstone и не используется повторно. Старый 015-режим
+не изменён и по-прежнему допускает unissued UUID в synthetic-тестах.
+[Подробный контракт](PRODUCER_OPERATION_ISSUANCE_RECOVERY_V1.ru.md).
+
+**CODE VERIFIED on `0d9214b8b41deb1ab97a43f71bb76bdf9d661a7d`:**
+[Main CI #38354372696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372696),
+[ephemeral PostgreSQL16 #38354372709](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372709),
+[Demo #38354372683](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372683),
+[Chromium #38354372700](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372700) — **4/4 SUCCESS**.
+The final documentation SHA requires its own independent CI; this does not authorize production delivery.

@@ -250,3 +250,26 @@ No actual network delivery or production claim is made.
 [Demo #38351833546](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833546),
 [Chromium #38351833571](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833571) — **4/4 SUCCESS**.
 The documentation commit must be checked independently on its own SHA.
+
+
+## 2G.4d.7g — signed issuance + bounded status is NOT production-ready
+
+**Staging-only implementation:** server-side generated UUIDv4,
+append-only issuance tombstone, time-limited first commit (120s max
+from actual DB INSERT), fixed 2h authenticated recovery window,
+read-only issued/committed/expired status; no event/payload/ACK leakage.
+016 does not change the legacy 015 path or its earlier public risks.
+
+**Still OPEN:** browser/mobile/account operation ID persistence,
+authenticated production issuer/status endpoint, per-actor quotas,
+replay abuse budgets, safe retention/GC of tombstones, durable
+payload/hash, real delivery ACK, recipient authorization, dispatch-time
+revocation, audit/ops and independent security approval. No Railway,
+real credentials, HTTP transport, Core/Gateway or production migration.
+
+**CODE VERIFIED on `0d9214b8b41deb1ab97a43f71bb76bdf9d661a7d`:**
+[Main CI #38354372696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372696),
+[ephemeral PostgreSQL16 #38354372709](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372709),
+[Demo #38354372683](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372683),
+[Chromium #38354372700](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372700) — **4/4 SUCCESS**.
+The final documentation SHA requires its own independent CI; this does not authorize production delivery.

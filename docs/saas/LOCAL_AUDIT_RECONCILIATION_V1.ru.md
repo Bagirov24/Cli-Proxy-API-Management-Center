@@ -163,3 +163,21 @@ See [producer identity](PRODUCER_OPERATION_IDEMPOTENCY_V1.ru.md).
 [Demo #38351833546](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833546),
 [Chromium #38351833571](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833571) — **4/4 SUCCESS**.
 The documentation commit must be checked independently on its own SHA.
+
+
+## 016 issued operation has no 012 local audit observation
+
+Creating an immutable issue row does not create any signed 009 Allow
+event. Therefore 012 has nothing to reconcile before a separately
+authorized reserved commit succeeds. Status `issued` is NOT
+`reconciled_local`; `committed` confirms only 009/013 intent,
+not local observation or remote ACK. No prior reconciliation
+semantics or protected SQL migration are altered.
+[Status semantics](PRODUCER_OPERATION_ISSUANCE_RECOVERY_V1.ru.md).
+
+**CODE VERIFIED on `0d9214b8b41deb1ab97a43f71bb76bdf9d661a7d`:**
+[Main CI #38354372696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372696),
+[ephemeral PostgreSQL16 #38354372709](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372709),
+[Demo #38354372683](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372683),
+[Chromium #38354372700](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372700) — **4/4 SUCCESS**.
+The final documentation SHA requires its own independent CI; this does not authorize production delivery.

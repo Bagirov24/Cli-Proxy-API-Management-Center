@@ -123,3 +123,30 @@ and [Production Readiness Gates](PRODUCTION_READINESS_GATES_V1.ru.md).
 [Demo #38351833546](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833546),
 [Chromium #38351833571](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833571) — **4/4 SUCCESS**.
 The documentation commit must be checked independently on its own SHA.
+
+
+## Follow-on 016: issued versus directly supplied UUID
+
+015 still accepts a caller-stable UUID in its original synthetic
+event-only boundary (unchanged for legacy tests). The **new 016
+reserved-only boundary** is a separate opted-in staging API:
+`createTrustedSyntheticOperationIssuer`,
+`createTrustedReservedSyntheticIntentBoundary`, and
+`createTrustedSyntheticOperationStatusBoundary`. Their signed DB
+contract requires a previously issued UUID with exact current identity
+and shape. The issuer stores no 009/013 event, the first valid reserved
+commit stores exactly one, and status reads a minimal enum only.
+
+An expired unused issued ID cannot mint an event. An already committed
+ID may be reconfirmed within the two-hour recovery window regardless
+of its shorter initial issue TTL. Expired IDs remain permanent
+append-only tombstones, NOT reusable slots. Real operation retention,
+identity persistence and unknown-outcome HTTP API remain SPEC.
+[Details](PRODUCER_OPERATION_ISSUANCE_RECOVERY_V1.ru.md).
+
+**CODE VERIFIED on `0d9214b8b41deb1ab97a43f71bb76bdf9d661a7d`:**
+[Main CI #38354372696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372696),
+[ephemeral PostgreSQL16 #38354372709](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372709),
+[Demo #38354372683](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372683),
+[Chromium #38354372700](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372700) — **4/4 SUCCESS**.
+The final documentation SHA requires its own independent CI; this does not authorize production delivery.
