@@ -84,3 +84,19 @@ recipient ACK, privacy/retention/security approvals. Синтетические
 сертификаты истекают **2026-10-15 13:33 UTC** и должны быть
 rotated/decommissioned. Ни SQL 019, ни production, ни merge,
 retry/reissue/repair/delivery/archive/GC. `gcPermitted=false`.
+
+
+## Как оператор настраивает 2FA и вручную подтверждает новый Railway patch
+
+Для будущих работ используйте [подробный пошаговый Railway 2FA runbook]
+(RAILWAY_2FA_OPERATOR_RUNBOOK.ru.md): `https://railway.com/account/security`
+для personal TOTP/passkeys/recovery и `cpa-gateway-sandbox/sandbox`
+`Staged Changes → Details → Deploy` для точечного source-only
+изменения с interactive Dashboard 2FA. У аккаунта может уже быть
+включён MFA: отсутствие баннера означает **нет ожидающего diff**,
+а не необходимость создавать новое изменение.
+
+**Обновление НЕ запускает новый smoke и не меняет подписи**:
+исторические deployment ID/синтетические PASS остаются такими,
+какими были доказаны D-081. Не включайте workspace-wide
+`Require 2FA` без отдельного решения администратора.

@@ -592,3 +592,22 @@ security/privacy/legal/retention approval. Synthetic TLS certificates
 expire 2026-10-15 UTC; rotate or decommission. **No release**,
 production changes, SQL 019, UUID retry/reissue/delete, repair or GC.
 `gcPermitted=false`.
+
+
+## Railway operator MFA and staging approval ≠ off-host release gate
+
+[Operator runbook](RAILWAY_2FA_OPERATOR_RUNBOOK.ru.md) documents
+personal Railway Account Security TOTP/passkeys and one-time
+recovery codes, workspace Pro+ `Require 2FA`, exact staged
+diff review, interactive Dashboard 2FA and new deployment logs.
+Account MFA state is **not attested** by Railway OAuth and must
+be checked by the human account holder. Railway staging smoke
+`SUCCESS` (D-081) is independent from this process documentation.
+
+2FA/approval does **not** solve independent admin custody,
+WORM/HSM, anti-rollback retained minimum, certificate rotation,
+atomic/fenced PostgreSQL COMMIT/WAL settlement, actor/issuer
+authorization or authenticated recipient ACK. Current test
+certificates expire 2026-10-15 13:33 UTC. Production remains
+BLOCKED; no SQL019, UUID retry/reissue/repair/delivery/GC,
+`gcPermitted=false`.

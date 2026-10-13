@@ -1296,3 +1296,18 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
 - [ ] **UNTESTED REMOTELY:** identical nonce/lost-ACK recovery, high-water restart/restore, torn record, rollback/partition/failover, external monotonic minimum, cert rotation
 - [ ] **INDEPENDENT ROOT:** separate operator/workspace, HSM/KMS/WORM and revocation/governance with anti-rollback
 - [ ] **PRODUCTION BLOCKED:** fenced PG COMMIT/WAL/PITR, issuer/actor auth, authenticated recipient ACK, privacy/security/retention; no merge, SQL 019, UUID retry/reissue/repair/GC
+
+
+## Stage 2G.4d.7w — operator 2FA setup / approval runbook
+
+- [x] Задокументированы официальные Railway Account Security
+  TOTP, recovery codes и passkey настройки без раскрытия секретов
+- [x] Задокументированы workspace Pro+ `Require 2FA`, interactive
+  Dashboard `Staged Changes → Details → Deploy`, 2FA и Windows SSH
+- [x] Зафиксированы operator-evidence checks: sandbox-only scope,
+  exact diff, deploy SUCCESS + concrete PASS logs; no API 2FA bypass
+- [ ] **ACCOUNT/WORKSPACE MFA STATE:** проверяется владельцем вручную,
+  нельзя утверждать `enabled` через Railway OAuth connector
+- [ ] **NOT TRUST-ROOT:** отдельная workspace/operator, independently
+  retained minimum, WORM/HSM and release sign-off остаются OPEN
+[Railway 2FA operator runbook](RAILWAY_2FA_OPERATOR_RUNBOOK.ru.md).

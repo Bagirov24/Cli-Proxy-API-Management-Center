@@ -1126,3 +1126,13 @@ PG COMMIT fencing, issuer/recipient/retry/repair/GC. Same Railway
 workspace is NOT independent trust. Test cert expires 2026-10-15 UTC;
 `gcPermitted=false`. [7w report](REMOTE_STAGING_HIGHWATER_7W.ru.md),
 [D-081](DECISIONS.ru.md).
+
+
+## Операторский runbook: Railway 2FA/MFA и ручной sandbox Deploy
+
+[Пошаговая инструкция с TOTP, passkeys, recovery codes, optional
+workspace `Require 2FA`, Staged Changes/Deploy с Dashboard 2FA,
+проверкой логов и Windows PowerShell](RAILWAY_2FA_OPERATOR_RUNBOOK.ru.md).
+**Включение MFA в Railway выполняет владелец аккаунта**, не GitHub PR
+и не Railway MCP. Это отдельный контроль и не подтверждение
+независимой WORM/HSM custody; `gcPermitted=false`.

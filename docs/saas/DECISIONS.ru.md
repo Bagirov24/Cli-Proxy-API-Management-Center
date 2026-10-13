@@ -1231,3 +1231,28 @@ ACK. Both services share one Railway personal workspace. This
 UUID reuse/delete, archive/delivery or GC. `gcPermitted=false`.
 Test identities expire October 15, 2026 UTC.
 [Runbook and evidence](REMOTE_STAGING_HIGHWATER_7W.ru.md).
+
+
+## D-082 — интерактивный Railway MFA ≠ сервисная mTLS identity или off-host custody
+
+**Decision:** Railway Account Security TOTP/passkey/recovery codes,
+workspace Pro+ `Require 2FA` и Dashboard 2FA confirmation при
+`Staged Changes → Deploy` — отдельные механизмы. Их нельзя
+заменять вызовами API/MCP или применять обходным путём.
+Общие `Variables` сервиса, SSH key passphrase и mTLS клиентский
+сертификат **не являются** способом включить account 2FA.
+Состояние account MFA по Railway OAuth не доступно: документируем
+шаги, но **не утверждаем**, что 2FA любого пользователя включена.
+
+**Implementation:** подробный [операторский runbook]
+(RAILWAY_2FA_OPERATOR_RUNBOOK.ru.md) с TOTP/passkey/recovery,
+проверкой exact sandbox diff, human approval через Dashboard,
+логами независимого deployment, PowerShell SSH troubleshooting,
+границей Pro+ enforcement и запретом публикации OTP/seed/keys.
+
+**Limitations:** Даже при enforce 2FA API tokens продолжают работать
+без интерактивного кода. Общая Railway workspace и необеспеченные
+off-host/WORM/HSM, PG settlement и issuer rights не становятся
+проверенными. Не менять production, high-water journal/key,
+UUID/issuer, SQL 019, delivery/repair/GC;
+`gcPermitted=false`.
