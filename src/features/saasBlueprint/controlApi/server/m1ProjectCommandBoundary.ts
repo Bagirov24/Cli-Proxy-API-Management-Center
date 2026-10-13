@@ -100,9 +100,13 @@ export type M1ProjectCommandResult =
 const ID = /^[a-zA-Z0-9_-]{1,64}$/;
 const ACTOR = /^[a-zA-Z0-9_-]{1,128}$/;
 function validName(value: unknown): value is string {
-  return typeof value === 'string' && value.length >= 1 &&
-    value.length <= 120 && value.trim() === value &&
-    !/[\u0000-\u001f\u007f]/.test(value);
+  if (typeof value !== 'string' || value.length < 1 ||
+      value.length > 120 || value.trim() !== value) return false;
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code < 32 || code === 127) return false;
+  }
+  return true;
 }
 function canWrite(role: TenantRole): role is M1ProjectWriteScope['role'] {
   return role === 'tenant-owner' || role === 'tenant-admin';
