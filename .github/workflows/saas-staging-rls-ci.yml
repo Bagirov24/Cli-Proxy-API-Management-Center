@@ -672,6 +672,25 @@ jobs:
           timeout --signal=TERM --kill-after=5s 105s env \
             SAAS_EPHEMERAL_SETTLEMENT_CI=true \
             node scripts/saas-staging/verify-archive-witness-settlement.mjs
+      
+      - name: Verify offline Unix-socket witness daemon lost ACK and crash-safe replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7n: separate process + Unix-domain socket on ONE
+          # disposable CI runner, NEVER off-host durable witness.
+          # No PG credentials enter daemon. Only synthetic UUIDs are
+          # committed through disposable postgres fixture connections.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 115s env \
+            SAAS_EPHEMERAL_IPC_WITNESS_CI=true \
+            node scripts/saas-staging/verify-archive-witness-ipc.mjs
 
 
       # No deploy, repository secrets, production SQL connections or credentials.
