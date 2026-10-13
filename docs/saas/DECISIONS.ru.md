@@ -1130,3 +1130,27 @@ equivocation. Против rollback действительно защищает 
 Remote authority/spec остаётся `PRODUCTION BLOCKER`;
 автоматическое восстановление запрещено. `gcPermitted=false`.
 [Контракт 7t](SYNTHETIC_OFFHOST_HIGHWATER_CONTRACT_V1.ru.md).
+
+
+## D-078 — signed 2-of-2 operator evidence is quarantine, never recovery authorization
+
+Stage 2G.4d.7u добавляет **только offline CI-протокол**
+обнаружения неоднозначного исхода: governance policy подписывает
+`security` и `operations` public-key fingerprints, authority,
+witness/journal, logId/epoch. Оба тестовых оператора должны
+подписать один `nonce`, request, previous retained signed minimum
+и полный incident evidence hash. Независимая проверка witness,
+journal, external receipt и прямого predecessor классифицирует
+matching/rollback/lag/split/fork как `QUARANTINE_REVIEW`.
+
+**Решение:** криптографическая форма quorum **не подтверждает**
+двух реальных людей, независимое хранение, durable nonce-ledger,
+WORM или фактическое восстановление после PITR. Verbatim replay
+того же signed dossier проходит — отдельный production blocker.
+Все статусы требуют ручного разбора и возвращают
+`authorityToResume=false`, `repairPermitted=false`,
+`retryPermitted=false`, `reissuePermitted=false`,
+`deliveryPermitted=false`, `gcPermitted=false`.
+Любая real issuer recovery требует отдельного trust domain,
+fenced settlement и security sign-off; автоматический repair/GC
+запрещён. [Контракт 7u](SYNTHETIC_OPERATOR_DR_QUARANTINE_V1.ru.md).

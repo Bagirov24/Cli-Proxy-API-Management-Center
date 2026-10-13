@@ -1077,3 +1077,19 @@ journal digest и независимо supplied retained minimum.
 `reissuePermitted=false`, `deliveryPermitted=false`,
 `repairPermitted=false`, `gcPermitted=false`.
 [7t контракт](SYNTHETIC_OFFHOST_HIGHWATER_CONTRACT_V1.ru.md).
+
+
+## Stage 2G.4d.7u — operator onboarding + manual DR quarantine (CI-only)
+
+**SPEC:** независимые governance и две реальные operator роли, ключи,
+ревокация, WORM external minimum, durable anti-replay и отдельная
+проверка PITR/partition/failover перед настоящим release.
+**CI IMPLEMENTED:** offline Ed25519 policy + 2-of-2 role signatures
+на неизменный incident dossier, signed 7t receipt и retained minimum;
+тесты rollback/split/lag/fork и replay. Все роли на **ОДНОМ**
+runner, поэтому ни human approval, ни off-host custody, ни DR
+не считаются достигнутыми. Даже matched evidence остаётся quarantine;
+`authorityToResume=false`, `reissuePermitted=false`,
+`repairPermitted=false`, `deliveryPermitted=false`,
+`gcPermitted=false`.
+[7u контракт](SYNTHETIC_OPERATOR_DR_QUARANTINE_V1.ru.md).

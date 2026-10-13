@@ -536,3 +536,21 @@ authorization, delivery/recipient ACK, privacy/retention
 and full security sign-off. No production/deploy/SQL019,
 UUID reuse/delete, archive, receipt-delivery release,
 auto-recovery or GC.
+
+
+## Stage 2G.4d.7u — synthetic dual-role evidence does NOT authorize DR
+
+**IMPLEMENTED CI ONLY:** governance-signed role policy, separate
+`security` and `operations` signatures, exact incident nonce/dossier,
+retained signed minimum and witness/journal/off-host mock signature
+validation, read-only quarantine classifications. All keys remain
+on ONE CI runner and full signed replay still passes absent durable
+nonce memory. `authorityToResume=false`, `gcPermitted=false`.
+
+**OPEN release gates:** independently verified human operator identity,
+off-host custody/HSM/WORM, signed monotonic nonce ledger, OIDC/mTLS
+and revocation, fenced PostgreSQL COMMIT/WAL/PITR/replica promotion,
+partition/UNKNOWN/orphan-journal manual recovery, actual DR drill,
+issuer/actor authorization, durable outbound+recipient ACK and
+privacy/legal/retention/security signoff. No production deploy,
+automatic recovery, UUID reuse/delete or GC.

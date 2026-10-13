@@ -1244,3 +1244,24 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
   durable payload/recipient ACK and security/retention approval
 - [ ] **NOT AUTHORIZED:** production issuer, merge/deploy,
   SQL 019, UUID delete/reuse, auto-repair/retry, cap reset/GC
+
+
+## Stage 2G.4d.7u — operator onboarding / DR evidence quarantine
+
+- [x] **STAGING-ONLY:** signed governance policy и distinct
+  `security`/`operations` Ed25519 approvals on exact dossier,
+  logId/epoch/nonce/retained minimum; isolated offline verifier
+- [x] **ADVERSARIAL:** signed local rollback/split/fork/lag,
+  external equivocation, forged journal, key/policy/role swap,
+  incomplete quorum, changed request/replay DENY
+- [x] **CODE VERIFIED:** 4/4 GitHub Actions SUCCESS on `89c4560e`; 7l–7t and new 7u pass
+- [x] **LIMITATION:** exact signed replay is still accepted
+  without an independent durable nonce ledger; CI keys co-located
+- [ ] **REQUIRED REAL:** independent off-host WORM and operator
+  custody, identity+revocation/mTLS, governance of epoch/key rotation,
+  production monitoring and independently tested incident runbook
+- [ ] **REQUIRED SETTLEMENT:** fenced PG COMMIT/WAL/PITR,
+  durable authenticated recipient ACK, actor-scoped issuer auth,
+  privacy/security/retention release approval
+- [ ] **NOT AUTHORIZED:** deployment/merge, SQL 019, UUID
+  issue/retry/reuse/delete, auto-recovery, archive or GC
