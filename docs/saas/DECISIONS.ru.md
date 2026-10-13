@@ -749,3 +749,29 @@ PostgreSQL COMMIT; `externalReceipt=not_attested`.
 Реальная durable producer idempotency и внешние ACK — SPEC.
 
 **VERIFIED on code commit `fa895296a6ce4062687d0ad0af77f26114d4ef03`:** [PG16 #38309259713](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259713), [Main CI #38309259929](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259929), [Demo #38309259856](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259856), [Chromium #38309259696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259696) — all 4 SUCCESS. The final documentation commit requires its own independent Actions results; code verification does not imply production readiness.
+
+
+## D-063 — UUID операции привязан к identity и shape; не является auth
+
+015 использует глобальный случайный UUIDv4 только как ключ
+идемпотентности. Каждое обращение заново проверяет JWT/actor/RBAC,
+PG signed scope и current revision. Замена actor/tenant/role/
+collection/limit не может получить «успех» по существующему ключу;
+SQL отвечает FALSE, наружу — generic 404 без event ID.
+`pg_advisory_xact_lock` сериализует конкурентные обращения
+до проверки committed mapping. Только первое создаёт 009 audit
+и 013 intent, остальным возвращается существующий связанный event
+без нового audit.
+
+Потерянный COMMIT reply возвращается generic 503; повтор с тем
+же UUID способен найти уже committed operation. Новый UUID означает
+НОВУЮ операцию и не предотвращает логическое дублирование. Это
+staging-only synthetic contract, не public HTTP idempotency API.
+См. [producer identity](PRODUCER_OPERATION_IDEMPOTENCY_V1.ru.md).
+
+**CODE VERIFIED** on SHA `ca2503f2e22d30e64c32490c6f46bb7dd73b6dc1`:
+[Main CI #38351833547](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833547),
+[PostgreSQL16 #38351833550](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833550),
+[Demo #38351833546](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833546),
+[Chromium #38351833571](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833571) — **4/4 SUCCESS**.
+The documentation commit must be checked independently on its own SHA.

@@ -933,3 +933,23 @@ atomic revision increments. See
   production control plane/release.
 
 **VERIFIED on code commit `fa895296a6ce4062687d0ad0af77f26114d4ef03`:** [PG16 #38309259713](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259713), [Main CI #38309259929](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259929), [Demo #38309259856](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259856), [Chromium #38309259696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259696) — all 4 SUCCESS. The final documentation commit requires its own independent Actions results; code verification does not imply production readiness.
+
+
+## 2G.4d.7f — producer idempotency after unknown COMMIT
+
+- [x] **IMPLEMENTED:** guarded PG16 015 immutable operation UUID
+  mapping signed outbox+intent; tenant/actor/role/collection/limit
+  binding; the isolated staging event-only port opts in
+- [x] **TEST ADDED:** SQL rollback/replay/IDOR/conflict, physical
+  advisory-lock contention, Bun committed-response-loss retry
+- [ ] **SPEC:** public producer operation ID issuance, durable
+  authenticated client retry/status protocol, payload canonical
+  digest and operation retention, abuse budgets
+- [ ] **PROPOSED:** external delivery ACK and production deployment
+
+**CODE VERIFIED** on SHA `ca2503f2e22d30e64c32490c6f46bb7dd73b6dc1`:
+[Main CI #38351833547](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833547),
+[PostgreSQL16 #38351833550](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833550),
+[Demo #38351833546](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833546),
+[Chromium #38351833571](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833571) — **4/4 SUCCESS**.
+The documentation commit must be checked independently on its own SHA.

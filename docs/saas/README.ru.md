@@ -771,3 +771,27 @@ See [receiver proof](SYNTHETIC_POST_COMMIT_DELIVERY_V1.ru.md).
 Старый synchronous pre-COMMIT handoff остаётся production blocker.
 
 **VERIFIED on code commit `fa895296a6ce4062687d0ad0af77f26114d4ef03`:** [PG16 #38309259713](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259713), [Main CI #38309259929](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259929), [Demo #38309259856](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259856), [Chromium #38309259696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259696) — all 4 SUCCESS. The final documentation commit requires its own independent Actions results; code verification does not imply production readiness.
+
+
+## 2G.4d.7f — Producer operation UUID и recovery после unknown COMMIT
+
+**IMPLEMENTED (synthetic staging only):** новая guarded миграция 015
+привязывает один UUIDv4 операции к уже подписанному 009 Allow +
+013 immutable intent в ОДНОЙ PostgreSQL-транзакции. Повтор с тем
+же UUID, tenant/actor/role/collection/limit проверяет актуальные
+права и использует исходное событие, не записывая второй Allow.
+Неправильная роль/tenant/параметры дают generic Deny.
+
+При успешном COMMIT и потерянном ответе клиент по-прежнему получает
+503 (не доказательство ROLLBACK). Только явный повтор с тем же UUID
+в staging восстановит первый event без новой доставки. Реальный
+HTTP, remote ACK, durable payload и реальная политика producer
+idempotency вне этого пилота.
+См. [полный контракт](PRODUCER_OPERATION_IDEMPOTENCY_V1.ru.md).
+
+**CODE VERIFIED** on SHA `ca2503f2e22d30e64c32490c6f46bb7dd73b6dc1`:
+[Main CI #38351833547](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833547),
+[PostgreSQL16 #38351833550](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833550),
+[Demo #38351833546](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833546),
+[Chromium #38351833571](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833571) — **4/4 SUCCESS**.
+The documentation commit must be checked independently on its own SHA.

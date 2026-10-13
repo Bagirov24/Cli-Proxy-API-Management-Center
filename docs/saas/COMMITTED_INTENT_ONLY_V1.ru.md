@@ -103,3 +103,24 @@ post-COMMIT reconciler is still SPEC; do not use this pilot to claim
 production audit completeness.
 
 **VERIFIED on code commit `fa895296a6ce4062687d0ad0af77f26114d4ef03`:** [PG16 #38309259713](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259713), [Main CI #38309259929](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259929), [Demo #38309259856](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259856), [Chromium #38309259696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259696) — all 4 SUCCESS. The final documentation commit requires its own independent Actions results; code verification does not imply production readiness.
+
+
+## Stage 2G.4d.7f — optional stable producer key
+
+The new 015 guarded SQL mode augments this event-only path with a
+required caller-stable, UUIDv4 `producerOperationId`. This is
+NOT a bearer, role, SQL identity, session token or raw payload.
+The signed transaction ensures matching tenant, actor, role,
+collection and canonical limit. An identical replay (including a
+recovery after lost COMMIT acknowledgement) reuses the first
+committed audit+intent and creates no second event. Different
+identity or shape fails closed with generic 404. Separate worker
+delivery remains 012/013/014 and is NOT HTTP.
+[Exact contract](PRODUCER_OPERATION_IDEMPOTENCY_V1.ru.md).
+
+**CODE VERIFIED** on SHA `ca2503f2e22d30e64c32490c6f46bb7dd73b6dc1`:
+[Main CI #38351833547](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833547),
+[PostgreSQL16 #38351833550](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833550),
+[Demo #38351833546](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833546),
+[Chromium #38351833571](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833571) — **4/4 SUCCESS**.
+The documentation commit must be checked independently on its own SHA.

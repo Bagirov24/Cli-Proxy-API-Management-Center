@@ -227,3 +227,26 @@ outcome после успешного COMMIT (событие есть, 503 во�
 по-прежнему требуют нового решения и release/security approvals.
 
 **VERIFIED on code commit `fa895296a6ce4062687d0ad0af77f26114d4ef03`:** [PG16 #38309259713](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259713), [Main CI #38309259929](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259929), [Demo #38309259856](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259856), [Chromium #38309259696](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38309259696) — all 4 SUCCESS. The final documentation commit requires its own independent Actions results; code verification does not imply production readiness.
+
+
+## Stage 2G.4d.7f — committed producer op replay gate (CI ONLY)
+
+**IMPLEMENTED only for synthetic event labels**: globally unique
+UUIDv4 producer key with immutable signed tenant/actor/role/collection/
+canonical limit binding, transaction-scoped serialization and
+committed-only replay. The original pre-COMMIT local callback and
+local non-authoritative audit remain unchanged.
+
+**OPEN production blockers:** real producer ID issuance/storage, HTTP
+idempotency/recovery API, operation retention/quotas, payload digest
+and encryption, dispatch-time revocation, operator unknown-outcome
+settlement, remote transport/ACK and independent security approval.
+A new UUID can intentionally create a second logical event.
+No actual network delivery or production claim is made.
+
+**CODE VERIFIED** on SHA `ca2503f2e22d30e64c32490c6f46bb7dd73b6dc1`:
+[Main CI #38351833547](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833547),
+[PostgreSQL16 #38351833550](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833550),
+[Demo #38351833546](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833546),
+[Chromium #38351833571](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38351833571) — **4/4 SUCCESS**.
+The documentation commit must be checked independently on its own SHA.
