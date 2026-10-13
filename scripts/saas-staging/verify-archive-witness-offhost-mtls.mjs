@@ -5,9 +5,9 @@ import assert from 'node:assert/strict';
 import {spawn,spawnSync} from 'node:child_process';
 import {once} from 'node:events';
 import {request as tlsRequest} from 'node:https';
-import {checkServerIdentity,X509Certificate,generateKeyPairSync,
-  createHash,createPublicKey,sign as edSign,verify as edVerify,
-  randomBytes} from 'node:crypto';
+import {checkServerIdentity} from 'node:tls';
+import {X509Certificate,generateKeyPairSync,createHash,createPublicKey,
+  sign as edSign,verify as edVerify,randomBytes} from 'node:crypto';
 import {
   mkdtempSync,writeFileSync,readFileSync,copyFileSync,mkdirSync,
   chmodSync,rmSync,existsSync,
