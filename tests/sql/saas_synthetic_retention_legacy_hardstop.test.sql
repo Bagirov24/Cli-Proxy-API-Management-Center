@@ -46,6 +46,13 @@ SELECT saas_rls_test.assert_true(
 
 -- 016 SQL status is now a separate authenticated legacy bucket, not
 -- an unmetered route. It returns NULL to direct SQL for a throttle.
+-- Earlier 016 acceptance has already performed one foreign UUID probe:
+-- the invariant is increment-by-one, not absolute used_count=1.
+SELECT COALESCE((SELECT used_count FROM
+ saas_rls_private.synthetic_operation_budgets
+ WHERE tenant_id='demo-orbit' AND actor_id='actor-orbit'
+ AND scope_kind='actor' AND action_kind='legacy_status'),0)
+ AS legacy_status_before \gset
 BEGIN;
 SELECT saas_rls_test.issue_scope('actor-orbit','demo-orbit',120);
 SET LOCAL ROLE saas_rls_reader;
@@ -56,7 +63,8 @@ RESET ROLE;
 COMMIT;
 SELECT saas_rls_test.assert_true(
  :'legacy_valid'='issued'
- AND (SELECT used_count=1 FROM saas_rls_private.synthetic_operation_budgets
+ AND (SELECT used_count=(:'legacy_status_before')::INTEGER+1
+  FROM saas_rls_private.synthetic_operation_budgets
   WHERE tenant_id='demo-orbit' AND actor_id='actor-orbit'
     AND scope_kind='actor' AND action_kind='legacy_status'),
  'Legacy status route consumes private quota without disclosing another actor');
