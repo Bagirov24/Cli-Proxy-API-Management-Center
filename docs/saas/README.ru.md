@@ -1037,3 +1037,22 @@ rollback, fork и multi-COMMIT drift проверяются в отдельно�
 для off-host durability/atomicity, реального production issuer,
 outbound ACK, retention или GC.
 [7r технический контракт](SYNTHETIC_UNKNOWN_OUTCOME_OBSERVATION_V1.ru.md).
+
+
+## Stage 2G.4d.7s — simulated reviewer pin and manual-only high-water disputes
+
+**CI-only:** новый offline `archive-witness-manual-review-pin.mjs`
+с отдельным *синтетическим* reviewer Ed25519 ключом подписывает
+неубывающий head только после проверки signed witness + local
+high-water. `inspect` выявляет частичный split, локальный head
+позади отдельно сохранённого reviewer pin, конфликт digest либо
+неподписанный reviewer advance. Даже при совпадении подписей
+требуется ручной анализ; `repairPermitted=false`,
+`reissuePermitted=false`, `deliveryPermitted=false`,
+`gcPermitted=false`.
+
+**Важно:** reviewer/key/pin и оба signer на **одном runner**,
+настоящего независимого off-host/WORM/реального operator approval
+нет. Совместный rollback с потерянным reviewer pin остаётся
+необнаружимым; никаких production, UUID reuse, archive или GC.
+[Контракт 7s](SYNTHETIC_MANUAL_REVIEW_PIN_V1.ru.md).

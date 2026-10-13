@@ -1201,3 +1201,25 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
   outbound delivery, UUID deletion/reuse or retention-cap/GC reset
 
 - [x] **CODE VERIFIED:** 4/4 Actions SUCCESS на SHA `602398c8`; финальный documentation SHA проверяется отдельно
+
+
+## Stage 2G.4d.7s — manual-only signed reviewer pin
+
+- [x] **IMPLEMENTED in disposable CI:** третий, отдельно подписанный
+  reviewer head с previous-pin digest, отдельным Ed25519 key и
+  `pin`/`inspect` CLI; no SQL credentials, network or production
+- [x] **ADVERSARIAL TEST DESIGN:** real PG COMMIT and signed 7r
+  evidence, lost ACK, dual-local rollback against preserved pin,
+  unsigned local advance, witness/journal split/orphan, forgery,
+  key swap, gaps and concurrent exclusive pin writes
+- [x] **CI VERIFIED CODE SHA `7f1496fd`:** 4/4 SUCCESS,
+  включая реальный PG16, старые 7l–7r и новый 7s reviewer proof
+- [x] **EXPECTED FAIL-CLOSED:** все статусы — только ручной
+  разбор, не approval: запрет reissue/retry/repair/delivery/GC
+- [ ] **PRODUCTION BLOCKER:** оператор/ключ и WORM/trusted pin
+  **в независимом trust domain**, signed current PG COMMIT,
+  cross-system atomic settlement, PITR/failover/partition,
+  issuer actor authorization, durable recipient ACK и
+  security/retention/legal review
+- [ ] **NOT ALLOWED:** deployment, merge, SQL 019, UUID
+  delete/reuse, automatic recovery, quota/retention/GC reset

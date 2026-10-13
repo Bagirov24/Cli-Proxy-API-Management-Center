@@ -1083,3 +1083,26 @@ external pin с совместным rollback обоих локальных хр
 остаются release blockers. Конфликты и multi-UUID drift
 DENY вместо угадывания. `gcPermitted=false`.
 [Контракт 7r](SYNTHETIC_UNKNOWN_OUTCOME_OBSERVATION_V1.ru.md).
+
+
+## D-076 — ручной reviewer-pin не разрешает исправлять UNKNOWN
+
+Stage 2G.4d.7s создаёт третий test-only Ed25519 reviewer pin
+`{head, witnessFingerprint, journalFingerprint,
+previousReviewDigest}` отдельно от локальных signed witness и
+high-water историй. `pin` принимает только совпавшие witness +
+journal и direct successor предыдущего reviewer pin; `inspect`
+проверяет три pinned root, описывает split/rollback/stale pin и
+всегда оставляет `manualReviewRequired=true`. Reviewer
+последовательность/подпись симулирует наблюдение, **не человека,
+не quorum, не durable external WORM**.
+
+**Решение:** даже `PIN_MATCHED_FOR_MANUAL_INSPECTION` не
+разрешает новых UUID, delivery/retry, repair/rollback/GC или
+продвижение production readiness. Сохранённый более новый
+reviewer pin показывает совместный rollback witness + journal,
+но совместный rollback **всех трёх** в одном CI trust domain
+сохраняет ложную согласованность. Без независимого внешнего
+trusted root и операторской проверки проблема остаётся SPEC.
+Никаких 019/production изменений, `gcPermitted=false`.
+[Контракт 7s](SYNTHETIC_MANUAL_REVIEW_PIN_V1.ru.md).

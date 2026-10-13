@@ -495,3 +495,22 @@ nonce/anti-replay, fenced/atomic PostgreSQL COMMIT, безопасное
 разрешение orphan journal / partition / PITR / WAL / failover,
 production OIDC/issuer authorization, delivery ACK и privacy
 retention sign-off. No migration 019, no production, no GC.
+
+
+## 2G.4d.7s — CI-only reviewer pin is not independent manual settlement
+
+**Staging implemented:** третья синтетическая подпись head
+(Ed25519 reviewer), direct reviewer pin predecessor и
+read-only classification of stale/rolled-back/split signed
+witness and local journal. Concurrent destination writes
+are exclusive. Manual review is required even on matched pin;
+repair/retry/delivery/reissue/GC remain strictly denied.
+
+**Production still BLOCKED:** reviewer pin/root на том же CI runner,
+не off-host или WORM, нет human/operator trust process,
+PG signed WAL/LSN settlement, atomic fencing, cross-host
+consensus, safe orphan/manual recovery process, PITR/failover/
+network partition, external recipient ACK or issuer-actor auth.
+Joint rollback of reviewer + both local roots remains undetected
+after loss of a newer independent pin. No SQL 019, deployment,
+UUID reuse/archive, tombstone deletion or GC.
