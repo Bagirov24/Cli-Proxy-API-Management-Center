@@ -1350,3 +1350,20 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
 - [ ] **PRODUCTION BLOCKED:** independent admin, fenced PG COMMIT/WAL,
   tenant actor issuer, authenticated recipient ACK, security/legal
 [Detailed audit and expiry plan](RAILWAY_HIGHWATER_AUDIT_7X.ru.md).
+
+
+## Stage M0 — safe-to-review merge foundation, not SaaS launch
+
+- [x] Default-off Vite alias and route isolation; ordinary build with
+  accidental `VITE_ENABLE_SAAS_BLUEPRINT_DEMO=true` fails CLOSED
+- [x] Synthetic PR-preview explicitly gated by GitHub
+  `pull_request` + dedicated `SAAS_BLUEPRINT_SYNTHETIC_CI_BUILD`
+  flag, no deploy/release; local dev mode remains opt-in
+- [x] Automated three-way CI proof: denied unsafe opt-in,
+  fixture-free default bundle, accepted isolated synthetic preview
+- [ ] Full code-owner + security review of all PR changes
+- [ ] Production release pipeline check: no demo env flag/artifact
+- [ ] Latest HEAD 4/4 CI and explicit permission to remove Draft/merge
+- [ ] M1 live SSO/Control CRUD/PG/Core; M2 runtime tenant/egress;
+  M3 independent settlement; M4 ops/security — separate PRs
+[M0 merge readiness checklist](MERGE_READINESS_M0.ru.md).

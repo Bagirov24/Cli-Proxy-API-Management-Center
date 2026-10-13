@@ -1166,3 +1166,22 @@ WebCrypto Ed25519 true, no-client-cert DENY. Ни один append/UUID
 сервера с подключённым томом**, но не lost-ACK, cross-host DR,
 независимый WORM/HSM или release approval. Certificate expiry
 2026-10-15 13:33 UTC. [Stage 7x/7y report](RAILWAY_HIGHWATER_AUDIT_7X.ru.md). `gcPermitted=false`.
+
+
+## Stage M0 — ограниченный merge требует ревью, SaaS остаётся выключенным
+
+Добавлен [M0 merge-readiness checklist](MERGE_READINESS_M0.ru.md).
+В `vite.config.ts` случайное `VITE_ENABLE_SAAS_BLUEPRINT_DEMO=true`
+теперь **отклоняет обычную release-build**, а не добавляет
+синтетическую страницу в поставку. Единственный opt-in production-mode
+compile разрешён в специально отмеченной synthetic
+GitHub `pull_request` CI-сборке без deploy/artifact; локальная
+DEV-страница по-прежнему доступна для дизайна.
+CI проверяет expected DENY, default-off bundle и положительную
+synthetic preview build.
+
+**Это не разрешение на merge:** PR крупный, нужны полный code-owner
+и security review, подтверждение release pipeline и финальные CI
+на точном SHA. Настоящие SaaS API/auth/PG/Core/VPN/BYOA/high-water
+settlement/ACK будут следующими отдельными PR. Production, SQL019,
+issuer, UUID retry/reissue/GC не тронуты; `gcPermitted=false`.

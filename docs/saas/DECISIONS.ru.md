@@ -1317,3 +1317,30 @@ no in-place trust/policy rewrite; future rotation requires separately
 approved proof scope. Production, SQL019, UUID retry/reissue/repair,
 delivery/GC and merge remain blocked; `gcPermitted=false`.
 [Stage 7x/7y acceptance](RAILWAY_HIGHWATER_AUDIT_7X.ru.md).
+
+
+## D-085 — M0 merge may contain only fail-closed synthetic blueprint, NOT production SaaS
+
+**Decision:** Stage M0 sets a narrow candidate for future review:
+specifications, default-off UI and isolated synthetic read-only
+test/CI. It does not add real tenant sessions, production DB or
+Core/Gateway provider routing.
+
+An accidental release build with
+`VITE_ENABLE_SAAS_BLUEPRINT_DEMO=true` now **throws**
+`SAAS BLUEPRINT DEMO DENIED`. Legitimate opt-in is allowed only
+for a local Vite `serve` in `development`, or an expressly
+marked `GITHUB_ACTIONS=true` and `GITHUB_EVENT_NAME=pull_request`
+synthetic demo build with
+`SAAS_BLUEPRINT_SYNTHETIC_CI_BUILD=true`.
+A three-way GitHub Actions preview gate verifies deny/default-off/
+opt-in; it never deploys a preview artifact. These build-context
+environment variables are not a trusted production identity,
+hence protected environments/code review remain necessary.
+
+**No immediate merge:** whole PR needs code-owner/security review,
+normal bundle/release pipeline attestation and final CI after last
+commit. `mergeable=true` is only a conflict check.
+No merge, deploy, SQL019, real issuer/tenant CRUD, UUID retry/
+reissue/repair/delivery/GC. `gcPermitted=false`.
+[M0 review/merge checklist](MERGE_READINESS_M0.ru.md).

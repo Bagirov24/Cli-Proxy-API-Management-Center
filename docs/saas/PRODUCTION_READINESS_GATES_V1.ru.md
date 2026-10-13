@@ -653,3 +653,18 @@ privacy/legal/retention/security review. Synthetic TLS certs expire
 2026-10-15 13:33 UTC. No production deploy, merge, SQL019,
 UUID retry/reissue/reuse/delete, repair/delivery/GC;
 `gcPermitted=false`.
+
+
+## M0 code merge review gate ≠ production release
+
+[Limited-merge checklist](MERGE_READINESS_M0.ru.md) requires
+zero-risk default-off SaaS demo in normal Vite bundle,
+explicitly denied accidental opt-in in release builds, isolated
+pull-request demo build, independent code/security review and
+latest commit CI before any owner-authorized merge. Even after
+an M0 merge, live OIDC/SSO, tenant CRUD, database/RLS
+and safe pooling, Core/Gateway enforcement, real egress,
+BYOK/BYOA Vault/KMS, external off-host signer/WORM and PG COMMIT
+settlement, durable ACK and audit/billing remain future work.
+Production/SQL019/UUID issue-retry-reissue/repair/delivery/
+GC remain BLOCKED; `gcPermitted=false`.
