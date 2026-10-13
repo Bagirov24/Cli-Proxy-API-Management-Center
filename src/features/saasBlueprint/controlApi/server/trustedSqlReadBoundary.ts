@@ -339,6 +339,7 @@ function createTrustedSqlReadBoundaryEngine(
         };
         await withSignedScopedPublicationBarrier(deps.pool, deps.signer, {
           scope, collection: requestedCollection, baseline: initialRevision, signal,
+          limit: requestedLimit,
           recordStagingOutbox: deps.recordStagingOutbox === true,
           producerOperationId: deps.recordStagingProducerOperation === true
             ? requestedOperation : undefined,
