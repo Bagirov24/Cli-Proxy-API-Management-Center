@@ -999,3 +999,20 @@ projection digest выполняется **в witness перед подписа�
 PG→witness atomic settlement, issuer authorization, external ACK,
 архива/GC. Всегда `gcPermitted=false`.
 [Контракт 7p](SYNTHETIC_PG_ATTESTED_IPC_APPEND_V1.ru.md).
+
+
+## Stage 2G.4d.7q — локальный high-water fence для защищённого IPC witness
+
+**IMPLEMENTED (CI proof only):** отдельный локальный Node journal со
+своим Ed25519 ключом подписывает monotonic witness head после проверки
+witness подписи/предшественника. В опциональном режиме защищённый
+`append-pg` возвращает положительный ACK только после local fsync и
+подтверждённого signed journal high-water. Откат одной стороны,
+недоступный journal, несовпадающие heads, подмена pinned key и crash
+посреди публикации приводят к DENY / запрету автоматического replay.
+
+Оба процесса всё ещё на **одном GitHub runner**, а не в независимых
+административных trust domains. Нет atomic PG COMMIT, off-host WORM,
+production issuer/delivery, архива, UUID reuse или GC.
+`gcPermitted=false`.
+[Детальный контракт 7q](SYNTHETIC_IPC_HIGHWATER_FENCE_V1.ru.md).

@@ -1039,3 +1039,24 @@ against witness publication. Genuine off-host trusted durable
 head, cross-system recovery and actor-scoped authorization remain
 SPEC / PRODUCTION BLOCKER. `gcPermitted=false`.
 [Контракт 7p](SYNTHETIC_PG_ATTESTED_IPC_APPEND_V1.ru.md).
+
+
+## D-074 — signed local high-water обязателен до ACK лишь в 7q proof mode
+
+В 2G.4d.7q отдельный test-only Unix-socket journal поддерживает
+собственный append-only fsynced Ed25519 high-water и закрепляет witness
+public key. Protected witness закрепляет journal public key, сверяет
+текущий journal head до любого запроса и после `append-pg` требует
+подписанного advance до положительного IPC ACK. Подключение journal
+к непустому witness, ключевая подмена, downgrade и частичный rollback
+дают DENY. Crash между локальным head и журналом **не разрешает**
+автоматически согласовывать запись или выдавать новый UUID; согласование
+после UNKNOWN остаётся отдельным SPEC.
+
+**Решение:** это улучшение обнаружения одностороннего rollback на
+одном runner, **не independent trusted root**, не WORM, не consensus,
+не atomic PG→witness settlement, не production issuer authority.
+В тесте совместный rollback обеих signing histories всё ещё проходит,
+если внешний pinned head утрачен. Блокеры сохраняются; никакого
+архива/tombstone deletion/GC, `gcPermitted=false`.
+[Контракт 7q](SYNTHETIC_IPC_HIGHWATER_FENCE_V1.ru.md).

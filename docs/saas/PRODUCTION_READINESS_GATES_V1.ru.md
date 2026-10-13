@@ -458,3 +458,21 @@ UNKNOWN-COMMIT/PITR/WAL/replica promotion and network recovery,
 durable outbound delivery+recipient ACK, signed retention/non-reuse
 and security release approval. No independent host or production
 security guarantee, no deletion/GC/cap reset.
+
+
+## 2G.4d.7q — локальный high-water журнал не заменяет durable external witness
+
+**IMPLEMENTED in disposable CI:** подписанный второй локальный
+journal head, mutual public-key pins, monotonic source-attested
+successors, две fsync-публикации до положительного IPC ACK, fail-closed
+на partial rollback, issuer/witness crash или недоступный journal.
+Старые 7n/7p standalone эксперименты остаются неизменными.
+
+**OPEN production gates:** оба ключа и хранилища разделяют одного
+runner/OS администратора и могут быть вместе откатаны; нет external
+durable trusted head, independent source/actor authority, полноценного
+anti-replay вне runner, atomic/fenced COMMIT↔witness, доказуемого
+UNKNOWN recovery, WAL/PITR/replica promotion, partition resilience,
+durable outbound delivery и authenticated recipient ACK.
+Требуются отдельные privacy/retention/security gates.
+No GC, UUID reuse, physical tombstone deletion or cap reset.

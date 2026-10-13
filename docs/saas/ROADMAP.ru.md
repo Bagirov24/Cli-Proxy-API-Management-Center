@@ -1159,3 +1159,22 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
   authenticated delivery ACK, safe retention/GC sign-off
 - [ ] **NOT AUTHORIZED:** production API/deployment, UUID reuse,
   tombstone removal, migration 019 or lifetime-cap reset
+
+
+## Stage 2G.4d.7q — signed local high-water publication gate
+
+- [x] **IMPLEMENTED CI-only:** второй Unix-socket процесс с отдельной
+  Ed25519 подписью, pinned mutual public keys, fsynced append-only
+  journal и signed status/advance receipts
+- [x] **TESTED:** witness ACK только после подтверждённого
+  high-water; отдельный PostgreSQL16 projector; lost ACK idempotency,
+  witness-only/journal-only rollback, crash before journal advance и
+  journal orphan before head publication DENY
+- [x] **LIMITATION REPRODUCED:** совместный rollback и потеря external
+  pin не детектируются — обе службы работают на одном CI runner
+- [ ] **PRODUCTION BLOCKERS:** настоящий off-host durable trusted head,
+  source/issuer authorization, атомарный или fenced PostgreSQL COMMIT,
+  WAL/PITR/failover/partition recovery, independent key custody,
+  remote authenticated ACK, retention/GC/security signoff
+- [ ] **NOT PERMITTED:** production release/deployment, merge,
+  migration 019, UUID delete/reuse, retention lifetime-cap reset
