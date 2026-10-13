@@ -768,4 +768,25 @@ jobs:
             SAAS_EPHEMERAL_UNKNOWN_OBSERVATION_CI=true \
             node scripts/saas-staging/verify-archive-witness-ipc-highwater.mjs
 
+      - name: Verify reviewer-pinned manual-only high-water dispute proof (one runner)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7s: separate simulated reviewer Ed25519 root and
+          # retained pin for manual-only rollback/dispute inspection.
+          # Re-run distinct physical 7r/7q UUID fixture; no rollback
+          # repair, producer retry, delivery, real operator or GC.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 170s env \
+            SAAS_EPHEMERAL_HIGHWATER_TEST_CI=true \
+            SAAS_EPHEMERAL_UNKNOWN_OBSERVATION_CI=true \
+            SAAS_EPHEMERAL_MANUAL_REVIEW_CI=true \
+            node scripts/saas-staging/verify-archive-witness-ipc-highwater.mjs
+
       # No deploy, repository secrets, production SQL connections or credentials.

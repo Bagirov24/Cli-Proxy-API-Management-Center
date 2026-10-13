@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Stages 2G.4d.7q/7r: physical disposable PostgreSQL16,
+// Stages 2G.4d.7q/7r/7s: physical disposable PostgreSQL16,
 // attested local witness + high-water; optional offline UNKNOWN observer.
 // ONE CI RUNNER, NOT WORM, atomic issuer settlement or GC.
 import assert from 'node:assert/strict';
@@ -7,7 +7,7 @@ import {spawn,spawnSync} from 'node:child_process';
 import {once} from 'node:events';
 import {connect} from 'node:net';
 import {
-  mkdtempSync,chmodSync,readFileSync,writeFileSync,cpSync,rmSync,
+  mkdtempSync,mkdirSync,chmodSync,readFileSync,writeFileSync,cpSync,rmSync,
   existsSync,unlinkSync,
 } from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -24,6 +24,8 @@ const ROLE='saas_witness_projection_7o',DB='saas_ephemeral_test';
 const JPROTOCOL='saas-synthetic-ipc-highwater-receipt-v1';
 const RPROTOCOL='saas-synthetic-ipc-witness-receipt-v1';
 const extended=process.env.SAAS_EPHEMERAL_UNKNOWN_OBSERVATION_CI==='true';
+const reviewStage=process.env.SAAS_EPHEMERAL_MANUAL_REVIEW_CI==='true';
+if(reviewStage&&!extended)throw Error('7s requires 7r observation proof');
 const ci=process.env.GITHUB_ACTIONS==='true'&&
   process.env.SAAS_EPHEMERAL_HIGHWATER_TEST_CI==='true'&&
   process.env.PGHOST==='127.0.0.1'&&process.env.PGPORT==='5432'&&
@@ -37,9 +39,13 @@ const witnessFile=fileURLToPath(new URL('./archive-witness-ipc-server.mjs',impor
 const journalFile=fileURLToPath(new URL('./archive-witness-highwater-ipc.mjs',import.meta.url));
 const projectorFile=fileURLToPath(new URL('./archive-witness-pg-projection-proof.mjs',import.meta.url));
 const observerFile=fileURLToPath(new URL('./archive-witness-unknown-observer.mjs',import.meta.url));
+const reviewerFile=fileURLToPath(new URL('./archive-witness-manual-review-pin.mjs',import.meta.url));
 const state=join(work,'witness-state'),socket=join(work,'witness.sock');
 const journalState=join(work,'highwater-state'),journalSocket=join(work,'highwater.sock');
 const attPriv=join(work,'projector-private.pem'),attPub=join(work,'projector-public.pem');
+const reviewDir=join(work,'reviewer-custody');
+const reviewPriv=join(reviewDir,'private.pem'),reviewPub=join(reviewDir,'public.pem');
+const reviewerWitPub=join(state,'public.pem'),reviewerHiPub=join(journalState,'public.pem');
 const password=randomBytes(24).toString('hex');
 const sqlEnv={...process.env,PGCONNECT_TIMEOUT:'5'};
 const restrictedEnv={
@@ -61,7 +67,11 @@ const journalEnv={
   SAAS_EPHEMERAL_HIGHWATER_CI:'true',
   PATH:process.env.PATH||'/usr/bin:/bin',HOME:work,LANG:'C',
 };
-const ids=extended?[
+const ids=reviewStage?[
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa8101',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa8102',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa8103',
+]:extended?[
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7f01',
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7f02',
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7f03',
@@ -70,9 +80,22 @@ const ids=extended?[
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7e02',
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7e03',
 ];
-const preCommitUuid='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7f00';
-const driftUuid=['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7f04',
-  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7f05'];
+const preCommitUuid=reviewStage?
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa8100':
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7f00';
+const driftUuid=reviewStage?[
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa8104',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa8105',
+]:[
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7f04',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7f05',
+];
+const reviewEnv={
+  GITHUB_ACTIONS:'true',
+  SAAS_EPHEMERAL_WITNESS_OFFLINE:'true',
+  SAAS_EPHEMERAL_MANUAL_REVIEW_CI:'true',
+  PATH:process.env.PATH||'/usr/bin:/bin',HOME:reviewDir,LANG:'C',
+};
 const observerEnv={
   GITHUB_ACTIONS:'true',
   SAAS_EPHEMERAL_WITNESS_OFFLINE:'true',
@@ -83,8 +106,9 @@ const freshId=()=>randomBytes(16).toString('hex');
 const hash=v=>createHash('sha256').update(v).digest('hex');
 const fingerprint=pem=>hash(createPublicKey(pem)
   .export({type:'spki',format:'der'}));
-let hasRole=false,witness=null,journal=null,serial=0,observationCount=0;
+let hasRole=false,witness=null,journal=null,serial=0,observationCount=0,reviewCount=0;
 const other=new Set();
+let reviewPin1=null,reviewPin2=null,reviewPin3=null,reviewPin4=null;
 function command(cmd,args,env,deny=false) {
   const output=spawnSync(cmd,args,{env,cwd:work,encoding:'utf8',
     timeout:15000,maxBuffer:2000000});
@@ -293,6 +317,107 @@ function observation(ch,proof,env,previous,journalReceipt,pinnedHead,
     'Observer leaked raw actor or operation UUID');
   return data;
 }
+function setupReviewer() {
+  mkdirSync(reviewDir,{mode:0o700});
+  chmodSync(reviewDir,0o700);
+  const pair=generateKeyPairSync('ed25519');
+  writeFileSync(reviewPriv,pair.privateKey.export({type:'pkcs8',format:'pem'}),
+    {flag:'wx',mode:0o600});
+  writeFileSync(reviewPub,pair.publicKey.export({type:'spki',format:'pem'}),
+    {flag:'wx',mode:0o600});
+}
+function reviewExec(action,args,{deny=false,env=reviewEnv}={}) {
+  const result=spawnSync(process.execPath,[reviewerFile,action,...args],{
+    cwd:work,env,encoding:'utf8',timeout:15000,maxBuffer:250000,
+  });
+  if(deny) {
+    assert.notEqual(result.status,0,
+      'Expected simulated review pin/inspection DENY, got SUCCESS');
+    assert.match(result.stderr||'',/MANUAL REVIEW DENIED:/);
+    return null;
+  }
+  assert.equal(result.status,0,
+    'Review-only command refused trusted test inputs: '+result.stderr);
+  const parsed=JSON.parse(result.stdout.trim());
+  assert.equal(parsed.protocol,'saas-synthetic-manual-review-pin-v1');
+  assert.equal(parsed.manualReviewRequired,true);
+  for(const field of ['authorizationGranted','reissuePermitted',
+    'retryPermitted','deliveryPermitted','gcPermitted'])
+    assert.equal(parsed[field],false,'Reviewer tool may not grant '+field);
+  assert.ok(!JSON.stringify(parsed).includes('aaaaaaaa-aaaa')&&
+    !JSON.stringify(parsed).includes('ci-7r-actor'),
+    'Manual-only reviewer exposed raw UUID/actor');
+  return parsed;
+}
+function createReviewPin(envelope,journalReceipt,previous=null,{
+  deny=false,previousFile=previous,output=null,
+  highwaterKey=reviewerHiPub,witnessKey=reviewerWitPub,
+  privateKey=reviewPriv,publicKey=reviewPub,
+}={}) {
+  const id=String(++reviewCount);
+  const headFile=save('7s-review-envelope-'+id+'.json',envelope);
+  const journalFile=save('7s-review-journal-'+id+'.json',journalReceipt);
+  const target=output??join(reviewDir,'anchor-'+id+'.json');
+  const args=[
+    privateKey,publicKey,witnessKey,highwaterKey,headFile,journalFile,
+    previousFile??'-',target,'--no-gc',
+  ];
+  const response=reviewExec('pin',args,{deny});
+  if(deny)return null;
+  assert.equal(response.kind,'SIMULATED_REVIEW_PIN_WRITTEN');
+  assert.deepEqual(response.head,{
+    sequence:envelope.payload.sequence,digest:envelopeDigest(envelope),
+  });
+  assert.ok(existsSync(target));
+  return target;
+}
+function reviewInspect(envelope,journalReceipt,pinPath,{
+  deny=false,publicKey=reviewPub,witnessKey=reviewerWitPub,
+  highwaterKey=reviewerHiPub,env=reviewEnv,
+}={}) {
+  const id=String(++reviewCount);
+  const headFile=save('7s-check-envelope-'+id+'.json',envelope);
+  const journalFile=save('7s-check-journal-'+id+'.json',journalReceipt);
+  const args=[publicKey,witnessKey,highwaterKey,
+    headFile,journalFile,pinPath,'--no-gc'];
+  const report=reviewExec('inspect',args,{deny,env});
+  if(deny)return null;
+  assert.equal(report.offHostAnchorVerified,false,
+    'Same-runner proof must never assert independent remote authority');
+  assert.equal(report.repairPermitted,false);
+  assert.equal(report.locallySignedOnly,true);
+  return report.status;
+}
+async function raceReviewPin(envelope,journalReceipt,previous,target) {
+  const id=String(++reviewCount);
+  const envPath=save('7s-race-envelope-'+id+'.json',envelope);
+  const journalPath=save('7s-race-journal-'+id+'.json',journalReceipt);
+  const args=['pin',reviewPriv,reviewPub,reviewerWitPub,reviewerHiPub,
+    envPath,journalPath,previous,target,'--no-gc'];
+  function attempt() {
+    return new Promise((resolve,reject)=>{
+      const child=spawn(process.execPath,[reviewerFile,...args],{
+        cwd:work,env:reviewEnv,stdio:['ignore','pipe','pipe'],
+      });
+      let stdout='',stderr='';
+      child.stdout.on('data',v=>{stdout+=String(v);});
+      child.stderr.on('data',v=>{stderr+=String(v);});
+      child.on('error',reject);
+      child.on('exit',(code,signal)=>resolve({code,signal,stdout,stderr}));
+    });
+  }
+  const results=await Promise.all([attempt(),attempt()]);
+  assert.equal(results.filter(x=>x.code===0).length,1,
+    'Two simulated reviewer writers must not both overwrite one pin');
+  assert.equal(results.filter(x=>x.code!==0).length,1);
+  assert.match(results.find(x=>x.code!==0).stderr,/MANUAL REVIEW DENIED:/);
+  assert.ok(existsSync(target));
+  const receipt=JSON.parse(readFileSync(target,'utf8'));
+  assert.deepEqual(receipt.data.head,{
+    sequence:envelope.payload.sequence,digest:envelopeDigest(envelope),
+  });
+  return target;
+}
 function source(challenge) {
   const n=String(++serial);
   const chfile=save('7q-challenge-'+n+'.json',challenge);
@@ -397,6 +522,15 @@ try {
   const first=await exchange(socket,proposal(req1,null,proof1));
   const head1=verifyWitness(first,null,null,req1);
   await checkedJournal(head1);
+  if(reviewStage) {
+    setupReviewer();
+    reviewPin1=createReviewPin(first.envelope,await checkedJournal(head1));
+    assert.equal(reviewInspect(first.envelope,await checkedJournal(head1),
+      reviewPin1),'PIN_MATCHED_FOR_MANUAL_INSPECTION');
+    assert.equal(reviewInspect(first.envelope,await checkedJournal(head1),
+      reviewPin1,{env:{...reviewEnv,PGHOST:'127.0.0.1'},deny:true}),null);
+    console.info('PASS 7s: separately signed CI-only reviewer genesis pin; no SQL, reissue, repair, delivery or GC authority');
+  }
   if(extended) {
     // A real PostgreSQL transaction is severed while INSERT is still
     // uncommitted. The caller sees UNKNOWN; a fresh signed read-only PG
@@ -450,6 +584,43 @@ try {
   assert.deepEqual(recovered.receipt,witnessRow2.receipt);
   assert.equal(recovered.head.sequence,2);
   await checkedJournal(head2);
+  if(reviewStage) {
+    const currentReceipt=await checkedJournal(head2);
+    assert.equal(reviewInspect(recovered.envelope,currentReceipt,reviewPin1),
+      'UNPINNED_LOCAL_ADVANCE_REVIEW_REQUIRED');
+    reviewPin2=createReviewPin(recovered.envelope,currentReceipt,reviewPin1);
+    assert.equal(reviewInspect(recovered.envelope,currentReceipt,reviewPin2),
+      'PIN_MATCHED_FOR_MANUAL_INSPECTION');
+    // A previous pin can never be overwritten or used as genesis of a
+    // later sequence; manual reviewer chain is append-only within CI.
+    createReviewPin(recovered.envelope,currentReceipt,reviewPin1,
+      {output:reviewPin2,deny:true});
+    createReviewPin(recovered.envelope,currentReceipt,null,{deny:true});
+    const wrongKey=join(reviewDir,'wrong-reviewer-public.pem');
+    writeFileSync(wrongKey,
+      generateKeyPairSync('ed25519').publicKey.export({type:'spki',format:'pem'}),
+      {flag:'wx',mode:0o600});
+    reviewInspect(recovered.envelope,currentReceipt,reviewPin2,
+      {publicKey:wrongKey,deny:true});
+    reviewInspect(recovered.envelope,currentReceipt,reviewPin2,
+      {witnessKey:wrongKey,deny:true});
+    reviewInspect(recovered.envelope,currentReceipt,reviewPin2,
+      {highwaterKey:wrongKey,deny:true});
+    const alteredPin=JSON.parse(readFileSync(reviewPin2,'utf8'));
+    alteredPin.data.head.digest='f'.repeat(64);
+    const alteredPath=save('7s-tampered-review-pin.json',alteredPin);
+    reviewInspect(recovered.envelope,currentReceipt,alteredPath,{deny:true});
+    const alteredReceipt=structuredClone(currentReceipt);
+    alteredReceipt.data.head.digest='f'.repeat(64);
+    reviewInspect(recovered.envelope,alteredReceipt,reviewPin2,{deny:true});
+    const forgedEnvelope=structuredClone(recovered.envelope);
+    forgedEnvelope.payload.sequence=99;
+    reviewInspect(forgedEnvelope,currentReceipt,reviewPin2,{deny:true});
+    assert.equal(reviewInspect(first.envelope,currentReceipt,reviewPin2),
+      'SPLIT_SIGNED_LOCAL_HEADS_REVIEW_REQUIRED');
+    reviewExec('repair',[],{deny:true});
+    console.info('PASS 7s: pinned direct successor after lost IPC ACK, stale reviewer pin and mismatched pair remain review-only; key/proof/overwrite/downgrade DENY');
+  }
   if(extended) {
     // A fresh independent PG read and separately signed journal/witness
     // converge after lost ACK. This is OBSERVATION ONLY, not a producer
@@ -529,6 +700,18 @@ try {
   const rolled=await exchange(join(work,'joint-rollback.sock'),{op:'head'});
   assert.deepEqual(rolled.head,head1);
   assert.notDeepEqual(rolled.head,head2);
+  if(reviewStage) {
+    const oldReceipt=await checkedJournal(head1,
+      staleJournalSocket,journalGenesis);
+    assert.equal(reviewInspect(rolled.envelope,oldReceipt,reviewPin2),
+      'COORDINATED_LOCAL_ROLLBACK_SUSPECTED');
+    // Simulate loss/rollback of the reviewer's OWN saved pin too.
+    // This passes cryptographic self-consistency; the test explicitly
+    // proves that SAME-runner pinning is NOT a durable remote root.
+    assert.equal(reviewInspect(rolled.envelope,oldReceipt,reviewPin1),
+      'PIN_MATCHED_FOR_MANUAL_INSPECTION');
+    console.info('PASS 7s: retaining newer reviewer pin detects jointly rolled-back local histories; jointly rolled-back reviewer pin defeats same-runner observation (production blocker)');
+  }
   if(extended) {
     // A valid historical journal signature is not evidence for the
     // newer pinned head. A coordinated rollback defeats a LOST pin,
@@ -565,6 +748,11 @@ try {
       'checkpoints','00000003.json'),'utf8'));
     const supposed={sequence:3,digest:envelopeDigest(orphan.envelope)};
     const olderJournal=await checkedJournal(head2);
+    if(reviewStage) {
+      assert.equal(reviewInspect(orphan.envelope,olderJournal,reviewPin2),
+        'SPLIT_SIGNED_LOCAL_HEADS_REVIEW_REQUIRED');
+      console.info('PASS 7s: witness-fsynced / journal-not-advanced divergence produces manual dispute with no repair authorization');
+    }
     observation({protocol:'saas-synthetic-pg-projection-challenge-v1',
       nonce:pg3.statement.challenge,expected:head2},pg3,orphan.envelope,
       recovered.envelope,olderJournal,supposed,candidate(ids[1],head2),
@@ -578,6 +766,16 @@ try {
   const r3=await exchange(socket,proposal(live3,head2,src3));
   const head3=verifyWitness(r3,head2,recovered.envelope,live3);
   await checkedJournal(head3);
+  if(reviewStage) {
+    const signed3=await checkedJournal(head3);
+    assert.equal(reviewInspect(r3.envelope,signed3,reviewPin2),
+      'UNPINNED_LOCAL_ADVANCE_REVIEW_REQUIRED');
+    reviewPin3=await raceReviewPin(r3.envelope,signed3,reviewPin2,
+      join(reviewDir,'concurrent-pin-3.json'));
+    assert.equal(reviewInspect(r3.envelope,signed3,reviewPin3),
+      'PIN_MATCHED_FOR_MANUAL_INSPECTION');
+    console.info('PASS 7s: two simultaneous reviewer signers cannot overwrite the same pinned successor; direct monotonic chain remains manual-only');
+  }
   console.info('PASS 7q: witness-fsynced / journal-not-advanced SIGKILL creates DENY-only orphan, no silent repair');
 
   // Independent journal crashes after its checkpoint fsync but BEFORE
@@ -608,6 +806,11 @@ try {
       'checkpoints','00000004.json'),'utf8'));
     const supposed={sequence:4,
       digest:envelopeDigest(orphanJournal.envelope)};
+    if(reviewStage) {
+      assert.equal(reviewInspect(r3.envelope,orphanJournal.receipt,reviewPin3),
+        'SPLIT_SIGNED_LOCAL_HEADS_REVIEW_REQUIRED');
+      console.info('PASS 7s: journal checkpoint signed but unpublished head is a split/manual incident, not a safe repaired high-water');
+    }
     observation({protocol:'saas-synthetic-pg-projection-challenge-v1',
       nonce:proof4.statement.challenge,expected:head3},
       proof4,orphanJournal.envelope,r3.envelope,
@@ -624,6 +827,21 @@ try {
   const r4=await exchange(socket,proposal(req4b,head3,safe4));
   const head4=verifyWitness(r4,head3,r3.envelope,req4b);
   await checkedJournal(head4);
+  if(reviewStage) {
+    const signed4=await checkedJournal(head4);
+    assert.equal(reviewInspect(r4.envelope,signed4,reviewPin3),
+      'UNPINNED_LOCAL_ADVANCE_REVIEW_REQUIRED');
+    createReviewPin(r4.envelope,signed4,reviewPin1,{deny:true});
+    reviewPin4=createReviewPin(r4.envelope,signed4,reviewPin3);
+    assert.equal(reviewInspect(r4.envelope,signed4,reviewPin4),
+      'PIN_MATCHED_FOR_MANUAL_INSPECTION');
+    // Reviewer's offline tool cannot be turned into a network/DB
+    // producer, and even a MATCHED status is not an approval.
+    reviewInspect(r4.envelope,signed4,reviewPin4,{
+      deny:true,env:{...reviewEnv,PGUSER:'postgres'},
+    });
+    console.info('PASS 7s: historic reviewer pin fork/gap denied; latest signed root is still non-authorizing with zero PostgreSQL credentials');
+  }
   if(extended) {
     // Two physically distinct COMMITs arriving since the same signed
     // witness head may never be downgraded to a single-operation
@@ -657,6 +875,8 @@ try {
   assert.ok(!output.includes('ci-7q-actor'));
   console.info('PASS 7q: signer pin substitution/downgrade DENY, no 009/013 effects, no raw UUID, GC always false');
   console.info('LIMITATION 7q: TWO signer processes on ONE runner do not give independent durable root or atomic PostgreSQL settlement');
+  if(reviewStage)
+    console.info('LIMITATION 7s: reviewer signer and saved pin share CI trust domain; preserved pin detects local rollback only while reviewer pin/root remain independently available; no production WORM, actor authorization or repair');
 } finally {
   await stop(witness).catch(()=>{});
   await stop(journal).catch(()=>{});
