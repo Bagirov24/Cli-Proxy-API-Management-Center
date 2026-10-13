@@ -138,3 +138,17 @@ the new limits add denial, not external delivery semantics.
 [Demo #38356159923](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159923),
 [Chromium #38356159948](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159948)
 all SUCCESS. The final documentation commit requires independent Actions on its own SHA.
+
+
+## 018 legacy/fixed-path hardening, with no reclamation
+
+Issued-UUID rows cannot be deleted or truncated through their
+existing triggers. 018 adds a common INSERT guard with signed
+transaction lock and raw issuance budget; it refuses a new 016
+UUID after 12 actor / 48 tenant lifetime entries even if a
+legacy SQL caller skips the 017 fixed template. The old public
+016 issuer and status functions are now quota-metered wrappers
+over private cores, while the 017 issuer/status remain stricter.
+No issuer obtains a replacement ID when capacity is exhausted;
+private health `gc_permitted=false` is never a GC approval.
+[Retention contract](SYNTHETIC_TOMBSTONE_RETENTION_V1.ru.md).

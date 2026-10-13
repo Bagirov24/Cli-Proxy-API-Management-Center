@@ -261,3 +261,14 @@ previously committed producer UUID nor its immutable 009/013 intent.
 [Demo #38356159923](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159923),
 [Chromium #38356159948](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159948)
 all SUCCESS. The final documentation commit requires independent Actions on its own SHA.
+
+
+## 018 insertion budgets are NOT 014 receiver quotas
+
+Limits on creating new issued-UUID tombstones or producer
+event mappings do not delete historical 013 intents, modify
+012 reconciliation, or reset 014 receiver fencing/receipt.
+Existing committed producer event replays do not create a new
+mapping and therefore are not rejected by the new-insert budget.
+No remote ACK or real recipient semantics are attested.
+[018 details](SYNTHETIC_TOMBSTONE_RETENTION_V1.ru.md).

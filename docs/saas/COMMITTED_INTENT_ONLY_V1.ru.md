@@ -161,3 +161,14 @@ read-only status can attest real receiver delivery.
 [Demo #38356159923](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159923),
 [Chromium #38356159948](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159948)
 all SUCCESS. The final documentation commit requires independent Actions on its own SHA.
+
+
+## 018 hard stop is not external delivery
+
+A failed producer INSERT due to 018 capacity or rate ceiling
+cannot leave committed 009/013 event-only intent. The same
+committed UUID still deduplicates via 015 on reauthentication.
+No archived history, real HTTP, recipient data, payload or
+network ACK is generated. Existing unsafe pre-COMMIT
+local publication callback is unchanged and blocked for
+production. See [018 contract](SYNTHETIC_TOMBSTONE_RETENTION_V1.ru.md).

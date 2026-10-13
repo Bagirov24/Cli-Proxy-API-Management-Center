@@ -838,3 +838,34 @@ enforcement всех путей НЕ заявлено. Reserved-commit burst н�
 [Demo #38356159923](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159923),
 [Chromium #38356159948](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159948)
 all SUCCESS. The final documentation commit requires independent Actions on its own SHA.
+
+
+## D-066 — не архивировать tombstones без внешнего proof of non-reuse
+
+Решение для Stage 2G.4d.7i: **никакой GC не реализован**.
+Протухание окна восстановления не удаляет ни 016-issued
+UUID, ни 015 producer mapping. 018 добавляет common
+BEFORE INSERT hard-stop, транзакционную tenant-блокировку
+и BEFORE TRUNCATE запрет для обеих таблиц. Пожизненные
+caps: issuance 12 actor / 48 tenant; producer 64 actor /
+256 tenant. Успешный raw INSERT имеет отдельный budget
+32 actor / 64 tenant за 5 минут. Существующие stricter
+017 issuer/status правила остаются в своём режиме.
+
+Старые 016 функции переопределяются как подписанные,
+quota-metered facades; 017 функции используют приватные
+недоступные reader core, чтобы исключить рекурсию. У прямой
+legacy выдачи отдельный budget 8/32 за 5 минут,
+у legacy status 16/64 в минуту. Не путать эти классы
+с единым глобальным limiter: клиентский SQL ROLLBACK
+может отменить status debit, а старый 009 local
+publication path с pre-COMMIT handoff пока не закрыт.
+
+Private read-only capacity report всегда возвращает
+`gc_permitted=false`, не экспортирует UUID и
+не является внешней tamper-evident attestation.
+Привилегированный replay 015–017 может переписать
+facades; 018 должен применяться ПОСЛЕДНИМ.
+Все эти ограничения — staging-only acceptance,
+а не production retention/deletion policy.
+[Подробности](SYNTHETIC_TOMBSTONE_RETENTION_V1.ru.md).

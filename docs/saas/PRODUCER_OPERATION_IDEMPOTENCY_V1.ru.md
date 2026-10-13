@@ -169,3 +169,18 @@ global rate-limiting system. No tombstone is ever deleted.
 [Demo #38356159923](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159923),
 [Chromium #38356159948](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159948)
 all SUCCESS. The final documentation commit requires independent Actions on its own SHA.
+
+
+## 018 producer-event hard stop under legacy 015 SQL
+
+Direct 015 signed event-only producer operations keep
+transactional same-UUID idempotency. Their NEW committed
+mapping rows now traverse the 018 producer INSERT budget
+(32 actor/64 tenant per five minutes) plus 64 actor/256 tenant
+lifetime ceilings. A new identity when quota is exhausted
+rolls back the enclosing 009 audit and derived 013 intent;
+replay of an already committed UUID makes no new insertion
+and can still confirm the original event.
+This is not burst throttling for replay attempts, real payload
+or proof of remote delivery.
+[Retention contract](SYNTHETIC_TOMBSTONE_RETENTION_V1.ru.md).

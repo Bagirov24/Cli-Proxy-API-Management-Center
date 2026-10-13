@@ -1000,3 +1000,23 @@ The final documentation SHA requires its own independent CI; this does not autho
 [Demo #38356159923](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159923),
 [Chromium #38356159948](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159948)
 all SUCCESS. The final documentation commit requires independent Actions on its own SHA.
+
+
+## Stage 2G.4d.7i — SQL-backed retention floor, no archive
+
+- [x] **IMPLEMENTED:** 018 BEFORE INSERT common per-tenant
+  advisory-lock lifetime capacity checks for issued 016 UUIDs
+  and 015 producer-event identities; separate raw-insert budgets
+- [x] **IMPLEMENTED:** private capacity snapshot `gc_permitted=false`;
+  BEFORE TRUNCATE denial; private core functions and metered
+  legacy 016 issued/read facades (8/32 issues per 5min, 16/64
+  status per minute)
+- [x] **TEST ADDED:** no event on quota-induced SQL ROLLBACK,
+  exact replay under exhausted new-insert limit, legacy
+  status debit, cap refusal, protected TRUNCATE, 018-last replay
+- [ ] **SPEC:** verifiable remote non-reuse record, atomic safe archive
+  cutover, authenticated external witness and DDL-privileged
+  tamper-evidence, restored capacity/plan economics
+- [ ] **SPEC:** legacy direct SQL caller-controlled ROLLBACK rate
+  bypass; 009 callback/request bursts, global edge policy,
+  public HTTP and real payload/delivery/ACK

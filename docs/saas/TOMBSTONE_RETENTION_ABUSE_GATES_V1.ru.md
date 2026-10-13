@@ -134,3 +134,24 @@ live network traffic or real credentials are authorized.
 [Chromium](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159948).
 All four workflows completed SUCCESS. The final documentation commit must pass
 its own CI to claim final-head verification. No production readiness implied.
+
+
+## Follow-on 018: common insertion guard for legacy SQL bypasses
+
+017 controlled only the new fixed issuer/status templates.
+018 adds private BEFORE INSERT checks to the underlying 016
+issues and 015 producer-event tables, so legacy caller paths
+cannot append unlimited new identities. 016 caps are still
+12/48 lifetime; synthetic producer mappings have 64 actor/256
+tenant lifetime ceilings. Both get separate raw successful-insert
+budgets (32 actor / 64 tenant per five minutes). Legacy 016
+direct issue/status functions now meter via private core wrappers;
+their quotas are separate from opted-in 017 budgets.
+
+The new read-only tenant capacity snapshot reports
+`gc_permitted=false`; it is NOT a cryptographic archive proof.
+There is no tombstone deletion or reuse. Privileged old-migration
+replay requires applying 018 last to restore public metering.
+The old 009 callback path and rollback-able raw status SQL
+request counters remain outside a global abuse guarantee.
+[Detailed contract](SYNTHETIC_TOMBSTONE_RETENTION_V1.ru.md).

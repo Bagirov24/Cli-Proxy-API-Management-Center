@@ -200,3 +200,15 @@ record, not an external ACK.
 [Demo #38356159923](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159923),
 [Chromium #38356159948](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159948)
 all SUCCESS. The final documentation commit requires independent Actions on its own SHA.
+
+
+## 018 quota failure and audit atomicity
+
+When an 018 BEFORE INSERT trigger refuses a NEW producer mapping
+inside a signed publication transaction, the same transaction
+must ROLLBACK 009 signed audit and 013 synthetic intent. An
+already committed 009 audit is still eligible for separate 012
+observation and 013/014 local worker processing.
+The private retention snapshot is not a 012 reconciliation
+record and never certifies recipient delivery.
+[018 contract](SYNTHETIC_TOMBSTONE_RETENTION_V1.ru.md).

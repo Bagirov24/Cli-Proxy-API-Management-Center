@@ -845,3 +845,22 @@ throttled**. See [the 017 contract](TOMBSTONE_RETENTION_ABUSE_GATES_V1.ru.md).
 [Demo #38356159923](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159923),
 [Chromium #38356159948](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159948)
 all SUCCESS. The final documentation commit requires independent Actions on its own SHA.
+
+
+## Stage 2G.4d.7i — общий PostgreSQL hard stop, без удаления UUID
+
+**IMPLEMENTED (staging only):** миграция 018 ставит BEFORE INSERT
+проверки на обе immutable таблицы 015/016: даже прямой вызов старых
+signed SQL функций не может бесконтрольно накапливать новые UUID.
+Выдача: пожизненные лимиты 12 actor / 48 tenant; события producer:
+64 actor / 256 tenant. Успешные INSERT также ограничены 32
+actor / 64 tenant за 5 минут (раздельные бюджеты).
+
+018 добавляет BEFORE TRUNCATE запрет, отдельный private snapshot
+заполненности с `gc_permitted=false` и ограниченные legacy facades
+для прямых вызовов 016. Архивирования, удаления и повторной выдачи
+UUID НЕТ. Переигрывание старых 015–017 SQL миграций может
+перезаписать функции, поэтому CI заново применяет 018 последним
+и проверяет wrappers. Глобальную защиту всех legacy/009
+публикаций этот этап **не заявляет**.
+[Полный контракт](SYNTHETIC_TOMBSTONE_RETENTION_V1.ru.md).

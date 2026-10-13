@@ -299,3 +299,21 @@ retention or erase the original pre-COMMIT handoff risk.
 [Demo #38356159923](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159923),
 [Chromium #38356159948](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159948)
 all SUCCESS. The final documentation commit requires independent Actions on its own SHA.
+
+
+## 2G.4d.7i — retention / legacy hard stops do not unlock production
+
+**IMPLEMENTED only on disposable PG16:** new 018 immutable
+INSERT ceilings and successful-write budgets for 015/016 private
+records, legacy direct-016 issuance/status metering, denied
+TRUNCATE and private capacity view with `gc_permitted=false`.
+018 must run last after any privileged replay of 015–017.
+
+**OPEN / SPEC:** no physical archive, external non-reuse witness,
+safe GC, capacity restoration after 12/48 or 64/256 lifetime caps,
+test against hostile DB owner, tamper-evidence/retention,
+complete 009/legacy request-attempt quotas, true edge/global
+throttling, signed production HTTP APIs, durable payload and
+recipient ACK, dispatch-time revocation, real business/privacy
+deletion and independent security/release approvals.
+Old pre-COMMIT local handoff remains a production blocker.
