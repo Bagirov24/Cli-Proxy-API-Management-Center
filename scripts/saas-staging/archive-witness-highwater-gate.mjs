@@ -84,7 +84,8 @@ function readJournal(dir) {
   const content=readFileSync(join(dir,'highwater.log'),'utf8');
   assert(content.length>0&&content.length<=20000&&content.endsWith('\n'),
     'Torn or oversized high-water journal');
-  const rows=content.trimEnd().split('\n');
+  const rows=content.slice(0,-1).split('\n');
+  assert(rows.every(row=>row.length>0),'Noncanonical blank high-water journal row');
   assert(rows.length>0&&rows.length<=128,'Invalid high-water length');
   const parsed=[];
   for(let i=0;i<rows.length;i++) {

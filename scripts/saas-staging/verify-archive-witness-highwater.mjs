@@ -174,7 +174,7 @@ try {
    cloneAnchorB,cloneJournal,thirdFile)],false,true);
  offline(highwater,['verify',...args(cloneA,cloneAnchorA,cloneB,
    cloneAnchorB,cloneJournal,thirdFile)],true);
- offline(highwater,['verify',...args(a,anchorA,b,anchorB,journal,nextFile)]);
+ offline(highwater,['verify',...args(a,anchorA,b,anchorB,journal,thirdFile)],true);
  console.info('PASS: SIGKILL after journal fsync leaves pending lock; independent verifier DENIES');
 
  // A normal publication of both distinct copies + journal can verify
