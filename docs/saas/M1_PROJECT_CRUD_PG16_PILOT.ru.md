@@ -51,6 +51,8 @@ test signer key. Нет реального issuer/token directory подключ
 tenant role/actor headers, дважды проверяет актуальное membership
 до исполнения server-only writer, валидирует имя/ID/version и
 возвращает унифицированные результаты без токенов и SQL ошибок.
+Дополнительная fail-closed проверка: результат server-side actor lookup обязан иметь ровно тот же `actor.id`, который разрешён доверенным issuer/subject directory; подмена даже на admin другого actor блокирует writer (401). Это закреплено негативным Bun-тестом.
+
 Порт **НЕ подключён** к HTTP router, Railway, Core/Gateway,
 production PostgreSQL и не знает секретов или signer key.
 Его \`M1ProjectTransactionalWriter\` пока только интерфейс:
