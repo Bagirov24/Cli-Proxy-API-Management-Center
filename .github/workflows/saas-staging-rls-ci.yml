@@ -746,6 +746,6 @@ jobs:
           test ! -e /data/auths
           timeout --signal=TERM --kill-after=5s 150s env \
             SAAS_EPHEMERAL_HIGHWATER_TEST_CI=true \
-            node scripts/saas-staging/verify-archive-witness-highwater.mjs
+            node scripts/saas-staging/verify-archive-witness-ipc-highwater.mjs
 
       # No deploy, repository secrets, production SQL connections or credentials.
