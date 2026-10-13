@@ -1154,3 +1154,22 @@ WORM или фактическое восстановление после PITR.
 Любая real issuer recovery требует отдельного trust domain,
 fenced settlement и security sign-off; автоматический repair/GC
 запрещён. [Контракт 7u](SYNTHETIC_OPERATOR_DR_QUARANTINE_V1.ru.md).
+
+
+## D-079 — real HTTPS/mTLS transport does not establish off-host custody
+
+Stage 2G.4d.7v introduces **actual** mTLS over loopback with
+CA and pinned SPKI, one-process fsynced monotonic signed
+high-water receipt log and restart recovery of same receipt
+after lost ACK. It refuses stale expected heads, unauthorized
+client keys, forks and torn logs. `GET /v1/head` is read-only.
+
+**Decision:** loopback HTTPS and local fsync are a usable
+transport prototype, **not** a separately administered
+off-host authority, WORM, HSM, quorum or atomic PostgreSQL
+settlement. Successful signed HTTP ACK authorizes **nothing**
+beyond observing the prototype's recorded head. No production
+issuer, repair, dispatch, UUID retry/reuse/delete or GC.
+Separate infrastructure and security review remain required.
+`gcPermitted=false`.
+[7v contract](SYNTHETIC_OFFHOST_MTLS_TRANSPORT_V1.ru.md).

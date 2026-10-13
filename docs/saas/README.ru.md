@@ -1093,3 +1093,15 @@ runner, поэтому ни human approval, ни off-host custody, ни DR
 `repairPermitted=false`, `deliveryPermitted=false`,
 `gcPermitted=false`.
 [7u контракт](SYNTHETIC_OPERATOR_DR_QUARANTINE_V1.ru.md).
+
+
+## Stage 2G.4d.7v — HTTPS/mTLS high-water prototype (loopback only)
+
+На настоящем TLS1.3 HTTPS/mTLS, но **одном disposable runner**,
+реализованы pinned client/server SPKI, signed witness+journal
+append, монотонный fsynced receipt journal, idempotent lost-ACK
+recovery и DENY для fork/stale/nonce/key/torn record. Это
+**не независимая remote/WORM authority**, не PG COMMIT
+settlement и не producer/retry/GC API. Старые 7l–7u
+adversarial suites сохранены.
+[7v контракт](SYNTHETIC_OFFHOST_MTLS_TRANSPORT_V1.ru.md).

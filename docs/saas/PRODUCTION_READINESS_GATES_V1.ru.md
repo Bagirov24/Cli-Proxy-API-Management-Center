@@ -554,3 +554,19 @@ partition/UNKNOWN/orphan-journal manual recovery, actual DR drill,
 issuer/actor authorization, durable outbound+recipient ACK and
 privacy/legal/retention/security signoff. No production deploy,
 automatic recovery, UUID reuse/delete or GC.
+
+
+## Stage 2G.4d.7v — TLS/mTLS authority prototype is not independent
+
+**CI-only:** test CA mTLS on loopback, pinned client/server
+SPKI, witness/journal signatures, monotonic signed fsync
+append log, crash/restart lost ACK, fork and tamper DENY.
+All keys/storage share **one ephemeral runner**.
+
+**OPEN:** independent remote operator/key custody/HSM/WORM
+and monotonic nonce counter; out-of-band preserved head,
+mTLS revocation/rotation, partition/failover/disaster tests,
+PG COMMIT WAL/PITR fencing, actor/issuer authorization,
+durable authenticated recipient ACK, privacy/legal/security
+approval. No live endpoints, Railway deploy, SQL 019,
+UUID delete/reuse/retry or GC.

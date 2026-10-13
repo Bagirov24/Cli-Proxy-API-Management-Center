@@ -1265,3 +1265,21 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
   privacy/security/retention release approval
 - [ ] **NOT AUTHORIZED:** deployment/merge, SQL 019, UUID
   issue/retry/reuse/delete, auto-recovery, archive or GC
+
+
+## Stage 2G.4d.7v — executable mTLS authority transport
+
+- [x] **CI ONLY:** HTTPS/TLS1.3 on `127.0.0.1`, mTLS plus
+  pinned client and server SPKI, signed witness/journal direct
+  append with separate Ed25519 authority receipt
+- [x] **CODE VERIFIED:** 4/4 GitHub Actions SUCCESS on SHA `99461022`; full historical suite and 7v pass
+- [x] **FAIL-CLOSED:** fsync before ACK, lost-ACK replay of identical
+  receipt, stale expected/fork and nonce rebind DENY; tampered/torn
+  journal, substituted key and denied publisher credentials
+- [ ] **REAL OFF-HOST:** independent operator, HSM/WORM,
+  monotonic counter/nonce ledger, CA rotation/revocation, remote
+  client minimum custody, partition/failover/DR and quorum
+- [ ] **PRODUCTION SETTLEMENT:** atomic/fenced PG COMMIT+WAL,
+  issuer actor auth, recipient ACK, privacy/security/retention
+- [ ] **NO RELEASE:** no deploy, merge, 019, UUID reissue/reuse/
+  delete, repair, archive, delivery or GC
