@@ -866,4 +866,33 @@ jobs:
             exit 1
           fi
 
+      - name: Verify read-only Railway synthetic PKI expiry and signed high-water audit (7x)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # No Railway credentials, no external network or database access.
+          # Openssl fixture + ephemeral Ed25519 signed high-water in /tmp.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          command -v openssl >/dev/null
+          node --check scripts/saas-staging/audit-railway-highwater-readonly.mjs
+          timeout --signal=TERM --kill-after=5s 65s env \
+            SAAS_EPHEMERAL_RAILWAY_AUDIT_CI=true \
+            node scripts/saas-staging/audit-railway-highwater-readonly.mjs --selftest
+          if env SAAS_REMOTE_STAGING_ONLY=true \
+              SAAS_HIGHWATER_TRANSPORT_SCOPE=SYNTHETIC_NO_ISSUER \
+              RAILWAY_PROJECT_ID=dba33407-7200-40e0-a9c8-08c43d41e5e4 \
+              RAILWAY_ENVIRONMENT_NAME=production \
+              node scripts/saas-staging/audit-railway-highwater-readonly.mjs \
+                --railway-sandbox 5c55326f3c90215556c8bdac77ecc9c6d152cdf1e59253492a208f5e18a16411 2 \
+                  >/dev/null 2>&1; then
+            echo "ERROR: 7x read-only audit accepted production CI context" >&2
+            exit 1
+          fi
+
       # No deploy, repository secrets, production SQL connections or credentials.
