@@ -692,5 +692,24 @@ jobs:
             SAAS_EPHEMERAL_IPC_WITNESS_CI=true \
             node scripts/saas-staging/verify-archive-witness-ipc.mjs
 
+      - name: Verify least-privilege PostgreSQL projection attestation and challenge-bound witness
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7o: ephemeral ONLY. Postgres admin creates a temporary
+          # read-only projection role; the attestor cannot read tenant
+          # metadata, secrets or change UUID mappings. Offline verifier
+          # has no PG creds. All signing keys are CI-only and erased.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 90s env \
+            SAAS_EPHEMERAL_PROJECTOR_PROOF_CI=true \
+            node scripts/saas-staging/verify-archive-witness-pg-projection.mjs
+
 
       # No deploy, repository secrets, production SQL connections or credentials.
