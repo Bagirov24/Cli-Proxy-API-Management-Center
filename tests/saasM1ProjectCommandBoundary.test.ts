@@ -163,6 +163,19 @@ describe('M1a server-only tenant project write boundary (no deployed API)', () =
     expect(b.writes).toHaveLength(0);
   });
 
+  test('actor store cannot substitute a different admin for verified subject', async () => {
+    const f = fixture();
+    // Directory resolves actor-north, but a compromised/stale actor adapter
+    // returns a different identity with the same tenant admin membership.
+    f.actors.set('actor-north', {
+      id: 'actor-impostor',
+      memberships: [{ tenantId: 'demo-north', role: 'tenant-admin', status: 'active' }],
+    });
+    const response = await f.handler(f.issue());
+    expect(response.status).toBe(401);
+    expect(f.writes).toHaveLength(0);
+  });
+
   test('tenant viewer, auditor, cross-tenant, revoked and ambiguous grants denied', async () => {
     const f = fixture();
     const viewerResult = await f.handler(f.issue({
