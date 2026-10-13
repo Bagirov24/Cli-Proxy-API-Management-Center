@@ -828,4 +828,24 @@ jobs:
             SAAS_EPHEMERAL_OPERATOR_DR_TEST_CI=true \
             node scripts/saas-staging/verify-archive-witness-operator-dr.mjs
 
+      - name: Verify bounded mutual-TLS external high-water service transport and fsync journal
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7v: REAL loopback TLS1.3/mTLS network protocol and
+          # signed append-only fsync log. Still ONE ephemeral runner,
+          # NOT a separate off-host trust domain or WORM. No deployment,
+          # real certificates, production, issuer, replay, delivery or GC.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          command -v openssl >/dev/null
+          timeout --signal=TERM --kill-after=5s 90s env \
+            SAAS_EPHEMERAL_EXTERNAL_TRANSPORT_TEST_CI=true \
+            node scripts/saas-staging/verify-archive-witness-offhost-mtls.mjs
+
       # No deploy, repository secrets, production SQL connections or credentials.
