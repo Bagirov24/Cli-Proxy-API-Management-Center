@@ -544,4 +544,4 @@ BEGIN
 END
 $assert$;
 COMMIT;
-echo 'PASS: 018 universal insert hard stops, metered legacy 016 SQL, immutable capacity report'
+\echo 'PASS: 018 universal insert hard stops, metered legacy 016 SQL, immutable capacity report'
