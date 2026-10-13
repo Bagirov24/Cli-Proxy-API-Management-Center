@@ -636,5 +636,24 @@ jobs:
             SAAS_EPHEMERAL_RESTORE_CI=true \
             node scripts/saas-staging/verify-archive-witness-restoration.mjs
 
+      - name: Verify two isolated offline witness replicas and fail-closed high-water journal
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7l: THREE temporary file trust compartments on one
+          # disposable CI host, never a production external witness.
+          # Real PG COMMIT vs lagged checkpoint, mirrored head publication,
+          # journal loss, double rollback and SIGKILL are all adversarial.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 115s env \
+            SAAS_EPHEMERAL_HIGHWATER_CI=true \
+            node scripts/saas-staging/verify-archive-witness-highwater.mjs
+
 
       # No deploy, repository secrets, production SQL connections or credentials.
