@@ -810,4 +810,22 @@ jobs:
             SAAS_EPHEMERAL_OFFHOST_CONFORMANCE_CI=true \
             node scripts/saas-staging/verify-archive-witness-ipc-highwater.mjs
 
+      - name: Verify synthetic dual-operator onboarding and disaster-recovery quarantine contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7u: six test-only signing roots on ONE disposable
+          # runner. Offline verifier has no SQL credentials, endpoint,
+          # recovery/issuer capability, network delivery or GC authority.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 70s env \
+            SAAS_EPHEMERAL_OPERATOR_DR_TEST_CI=true \
+            node scripts/saas-staging/verify-archive-witness-operator-dr.mjs
+
       # No deploy, repository secrets, production SQL connections or credentials.
