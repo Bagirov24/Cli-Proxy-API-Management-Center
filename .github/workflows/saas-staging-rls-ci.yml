@@ -789,4 +789,25 @@ jobs:
             SAAS_EPHEMERAL_MANUAL_REVIEW_CI=true \
             node scripts/saas-staging/verify-archive-witness-ipc-highwater.mjs
 
+      - name: Verify proposed off-host high-water receipt contract and rollback conformance
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7t: separately pinned synthetic external signer
+          # simulated on the SAME runner. Real PG16/witness/high-water,
+          # but NO remote service, WORM, producer recovery or approval.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 180s env \
+            SAAS_EPHEMERAL_HIGHWATER_TEST_CI=true \
+            SAAS_EPHEMERAL_UNKNOWN_OBSERVATION_CI=true \
+            SAAS_EPHEMERAL_MANUAL_REVIEW_CI=true \
+            SAAS_EPHEMERAL_OFFHOST_CONFORMANCE_CI=true \
+            node scripts/saas-staging/verify-archive-witness-ipc-highwater.mjs
+
       # No deploy, repository secrets, production SQL connections or credentials.

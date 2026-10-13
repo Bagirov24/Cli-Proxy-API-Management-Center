@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Stages 2G.4d.7q/7r/7s: physical disposable PostgreSQL16,
+// Stages 2G.4d.7q/7r/7s/7t: disposable physical PostgreSQL16,
 // attested local witness + high-water; optional offline UNKNOWN observer.
 // ONE CI RUNNER, NOT WORM, atomic issuer settlement or GC.
 import assert from 'node:assert/strict';
@@ -15,7 +15,7 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
   generateKeyPairSync,randomBytes,createHash,createPublicKey,
-  verify as edVerify,
+  sign as edSign,verify as edVerify,
 } from 'node:crypto';
 import {envelopeDigest,verifyEnvelope,verifyCheckpoint,projectionFromSql}
   from './archive-witness-protocol.mjs';
@@ -25,7 +25,10 @@ const JPROTOCOL='saas-synthetic-ipc-highwater-receipt-v1';
 const RPROTOCOL='saas-synthetic-ipc-witness-receipt-v1';
 const extended=process.env.SAAS_EPHEMERAL_UNKNOWN_OBSERVATION_CI==='true';
 const reviewStage=process.env.SAAS_EPHEMERAL_MANUAL_REVIEW_CI==='true';
+const offhostStage=process.env.SAAS_EPHEMERAL_OFFHOST_CONFORMANCE_CI==='true';
 if(reviewStage&&!extended)throw Error('7s requires 7r observation proof');
+if(offhostStage&&!reviewStage)
+  throw Error('7t conformance requires full 7s/7r/7q acceptance');
 const ci=process.env.GITHUB_ACTIONS==='true'&&
   process.env.SAAS_EPHEMERAL_HIGHWATER_TEST_CI==='true'&&
   process.env.PGHOST==='127.0.0.1'&&process.env.PGPORT==='5432'&&
@@ -40,12 +43,19 @@ const journalFile=fileURLToPath(new URL('./archive-witness-highwater-ipc.mjs',im
 const projectorFile=fileURLToPath(new URL('./archive-witness-pg-projection-proof.mjs',import.meta.url));
 const observerFile=fileURLToPath(new URL('./archive-witness-unknown-observer.mjs',import.meta.url));
 const reviewerFile=fileURLToPath(new URL('./archive-witness-manual-review-pin.mjs',import.meta.url));
+const offhostVerifier=fileURLToPath(new URL('./archive-witness-offhost-contract-verify.mjs',import.meta.url));
 const state=join(work,'witness-state'),socket=join(work,'witness.sock');
 const journalState=join(work,'highwater-state'),journalSocket=join(work,'highwater.sock');
 const attPriv=join(work,'projector-private.pem'),attPub=join(work,'projector-public.pem');
 const reviewDir=join(work,'reviewer-custody');
 const reviewPriv=join(reviewDir,'private.pem'),reviewPub=join(reviewDir,'public.pem');
 const reviewerWitPub=join(state,'public.pem'),reviewerHiPub=join(journalState,'public.pem');
+const offhostDir=join(work,'mock-independent-authority-SAME-RUNNER');
+const authorityPub=join(offhostDir,'authority-public.pem');
+const OFFHOST='saas-synthetic-offhost-highwater-receipt-v1';
+const OFFHOST_POLICY='saas-synthetic-offhost-policy-v1';
+const OFFHOST_CHALLENGE='saas-synthetic-offhost-nonce-challenge-v1';
+const OFFHOST_AUDIENCE='disposable-ci-offhost-conformance-only';
 const password=randomBytes(24).toString('hex');
 const sqlEnv={...process.env,PGCONNECT_TIMEOUT:'5'};
 const restrictedEnv={
@@ -67,7 +77,11 @@ const journalEnv={
   SAAS_EPHEMERAL_HIGHWATER_CI:'true',
   PATH:process.env.PATH||'/usr/bin:/bin',HOME:work,LANG:'C',
 };
-const ids=reviewStage?[
+const ids=offhostStage?[
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa8301',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa8302',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa8303',
+]:reviewStage?[
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa8101',
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa8102',
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa8103',
@@ -80,16 +94,26 @@ const ids=reviewStage?[
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7e02',
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7e03',
 ];
-const preCommitUuid=reviewStage?
+const preCommitUuid=offhostStage?
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa8300':reviewStage?
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa8100':
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7f00';
-const driftUuid=reviewStage?[
+const driftUuid=offhostStage?[
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa8304',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa8305',
+]:reviewStage?[
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa8104',
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa8105',
 ]:[
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7f04',
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7f05',
 ];
+const offhostEnv={
+  GITHUB_ACTIONS:'true',
+  SAAS_EPHEMERAL_WITNESS_OFFLINE:'true',
+  SAAS_EPHEMERAL_OFFHOST_CONFORMANCE_CI:'true',
+  PATH:process.env.PATH||'/usr/bin:/bin',HOME:offhostDir,LANG:'C',
+};
 const reviewEnv={
   GITHUB_ACTIONS:'true',
   SAAS_EPHEMERAL_WITNESS_OFFLINE:'true',
@@ -109,6 +133,7 @@ const fingerprint=pem=>hash(createPublicKey(pem)
 let hasRole=false,witness=null,journal=null,serial=0,observationCount=0,reviewCount=0;
 const other=new Set();
 let reviewPin1=null,reviewPin2=null,reviewPin3=null,reviewPin4=null;
+let externalMock=null,externalOne=null,externalTwo=null;
 function command(cmd,args,env,deny=false) {
   const output=spawnSync(cmd,args,{env,cwd:work,encoding:'utf8',
     timeout:15000,maxBuffer:2000000});
@@ -418,6 +443,130 @@ async function raceReviewPin(envelope,journalReceipt,previous,target) {
   });
   return target;
 }
+function setupOffhostContractMock() {
+  mkdirSync(offhostDir,{mode:0o700});
+  chmodSync(offhostDir,0o700);
+  const pair=generateKeyPairSync('ed25519');
+  writeFileSync(authorityPub,
+    pair.publicKey.export({type:'spki',format:'pem'}),
+    {flag:'wx',mode:0o600});
+  const policy={
+    protocol:OFFHOST_POLICY,audience:OFFHOST_AUDIENCE,
+    logId:freshId(),epoch:1,
+    authorityFingerprint:fingerprint(readFileSync(authorityPub,'utf8')),
+    witnessFingerprint:fingerprint(readFileSync(reviewerWitPub,'utf8')),
+    journalFingerprint:fingerprint(readFileSync(reviewerHiPub,'utf8')),
+  };
+  const policyPath=save('7t-out-of-band-policy-SIMULATED.json',policy);
+  externalMock={privateKey:pair.privateKey,policy,policyPath,latest:null};
+}
+function mockExternalSign(data) {
+  return {data,signature:edSign(null,Buffer.from(
+    OFFHOST+'\n'+JSON.stringify(data)),
+    externalMock.privateKey).toString('base64url')};
+}
+function issueMockExternal(envelope,journalReceipt,prior=externalMock.latest) {
+  const witnessPem=readFileSync(reviewerWitPub,'utf8');
+  const journalPem=readFileSync(reviewerHiPub,'utf8');
+  const payload=verifyEnvelope(envelope,witnessPem);
+  const head={sequence:payload.sequence,digest:envelopeDigest(envelope)};
+  verifyJournal(journalReceipt,head,journalPem,witnessPem);
+  if(prior) {
+    assert.deepEqual(externalMock.latest.receipt,prior.receipt,
+      'Mock CAS denies a stale expected external head');
+    assert.equal(head.sequence,prior.receipt.data.revision+1);
+    assert.equal(payload.previous,envelopeDigest(prior.envelope));
+    const before=verifyEnvelope(prior.envelope,witnessPem).projection;
+    let additions=0;
+    for(const kind of ['issued','producer']) {
+      const present=new Set(payload.projection[kind]);
+      assert.ok(before[kind].every(x=>present.has(x)),
+        'External mock may not remove old UUID commitment');
+      additions+=payload.projection[kind].length-before[kind].length;
+    }
+    assert.equal(additions,1,'One UUID identity per signed external successor');
+  }else {
+    assert.equal(externalMock.latest,null,'No silent mock log truncation');
+    assert.equal(head.sequence,1);
+    assert.equal(payload.previous,null);
+  }
+  const challenge={
+    protocol:OFFHOST_CHALLENGE,logId:externalMock.policy.logId,
+    nonce:freshId(),
+  };
+  const data={
+    protocol:OFFHOST,audience:OFFHOST_AUDIENCE,
+    logId:externalMock.policy.logId,epoch:1,
+    revision:head.sequence,head,
+    previousReceiptDigest:prior?hash(JSON.stringify(prior.receipt)):null,
+    witnessFingerprint:externalMock.policy.witnessFingerprint,
+    journalFingerprint:externalMock.policy.journalFingerprint,
+    journalReceiptDigest:hash(JSON.stringify(journalReceipt)),
+    challengeNonce:challenge.nonce,
+  };
+  const receipt=mockExternalSign(data);
+  const anchor={receipt,envelope,journalReceipt,
+    previousReceipt:prior?.receipt??null,
+    previousEnvelope:prior?.envelope??null,challenge};
+  save('7t-signed-external-mock-'+head.sequence+'.json',receipt);
+  externalMock.latest=anchor;
+  return anchor;
+}
+function inspectOffhost(external,localEnvelope,localReceipt,retained,{
+  deny=false,authorityKey=authorityPub,
+  witnessKey=reviewerWitPub,journalKey=reviewerHiPub,
+  policy=externalMock.policy,challenge=external.challenge,
+  evidenceTransform=null,env=offhostEnv,retainedOverride=retained,
+}={}) {
+  const index=String(++reviewCount);
+  let evidence={
+    protocol:'saas-synthetic-offhost-inspection-bundle-v1',
+    external:{
+      receipt:external.receipt,
+      envelope:external.envelope,
+      journalReceipt:external.journalReceipt,
+      previousReceipt:external.previousReceipt,
+      previousEnvelope:external.previousEnvelope,
+    },
+    local:{envelope:localEnvelope,journalReceipt:localReceipt},
+  };
+  if(evidenceTransform)evidence=evidenceTransform(structuredClone(evidence));
+  const args=[
+    authorityKey,witnessKey,journalKey,
+    save('7t-policy-'+index+'.json',policy),
+    save('7t-challenge-'+index+'.json',challenge),
+    save('7t-evidence-'+index+'.json',evidence),
+    save('7t-preserved-minimum-'+index+'.json',retainedOverride),
+    '--strict-review','--no-gc',
+  ];
+  const response=spawnSync(process.execPath,
+    [offhostVerifier,'inspect',...args],
+    {cwd:work,env,encoding:'utf8',timeout:15000,maxBuffer:250000});
+  if(deny) {
+    assert.notEqual(response.status,0,
+      'Off-host conformance accepted invalid or unsafe evidence');
+    assert.match(response.stderr||'',/OFFHOST CONTRACT DENIED:/);
+    return null;
+  }
+  assert.equal(response.status,0,
+    'Off-host conformance verifier refused valid synthetic evidence: '+
+      response.stderr);
+  const result=JSON.parse(response.stdout.trim());
+  assert.equal(result.protocol,
+    'saas-synthetic-offhost-conformance-result-v1');
+  assert.equal(result.manualReviewRequired,true);
+  assert.equal(result.signedWireContractVerified,true);
+  for(const name of [
+    'actualOffHostCustodyVerified','independentDurabilityVerified',
+    'authenticSourceCommitVerified','automaticRecoveryPermitted',
+    'authorizationGranted','reissuePermitted','retryPermitted',
+    'deliveryPermitted','repairPermitted','gcPermitted',
+  ])assert.equal(result[name],false,
+    'Offline same-runner proof cannot authorize: '+name);
+  assert.ok(!JSON.stringify(result).includes('aaaaaaaa-aaaa'),
+    'Mock off-host verifier must not reveal any raw operation UUID');
+  return result.status;
+}
 function source(challenge) {
   const n=String(++serial);
   const chfile=save('7q-challenge-'+n+'.json',challenge);
@@ -531,6 +680,14 @@ try {
       reviewPin1,{env:{...reviewEnv,PGHOST:'127.0.0.1'},deny:true}),null);
     console.info('PASS 7s: separately signed CI-only reviewer genesis pin; no SQL, reissue, repair, delivery or GC authority');
   }
+  if(offhostStage) {
+    setupOffhostContractMock();
+    externalOne=issueMockExternal(first.envelope,await checkedJournal(head1));
+    assert.equal(inspectOffhost(externalOne,first.envelope,
+      await checkedJournal(head1),externalOne.receipt),
+      'SIGNED_EXTERNAL_CONTRACT_MATCH_REVIEW_ONLY');
+    console.info('PASS 7t: contract-only synthetic externally signed genesis, pinned log/epoch/signer keys and no production authorization');
+  }
   if(extended) {
     // A real PostgreSQL transaction is severed while INSERT is still
     // uncommitted. The caller sees UNKNOWN; a fresh signed read-only PG
@@ -621,6 +778,83 @@ try {
     reviewExec('repair',[],{deny:true});
     console.info('PASS 7s: pinned direct successor after lost IPC ACK, stale reviewer pin and mismatched pair remain review-only; key/proof/overwrite/downgrade DENY');
   }
+  if(offhostStage) {
+    const signed2=await checkedJournal(head2);
+    // A mock third-party signs only a witnessed + journaled direct
+    // successor. The verifier is a different NO-PG child process and
+    // cannot sign or publish anything itself.
+    externalTwo=issueMockExternal(recovered.envelope,signed2,externalOne);
+    assert.equal(inspectOffhost(externalTwo,recovered.envelope,signed2,
+      externalOne.receipt),'SIGNED_EXTERNAL_CONTRACT_MATCH_REVIEW_ONLY');
+    assert.equal(inspectOffhost(externalTwo,recovered.envelope,signed2,
+      externalTwo.receipt),'SIGNED_EXTERNAL_CONTRACT_MATCH_REVIEW_ONLY');
+    assert.equal(inspectOffhost(externalOne,recovered.envelope,signed2,
+      externalOne.receipt),'EXTERNAL_HIGHWATER_LAG_REVIEW');
+    assert.equal(inspectOffhost(externalTwo,first.envelope,
+      signed2,externalTwo.receipt),'LOCAL_SIGNED_SPLIT_MANUAL_REVIEW');
+    // A client retaining revision 2 must reject signed historical
+    // revision 1 even if an attacker restores both local stores.
+    inspectOffhost(externalOne,first.envelope,
+      externalOne.journalReceipt,externalTwo.receipt,{deny:true});
+    inspectOffhost(externalTwo,recovered.envelope,signed2,
+      externalOne.receipt,{
+        deny:true,challenge:{...externalTwo.challenge,nonce:freshId()},
+      });
+    const wrongKey=join(offhostDir,'wrong-external-public.pem');
+    writeFileSync(wrongKey,
+      generateKeyPairSync('ed25519').publicKey.export({type:'spki',format:'pem'}),
+      {flag:'wx',mode:0o600});
+    inspectOffhost(externalTwo,recovered.envelope,signed2,
+      externalTwo.receipt,{deny:true,authorityKey:wrongKey});
+    inspectOffhost(externalTwo,recovered.envelope,signed2,
+      externalTwo.receipt,{deny:true,witnessKey:wrongKey});
+    inspectOffhost(externalTwo,recovered.envelope,signed2,
+      externalTwo.receipt,{deny:true,journalKey:wrongKey});
+    inspectOffhost(externalTwo,recovered.envelope,signed2,
+      externalTwo.receipt,{deny:true,policy:{
+        ...externalMock.policy,epoch:2,
+      }});
+    inspectOffhost(externalTwo,recovered.envelope,signed2,
+      externalTwo.receipt,{deny:true,policy:{
+        ...externalMock.policy,logId:freshId(),
+      }});
+    inspectOffhost(externalTwo,recovered.envelope,signed2,
+      externalTwo.receipt,{deny:true,evidenceTransform:e=>{
+        e.external.receipt.data.journalReceiptDigest='f'.repeat(64);
+        return e;
+      }});
+    inspectOffhost(externalTwo,recovered.envelope,signed2,
+      externalTwo.receipt,{deny:true,evidenceTransform:e=>{
+        e.external.previousReceipt=null;
+        return e;
+      }});
+    inspectOffhost(externalTwo,recovered.envelope,signed2,
+      externalTwo.receipt,{deny:true,evidenceTransform:e=>{
+        e.external.envelope.payload.sequence+=1;
+        return e;
+      }});
+    inspectOffhost(externalTwo,recovered.envelope,signed2,
+      externalTwo.receipt,{deny:true,evidenceTransform:e=>{
+        e.external.receipt.data.extra='smuggled';
+        return e;
+      }});
+    inspectOffhost(externalTwo,recovered.envelope,signed2,
+      externalTwo.receipt,{deny:true,env:{...offhostEnv,PGHOST:'127.0.0.1'}});
+    const alternate=structuredClone(externalTwo);
+    alternate.receipt=mockExternalSign({
+      ...externalTwo.receipt.data,challengeNonce:freshId(),
+    });
+    alternate.challenge={
+      ...externalTwo.challenge,nonce:alternate.receipt.data.challengeNonce,
+    };
+    // Even a SECOND correctly signed same-revision receipt from a
+    // Byzantine authority must not replace the client-retained root.
+    inspectOffhost(alternate,recovered.envelope,signed2,
+      externalTwo.receipt,{deny:true});
+    assert.throws(()=>issueMockExternal(recovered.envelope,signed2,
+      externalOne),/CAS denies/);
+    console.info('PASS 7t: signed direct external receipt after lost ACK, signer/epoch/log/nonce/policy/fork/replay and stale-root adversarial DENY');
+  }
   if(extended) {
     // A fresh independent PG read and separately signed journal/witness
     // converge after lost ACK. This is OBSERVATION ONLY, not a producer
@@ -700,6 +934,15 @@ try {
   const rolled=await exchange(join(work,'joint-rollback.sock'),{op:'head'});
   assert.deepEqual(rolled.head,head1);
   assert.notDeepEqual(rolled.head,head2);
+  if(offhostStage) {
+    const savedOlder=await checkedJournal(head1,
+      staleJournalSocket,journalGenesis);
+    assert.equal(inspectOffhost(externalTwo,rolled.envelope,savedOlder,
+      externalTwo.receipt),'LOCALS_BEHIND_PRESERVED_EXTERNAL_HEAD_REVIEW');
+    assert.equal(inspectOffhost(externalOne,rolled.envelope,savedOlder,
+      externalOne.receipt),'SIGNED_EXTERNAL_CONTRACT_MATCH_REVIEW_ONLY');
+    console.info('PASS 7t: client-retained newer signed external minimum catches joint local rollback; rolling back ALSO the minimum defeats this same-runner simulation');
+  }
   if(reviewStage) {
     const oldReceipt=await checkedJournal(head1,
       staleJournalSocket,journalGenesis);
@@ -748,6 +991,12 @@ try {
       'checkpoints','00000003.json'),'utf8'));
     const supposed={sequence:3,digest:envelopeDigest(orphan.envelope)};
     const olderJournal=await checkedJournal(head2);
+    if(offhostStage) {
+      assert.equal(inspectOffhost(externalTwo,orphan.envelope,
+        olderJournal,externalTwo.receipt),
+        'LOCAL_SIGNED_SPLIT_MANUAL_REVIEW');
+      console.info('PASS 7t: witness fsync without journal advance remains split evidence, not a safe external ACK');
+    }
     if(reviewStage) {
       assert.equal(reviewInspect(orphan.envelope,olderJournal,reviewPin2),
         'SPLIT_SIGNED_LOCAL_HEADS_REVIEW_REQUIRED');
@@ -766,6 +1015,12 @@ try {
   const r3=await exchange(socket,proposal(live3,head2,src3));
   const head3=verifyWitness(r3,head2,recovered.envelope,live3);
   await checkedJournal(head3);
+  if(offhostStage) {
+    assert.equal(inspectOffhost(externalTwo,r3.envelope,
+      await checkedJournal(head3),externalTwo.receipt),
+      'EXTERNAL_HIGHWATER_LAG_REVIEW');
+    console.info('PASS 7t: locally signed new successor WITHOUT newer external signed receipt cannot pass as externally settled');
+  }
   if(reviewStage) {
     const signed3=await checkedJournal(head3);
     assert.equal(reviewInspect(r3.envelope,signed3,reviewPin2),
@@ -806,6 +1061,12 @@ try {
       'checkpoints','00000004.json'),'utf8'));
     const supposed={sequence:4,
       digest:envelopeDigest(orphanJournal.envelope)};
+    if(offhostStage) {
+      assert.equal(inspectOffhost(externalTwo,r3.envelope,
+        orphanJournal.receipt,externalTwo.receipt),
+        'LOCAL_SIGNED_SPLIT_MANUAL_REVIEW');
+      console.info('PASS 7t: journal checkpoint orphan before durable head is classified split; no automatic recovery');
+    }
     if(reviewStage) {
       assert.equal(reviewInspect(r3.envelope,orphanJournal.receipt,reviewPin3),
         'SPLIT_SIGNED_LOCAL_HEADS_REVIEW_REQUIRED');
@@ -877,6 +1138,8 @@ try {
   console.info('LIMITATION 7q: TWO signer processes on ONE runner do not give independent durable root or atomic PostgreSQL settlement');
   if(reviewStage)
     console.info('LIMITATION 7s: reviewer signer and saved pin share CI trust domain; preserved pin detects local rollback only while reviewer pin/root remain independently available; no production WORM, actor authorization or repair');
+  if(offhostStage)
+    console.info('LIMITATION 7t: remote authority is ONLY a simulated receipt generator on the same CI runner; no actual network/off-host admin, HSM, WORM or independently retained client minimum; wire-conformance is NOT production high-water assurance');
 } finally {
   await stop(witness).catch(()=>{});
   await stop(journal).catch(()=>{});
