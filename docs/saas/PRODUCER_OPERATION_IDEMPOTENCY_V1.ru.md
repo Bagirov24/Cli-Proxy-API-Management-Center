@@ -199,3 +199,19 @@ crash-safe archive delivery or remote ACK.
 [Witness contract](SYNTHETIC_ARCHIVE_WITNESS_PROOF_V1.ru.md).
 
 **CODE VERIFIED on `66019cd7602d256148562eafd304e9712a2d907b`:** [Main CI #38363925445](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925445), [ephemeral PostgreSQL16 #38363925442](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925442), [Demo #38363925450](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925450), [Chromium #38363925440](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925440) all SUCCESS. Final docs SHA needs its own Actions. No production release claim.
+
+
+## 2G.4d.7k — real restored PostgreSQL missing UUID is detected
+
+The 7k offline witness verifies the immutable issued and
+producer UUID commitment sets from an actual PG16 backup
+restore in a separate scratch database. It refuses old
+copies whose UUID set lacks later signed commitments, but
+is not consulted by a real producer and does not authorize
+new event minting, replaying a lost key or deleting old
+operation mappings. Existing 015 atomic deduplication is
+unchanged; live failover/non-reuse across restored instances
+remains SPEC.
+[7k strict restore proof](SYNTHETIC_WITNESS_RESTORE_PROOF_V1.ru.md).
+
+**CODE VERIFIED at `9af3b8d5b29ebceb6a433468c650f01be913a148`:** [Main CI #38367994239](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994239), [ephemeral PostgreSQL16 #38367994247](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994247), [Demo #38367994191](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994191), [Chromium #38367994196](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994196) — **4/4 SUCCESS**. Final docs SHA must be separately verified. No archive or GC authorization.

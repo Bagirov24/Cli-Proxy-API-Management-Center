@@ -165,3 +165,21 @@ the final SQL retention hard stop. No migration 019.
 [Details](SYNTHETIC_ARCHIVE_WITNESS_PROOF_V1.ru.md).
 
 **CODE VERIFIED on `66019cd7602d256148562eafd304e9712a2d907b`:** [Main CI #38363925445](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925445), [ephemeral PostgreSQL16 #38363925442](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925442), [Demo #38363925450](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925450), [Chromium #38363925440](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925440) all SUCCESS. Final docs SHA needs its own Actions. No production release claim.
+
+
+## 2G.4d.7k — actual restore proof, NOT tombstone reclamation
+
+A complete synthetic PG16 backup is taken before and after an
+additional committed issue UUID. Both dumps are restored via
+`pg_restore` into distinct scratch databases. The old copy
+fails strict verification against the new fsynced offline
+signed witness head; the current copy passes. The witness
+head and pinned anchor survive *verifier process restarts
+within one CI runner*, NOT replacement of the runner host.
+
+Physical archive/GC remains unimplemented; `gcPermitted=false`.
+The restore-only test does not alter, delete or reissue any
+original 015/016 tombstone and does not grant capacity relief.
+[Full 7k contract](SYNTHETIC_WITNESS_RESTORE_PROOF_V1.ru.md).
+
+**CODE VERIFIED at `9af3b8d5b29ebceb6a433468c650f01be913a148`:** [Main CI #38367994239](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994239), [ephemeral PostgreSQL16 #38367994247](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994247), [Demo #38367994191](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994191), [Chromium #38367994196](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994196) — **4/4 SUCCESS**. Final docs SHA must be separately verified. No archive or GC authorization.

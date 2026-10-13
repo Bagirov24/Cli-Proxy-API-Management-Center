@@ -147,3 +147,26 @@ Before implementing any actual archive/GC, a future design needs:
 No archive/GC release authorization is implied by passing CI.
 
 **CODE VERIFIED on `66019cd7602d256148562eafd304e9712a2d907b`:** [Main CI #38363925445](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925445), [ephemeral PostgreSQL16 #38363925442](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925442), [Demo #38363925450](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925450), [Chromium #38363925440](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925440) all SUCCESS. The final documentation SHA needs its own Actions; this does not authorize archive or GC.
+
+
+## Follow-on 2G.4d.7k: actual logical restores, not external durability
+
+Stage 7k adds a stricter, file-fsynced signed-head
+publisher/verifier using a separate pinned anchor outside
+PostgreSQL, still on the *same* disposable GitHub runner.
+Full old and fresh PostgreSQL backups are restored to two
+separate scratch databases with real `pg_restore` instead
+of using only an old in-memory projection. A missing
+later UUID DENIES an old restored database, whereas a
+fresh restored database exactly matching checkpoint 2
+passes. A COMMIT before head update, SIGKILL before rename
+and torn/stale heads DENY.
+
+No proof of atomic PG→external witness publication,
+independent trusted-head survival, physical PITR or live
+non-reuse guard is produced; the single-runner state
+and signing keys disappear after CI. `gcPermitted=false`
+and all 015–018 immutability remain unchanged.
+[Detailed 7k test contract](SYNTHETIC_WITNESS_RESTORE_PROOF_V1.ru.md).
+
+**CODE VERIFIED at `9af3b8d5b29ebceb6a433468c650f01be913a148`:** [Main CI #38367994239](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994239), [ephemeral PG16 #38367994247](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994247), [Demo #38367994191](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994191), [Chromium #38367994196](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994196) — **4/4 SUCCESS**. The final documentation HEAD must pass its own CI; no archive/GC/deployment authorization.

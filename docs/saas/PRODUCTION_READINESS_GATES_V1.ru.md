@@ -337,3 +337,27 @@ pre-COMMIT handoff, global quotas, actual transport and ACK
 remain unresolved. No archive deletion or migration 019.
 
 **CODE VERIFIED on `66019cd7602d256148562eafd304e9712a2d907b`:** [Main CI #38363925445](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925445), [ephemeral PostgreSQL16 #38363925442](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925442), [Demo #38363925450](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925450), [Chromium #38363925440](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925440) all SUCCESS. Final docs SHA needs its own Actions. No production release claim.
+
+
+## 2G.4d.7k — full dump/restore regression is not safe archive approval
+
+**IMPLEMENTED only for ephemeral CI:** fsync/rename pinned
+witness head, independently reopened signed history, fresh
+process continuity, real full `pg_dump`/two isolated
+`pg_restore` databases, strict UUID-set matching, stale
+restore DENY, complete restore PASS and crash-to-pending
+fail-closed verification. These tests do not alter 015–018
+or delete identifiers.
+
+**OPEN / SPEC:** durable independently administered
+anti-rollback witness across physical hosts, atomic
+database-to-witness commit protocol, evidence of all
+post-COMMIT unswept IDs, physical PITR/WAL/replica recovery,
+multi-node failover, adversarial operator compromise,
+external key custody, quota capacity recovery and safe
+archival/GC. Source database and CI witness are on one
+runner/service; `gcPermitted=false` remains mandatory.
+Old pre-COMMIT handoff, production HTTP, payloads and ACK
+remain release blockers.
+
+**CODE VERIFIED at `9af3b8d5b29ebceb6a433468c650f01be913a148`:** [Main CI #38367994239](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994239), [ephemeral PG16 #38367994247](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994247), [Demo #38367994191](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994191), [Chromium #38367994196](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994196) — **4/4 SUCCESS**. The final documentation HEAD must pass its own CI; no archive/GC/deployment authorization.

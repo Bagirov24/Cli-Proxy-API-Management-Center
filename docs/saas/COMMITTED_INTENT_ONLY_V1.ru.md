@@ -186,3 +186,18 @@ is rejected in CI without physically restoring/deleting rows.
 [Witness proof contract](SYNTHETIC_ARCHIVE_WITNESS_PROOF_V1.ru.md).
 
 **CODE VERIFIED on `66019cd7602d256148562eafd304e9712a2d907b`:** [Main CI #38363925445](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925445), [ephemeral PostgreSQL16 #38363925442](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925442), [Demo #38363925450](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925450), [Chromium #38363925440](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925440) all SUCCESS. Final docs SHA needs its own Actions. No production release claim.
+
+
+## 2G.4d.7k — witness never confirms external delivery
+
+The stricter 7k verifier protects only synthetic 015/016
+UUID continuity across separate restored scratch copies.
+A matching signed UUID set is not a 009/013 event receipt,
+012 local reconciliation, 014 worker ACK or remote delivery
+attestation; a checkpoint publication is not atomic with
+PG COMMIT and cannot replace the signed transaction.
+`gcPermitted=false` and the legacy pre-COMMIT handoff
+blocker remain.
+[Restore proof](SYNTHETIC_WITNESS_RESTORE_PROOF_V1.ru.md).
+
+**CODE VERIFIED at `9af3b8d5b29ebceb6a433468c650f01be913a148`:** [Main CI #38367994239](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994239), [ephemeral PostgreSQL16 #38367994247](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994247), [Demo #38367994191](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994191), [Chromium #38367994196](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38367994196) — **4/4 SUCCESS**. Final docs SHA must be separately verified. No archive or GC authorization.
