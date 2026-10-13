@@ -3,7 +3,7 @@
  * -> fixed project function -> acknowledged COMMIT. GitHub disposable CI ONLY.
  *
  * NOT an HTTP backend, production driver, durable audit/outbox, OIDC service,
- * resilient physical discard, or evidence of atomic revoke/COMMIT fencing.
+ * production physical discard, or real-network/replica COMMIT fencing.
  * No native Core/CPA key, remote signer, Railway or real user data is used.
  */
 import assert from 'node:assert/strict';
@@ -45,6 +45,7 @@ const SQL_TEXT = Object.freeze({
   commit: 'COMMIT',
   rollback: 'ROLLBACK',
   txid: 'SELECT txid_current()::text AS transaction_id',
+  backend: 'SELECT pg_backend_pid()::int AS backend_pid',
   claim: 'SELECT set_config($1::text, $2::text, true)',
   role: 'SET LOCAL ROLE saas_m1_project_executor',
   create: 'SELECT saas_m1_api.create_project($1::text,$2::text,$3::text) AS applied',
@@ -58,7 +59,7 @@ const CLAIMS = new Set([
 ]);
 const FIXED_COUNTS = new Map([
   [SQL_TEXT.begin, 0], [SQL_TEXT.commit, 0], [SQL_TEXT.rollback, 0],
-  [SQL_TEXT.txid, 0], [SQL_TEXT.role, 0],
+  [SQL_TEXT.txid, 0], [SQL_TEXT.backend, 0], [SQL_TEXT.role, 0],
   [SQL_TEXT.create, 3], [SQL_TEXT.rename, 4],
   [SQL_TEXT.disable, 3], [SQL_TEXT.read, 2],
 ]);
@@ -84,7 +85,7 @@ function makeNativeDb() {
     connectionTimeout: 5, idleTimeout: 5, prepare: false, tls: false,
   });
 }
-function makeDriver({ dropAckAfterCommit = false } = {}) {
+function makeDriver({ dropAckAfterCommit = false, beforeCommit } = {}) {
   const db = makeNativeDb();
   let poisoned = false;
   let reservations = 0;
@@ -176,6 +177,17 @@ function makeDriver({ dropAckAfterCommit = false } = {}) {
         // DENY is not a partially successful write: confirm ROLLBACK.
         await query(SQL_TEXT.rollback);
         return false;
+      }
+      // Optional fault hook is wired ONLY by explicit M1e disposable-CI
+      // tests. It runs after a real signed SQL mutation and private audit
+      // INSERT, but before the transaction attempts COMMIT.
+      if (beforeCommit) {
+        const probe = await query(SQL_TEXT.backend);
+        const backendPid = probe[0]?.backend_pid;
+        if (!Number.isSafeInteger(backendPid) || backendPid < 1) {
+          throw new Error('M1e invalid physical PG backend identity');
+        }
+        await beforeCommit({ backendPid, signal });
       }
       if (signal.aborted) throw new Error('M1b cancelled before COMMIT');
       await query(SQL_TEXT.commit);
@@ -390,3 +402,124 @@ try {
 }
 console.info('PASS M1b: pinned RS256 -> trusted actor -> signed PG16 fixed-function CRUD; ' +
   'cross-tenant/role/stale CAS/revoked membership DENY; lost COMMIT ACK=503 + quarantine, NO retry/deploy');
+
+
+// M1e is opt-in, synthetic and GitHub disposable-PG16 ONLY. The older
+// M1b lost-ACK-after-committed-COMMIT case above remains independent:
+// a caller's 503 alone never tells an operator whether PG committed.
+if (process.env.SAAS_EPHEMERAL_M1E_DISCONNECT_CI === 'true') {
+  console.info('STEP M1e: real physical PG backend loss and cancellation BEFORE COMMIT');
+
+  function fixtureSql(statement) {
+    // The SQL below is authored here, never sourced from user/JWT text.
+    // The only dynamic scalar is a validated integer from pg_backend_pid().
+    const result = Bun.spawnSync(
+      ['psql', '-X', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-c', statement],
+      { stdout: 'pipe', stderr: 'pipe' }
+    );
+    assert.equal(result.exitCode, 0, 'M1e privileged disposable PG fixture failed');
+    return new TextDecoder().decode(result.stdout).trim();
+  }
+  function assertPhysicalSessionGone(pid) {
+    assert.ok(Number.isSafeInteger(pid) && pid > 0);
+    assert.equal(
+      fixtureSql('SELECT COUNT(*)::int FROM pg_stat_activity WHERE pid=' + pid),
+      '0', 'M1e damaged/cancelled reserved physical backend must disappear'
+    );
+  }
+
+  // Loss path A: privileged independent CI connection physically terminates
+  // the exact observed server backend AFTER signed create+audit, BEFORE COMMIT.
+  // PG drops that entire uncommitted transaction. The user-facing boundary
+  // must send generic 503 (never false success) and poison the entire pool.
+  let terminatedPid = null;
+  const terminatedDriver = makeDriver({
+    beforeCommit({ backendPid }) {
+      assert.ok(Number.isSafeInteger(backendPid) && backendPid > 0);
+      terminatedPid = backendPid;
+      assert.equal(fixtureSql(
+        "SELECT CASE WHEN pg_terminate_backend(" + backendPid +
+          ") THEN 'terminated' ELSE 'missing' END"
+      ), 'terminated', 'M1e expected one real PG backend termination');
+    },
+  });
+  try {
+    const response = await boundary(terminatedDriver)(
+      command('create', north, 'm1e-physical-loss')
+    );
+    assert.equal(response.status, 503);
+    assert.equal(response.ok, false);
+    assert.equal(response.error.code, 'SOURCE_UNAVAILABLE');
+    assert.deepEqual(terminatedDriver.stats(), {
+      poisoned: true, reservations: 1, commitAcks: 0,
+    });
+    assert.equal((await boundary(terminatedDriver)(
+      command('create', north, 'm1e-reuse-denied')
+    )).status, 503);
+    assert.equal(terminatedDriver.stats().reservations, 1,
+      'M1e a quarantined pool cannot reserve a second request');
+  } finally {
+    await terminatedDriver.close();
+  }
+  assertPhysicalSessionGone(terminatedPid);
+
+  // Cancellation path B: abort AFTER successful transactional write+audit but
+  // BEFORE COMMIT. An aborted request cannot commit or reuse its connection.
+  const controller = new AbortController();
+  let abortPid = null;
+  const abortedDriver = makeDriver({
+    beforeCommit({ backendPid }) {
+      abortPid = backendPid;
+      controller.abort('M1e synthetic cancellation before COMMIT');
+    },
+  });
+  try {
+    const response = await boundary(abortedDriver)(
+      command('create', north, 'm1e-aborted', { signal: controller.signal })
+    );
+    assert.equal(response.status, 503);
+    assert.equal(response.ok, false);
+    assert.equal(abortedDriver.stats().poisoned, true);
+    assert.equal(abortedDriver.stats().reservations, 1);
+    assert.equal(abortedDriver.stats().commitAcks, 0);
+    assert.equal((await boundary(abortedDriver)(
+      command('create', north, 'm1e-abort-reuse-denied')
+    )).status, 503);
+    assert.equal(abortedDriver.stats().reservations, 1);
+  } finally {
+    await abortedDriver.close();
+  }
+  assertPhysicalSessionGone(abortPid);
+
+  // Observer is a fresh signed SQL transaction, NOT a retry of a write.
+  // A fixture superuser separately inspects private audit rows. Nothing
+  // uncommitted is allowed to survive either physically terminated session.
+  const healthyObserver = makeDriver();
+  try {
+    assert.equal((await healthyObserver.read(northScope, 'm1e-physical-loss')).length, 0);
+    assert.equal((await healthyObserver.read(northScope, 'm1e-aborted')).length, 0);
+    assert.equal(healthyObserver.stats().poisoned, false);
+  } finally {
+    await healthyObserver.close();
+  }
+  assert.equal(fixtureSql(
+    "SELECT (SELECT COUNT(*) FROM saas_m1_private.projects " +
+    "WHERE tenant_id='demo-north' AND project_id IN " +
+    "('m1e-physical-loss','m1e-aborted','m1e-reuse-denied','m1e-abort-reuse-denied'))::text " +
+    "|| ':' || (SELECT COUNT(*) FROM saas_m1_private.project_write_audit_outbox " +
+    "WHERE tenant_id='demo-north' AND project_id IN " +
+    "('m1e-physical-loss','m1e-aborted','m1e-reuse-denied','m1e-abort-reuse-denied'))::text"
+  ), '0:0', 'M1e failed/aborted operation must leave no project OR private audit');
+  assert.equal(fixtureSql(
+    "SELECT (SELECT COUNT(*) FROM saas_m1_private.projects " +
+    "WHERE project_id='m1b-lost-ack')::text || ':' || " +
+    "(SELECT COUNT(*) FROM saas_m1_private.project_write_audit_outbox " +
+    "WHERE project_id='m1b-lost-ack')::text"
+  ), '1:1', 'M1b lost ACK AFTER committed PG COMMIT remains project+audit');
+
+  console.info(
+    'PASS M1e: real pg_terminate_backend BEFORE COMMIT and cancellation; ' +
+    '503 + quarantine, physical PID gone, 0 project/0 audit, no repeat; ' +
+    'M1b committed lost ACK remains 1 project/1 audit; NO PRODUCTION retry'
+  );
+}
