@@ -1255,3 +1255,35 @@ off-host/WORM/HSM, PG settlement и issuer rights не становятся
 проверенными. Не менять production, high-water journal/key,
 UUID/issuer, SQL 019, delivery/repair/GC;
 `gcPermitted=false`.
+
+
+## D-083 — Railway stateless verifier restart is NOT a volume authority restart
+
+Stage 2G.4d.7x: `saas-highwater-private-smoke` is a stateless Railway
+Function with no attached volume. Its in-place restart (same deployment
+`d3e4ee3d`) produced new 2026-10-13 19:21 UTC logs proving
+pinned TLS1.3/mTLS, unauthenticated-client DENY, and Ed25519
+Node+WebCrypto authentication of already retained signed revision 2.
+The authority `saas-highwater-staging-only`, signed journal and
+512MB persistent volume were **NOT** restarted, mutated or re-keyed.
+No new append/UUID/replay/GC was attempted.
+
+**Decision:** authenticating the head from a newly started *client*
+does not validate restart of the remote volume-owning authority or
+crash-after-fsync recovery. Railway tool contract explicitly requires
+**separate user authorization to restart a service with attached
+volumes**. Do not redeploy, mutate service config or use another path
+to bypass the restriction.
+
+A new **read-only public PKI/receipt journal/nonce policy audit**
+is tested in ephemeral PG16 CI, with exact sandbox-only guard,
+operator-supplied signer pin/retained minimum and a 48h test cert
+rotation alert. Current certs expire **2026-10-15 13:33 UTC**.
+Since server and client SPKI and signer roots are bound to an
+on-volume policy marker, changing credentials in place without
+new logId, separate volume and governance is **DENIED**;
+preserve old log, create fresh synthetic proof domain after
+explicit approval, or quarantine/decommission. MFA approvals are
+not independent HSM/WORM custody, and actor/PG/recipient release
+is still forbidden. `gcPermitted=false`.
+[Stage 7x runbook](RAILWAY_HIGHWATER_AUDIT_7X.ru.md).

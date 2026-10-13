@@ -611,3 +611,25 @@ authorization or authenticated recipient ACK. Current test
 certificates expire 2026-10-15 13:33 UTC. Production remains
 BLOCKED; no SQL019, UUID retry/reissue/repair/delivery/GC,
 `gcPermitted=false`.
+
+
+## Stage 2G.4d.7x — head re-authentication and 48h PKI expiry quarantine
+
+**Remote VERIFIED**: restarting the no-volume smoke Function
+produced a fresh verified `GET /v1/head` with signed revision 2,
+Node Crypto/WebCrypto true, pinned TLS1.3/mTLS and missing-client
+certificate DENY. Authority signer with 512MB volume **not restarted**.
+**CI ONLY**: new read-only synthetic public PKI, exact on-volume
+policy marker, signed predecessor/witness/journal/receipt and
+retained minimum inspection (no user or SQL credentials).
+An expiring/expired leaf marks `rotation-required`/`expired`;
+the audit never updates key or journal.
+
+**Open:** explicit approval for authority-volume restart trial,
+separate certificate rotation on fresh synthetic logId/epoch/volume
+and independent operator/root, post-fsync lost ACK/replay tests,
+partition/PITR and independent durable retained head, fenced PG
+COMMIT→external receipt, tenant/actor issuer authority, recipient ACK,
+privacy/legal/security release. Current synthetic test certs expire
+2026-10-15 13:33 UTC. No production changes, SQL019, replay/reissue,
+repair/delivery/archive or GC. `gcPermitted=false`.

@@ -1136,3 +1136,20 @@ workspace `Require 2FA`, Staged Changes/Deploy с Dashboard 2FA,
 **Включение MFA в Railway выполняет владелец аккаунта**, не GitHub PR
 и не Railway MCP. Это отдельный контроль и не подтверждение
 независимой WORM/HSM custody; `gcPermitted=false`.
+
+
+## Stage 2G.4d.7x — remote client restart + expiry audit
+
+**REAL remote staging:** без перезапуска основного high-water с томом
+перезапущен только stateless smoke. После restart новая сессия TLS1.3/mTLS
+и Node/WebCrypto подтвердили прежний signed head **revision 2**
+в логах 2026-10-13 19:21 UTC. Это **не** доказанный remote authority
+restart/fsync/recovery. Нет новых append/UUID/GC.
+
+**CODE/CI:** sandbox-only read-only audit signed journal, marker,
+operator supplied minimum и synthetic TLS certificate validity.
+Test identities истекают **2026-10-15 13:33 UTC**: текущая
+пара pinned SPKI не может быть безопасно заменена на старом
+volume без отдельного recovery/security протокола. Ни внешний
+WORM/HSM, ни PostgreSQL COMMIT settlement, ни production ready.
+[Stage 7x evidence/rotation runbook](RAILWAY_HIGHWATER_AUDIT_7X.ru.md).

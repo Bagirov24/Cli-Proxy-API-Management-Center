@@ -1311,3 +1311,22 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
 - [ ] **NOT TRUST-ROOT:** отдельная workspace/operator, independently
   retained minimum, WORM/HSM and release sign-off остаются OPEN
 [Railway 2FA operator runbook](RAILWAY_2FA_OPERATOR_RUNBOOK.ru.md).
+
+
+## Stage 2G.4d.7x — expiry / retained high-water
+
+- [x] Remote **stateless smoke client ONLY** restarted in same Railway sandbox;
+  authenticated signed external head revision 2 under existing pinned root,
+  both Node/WebCrypto valid, mTLS unauthenticated client DENY; authority untouched
+- [x] Separate GitHub CI guard + read-only synthetic PKI and signed journal audit:
+  SHA256 policy/authority pin, exact nonce and predecessor, valid certificate
+  chain, 48h expiry warning, retained minimum, torn/tampered-row/rollback-floor DENY
+- [ ] **SERVER RESTART** with 512 MB volume — requires **explicit operator
+  permission**; don't use redeploy/other mutations to bypass
+- [ ] **TEST TLS PKI EXPIRES 2026-10-15 13:33 UTC**: rotate to **separate
+  staging logId/keys/volume** after signer/governance review, OR decommission;
+  never overwrite old signed marker/journal
+- [ ] **REAL EXTERNAL TRUST** independently operated root/WORM/HSM,
+  retained minimum, partition/PITR and fenced PG settlement, issuer/ACK;
+  production, UUID reissue/retry/GC still BLOCKED
+[7x operations and certificate expiry runbook](RAILWAY_HIGHWATER_AUDIT_7X.ru.md).
