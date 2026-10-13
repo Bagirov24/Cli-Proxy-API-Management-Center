@@ -1330,3 +1330,23 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
   retained minimum, partition/PITR and fenced PG settlement, issuer/ACK;
   production, UUID reissue/retry/GC still BLOCKED
 [7x operations and certificate expiry runbook](RAILWAY_HIGHWATER_AUDIT_7X.ru.md).
+
+## Stage 2G.4d.7y — owner-approved remote authority restart
+
+- [x] **OWNER CONSENT:** in-place only `saas-highwater-staging-only`,
+  existing 512MB private volume retained; no redeploy or config changes
+- [x] **REAL SERVER RESTART:** `2026-10-13T19:42:56Z READY ... head 2`
+  after volume mount; startup policy marker and signed chain validated
+- [x] **FRESH REMOTE CRYPTO:** new smoke startup `19:43:29Z`
+  Ed25519 Node+WebCrypto true on rev2, mTLS pinned SPKI PASS,
+  missing-client-cert DENY, no new append
+- [x] Both Railway sandbox services Online, 0 staged changes;
+  `gcPermitted=false`, Draft PR still OPEN
+- [ ] **NOT YET VERIFIED REMOTELY:** actual lost ACK after fsync
+  with same nonce retry, SIGKILL during append, torn record, independent
+  retained minimum, cross-host restore/partition/failover, WORM/HSM
+- [ ] **TEST PKI:** expires 2026-10-15 13:33 UTC; preserve existing
+  signed log and plan separate synthetic logId/keys/volume, or retire
+- [ ] **PRODUCTION BLOCKED:** independent admin, fenced PG COMMIT/WAL,
+  tenant actor issuer, authenticated recipient ACK, security/legal
+[Detailed audit and expiry plan](RAILWAY_HIGHWATER_AUDIT_7X.ru.md).

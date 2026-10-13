@@ -146,3 +146,51 @@ volume marker. Если old scope истечёт до rotation approval —
 `7x OFFLINE PUBLIC-PKI + JOURNAL-AUDIT CI`;
 `SERVER-VOLUME RESTART / REAL ROTATION PENDING OPERATOR APPROVAL`;
 `INDEPENDENT OFF-HOST CUSTODY NOT VERIFIED`.
+
+## 5. Stage 7y — перезапуск authority с томом РАЗРЕШЁН и выполнен 13.10.2026
+
+**Эта секция заменяет исторический статус выше**: после явного разрешения
+владельца перезапущен `saas-highwater-staging-only` in-place на
+`cpa-gateway-sandbox/sandbox`. Это тот же deployment
+`885ee1a7-8ffb-462b-ae0e-b47a260d5ff6`, без rebuild/redeploy,
+смены signer, TLS или изменения конфигурации/журнала.
+
+**Preflight:** оба сервиса `SUCCESS / Online`, staged changes 0;
+private volume `synthetic-highwater-only`, id
+`2a4cb9b4-0dcb-4206-8c94-cdae8d78d980`, 512 MB,
+mount `/staging-highwater`; нет public domains или TCP proxies.
+Предыдущий проверенный external signed minimum — `revision=2`
+под operator-inspected Ed25519 SPKI SHA256
+`5c55326f3c90215556c8bdac77ecc9c6d152cdf1e59253492a208f5e18a16411`.
+
+**Новый authority startup log:** `2026-10-13T19:42:53.512Z`
+повторный mount того же Railway volume path. В
+`2026-10-13T19:42:56.094Z`: `READY: sandbox-only synthetic
+high-water HTTPS/mTLS port 8443; head 2`.
+Согласно исходному коду `store()` проверяет policy marker,
+целостность и подписанную последовательность до `server.listen`.
+Это доказательство восстановления retained signed head при реальном
+**перезапуске процесса сервера** с persistent volume; не WORM или
+cross-host DR.
+
+**Отдельная внешняя проверка:** после authority restart in-place
+перезапущен stateless `saas-highwater-private-smoke`,
+deployment `d3e4ee3d-5d74-4fb1-a28d-c9fd04e33c2f`.
+В **новых** логах `2026-10-13T19:43:29Z`:
+- `PASS 7w: retained signed remote head authenticated, revision=2`;
+- `PASS 7w: private-network HTTPS TLS1.3/mTLS head read with pinned server SPKI`;
+- `PASS 7w: missing client certificate denied by actual remote authority`;
+- `DIAG 7w: localEd25519=true, authoritySigBytes=64, cryptoVerifier=true, webVerifier=true, webStatus=completed`.
+
+Ветка клиента при signed `revision===2` возвращается **до append**,
+ничего не пишет в журнал. Оба сервиса остались `Online 1/1`,
+без staged patch и ошибок.
+
+**Точная граница:** `AUTHORITY PROCESS RESTART + RETAINED SIGNED REV2
+REMOTE VERIFIED`. Не доказаны lost-ACK after fsync / exact nonce
+replay, torn file/host crash, independent external retained minimum,
+rollback защиты от общего администратора, backup/restore/partition,
+WORM/HSM, CA revocation/rotation или PG COMMIT fencing.
+Тестовые сертификаты истекают `2026-10-15 13:33 UTC`.
+Production/issuer/repair/GC остаются `BLOCKED`;
+`gcPermitted=false`.

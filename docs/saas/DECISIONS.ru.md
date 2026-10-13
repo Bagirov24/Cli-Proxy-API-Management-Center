@@ -1287,3 +1287,33 @@ explicit approval, or quarantine/decommission. MFA approvals are
 not independent HSM/WORM custody, and actor/PG/recipient release
 is still forbidden. `gcPermitted=false`.
 [Stage 7x runbook](RAILWAY_HIGHWATER_AUDIT_7X.ru.md).
+
+## D-084 — Authorized authority restart verifies retained signed head, not independent recovery
+
+**2026-10-13 decision:** With the owner's explicit permission,
+Railway `restart_service` restarted `saas-highwater-staging-only`
+in place despite the 512 MB attached volume. D-083 is the earlier
+pre-approval snapshot. The service's existing deployment ID
+`885ee1a7` did not change and there was no redeploy, variable or
+journal/key/volume mutation.
+
+**Actual startup evidence:** `2026-10-13T19:42:53.512Z` volume mounted,
+`2026-10-13T19:42:56.094Z`:
+`READY: sandbox-only synthetic high-water HTTPS/mTLS port 8443; head 2`.
+The startup path validates the pinned volume policy marker and all
+signed durable rows before listening. **New independent client run**,
+`2026-10-13T19:43:29Z`, returned signed revision 2 under pinned
+TLS1.3/mTLS: `cryptoVerifier=true`, `webVerifier=true`,
+client without certificate DENY. The read-only verified-rev2 path
+returns before any synthetic append.
+
+**Decision:** restart of the actual volume-owning **process** plus
+remote signature reauthentication is now VERIFIED. It does not
+constitute lost-ACK recovery, crash-during-write, independent
+operator/WORM/HSM, anti-rollback minimum, multi-host backup/failover
+or atomic PostgreSQL COMMIT settlement. Both services remain in one
+personal Railway workspace. Certs expire 2026-10-15 13:33 UTC,
+no in-place trust/policy rewrite; future rotation requires separately
+approved proof scope. Production, SQL019, UUID retry/reissue/repair,
+delivery/GC and merge remain blocked; `gcPermitted=false`.
+[Stage 7x/7y acceptance](RAILWAY_HIGHWATER_AUDIT_7X.ru.md).

@@ -1153,3 +1153,16 @@ Test identities истекают **2026-10-15 13:33 UTC**: текущая
 volume без отдельного recovery/security протокола. Ни внешний
 WORM/HSM, ни PostgreSQL COMMIT settlement, ни production ready.
 [Stage 7x evidence/rotation runbook](RAILWAY_HIGHWATER_AUDIT_7X.ru.md).
+
+## Stage 2G.4d.7y — live authority process restart with attached volume VERIFIED
+
+**New remote evidence (2026-10-13):** владелец разрешил in-place
+restart `saas-highwater-staging-only` с прежним 512 MB томом.
+В новых runtime logs `19:42:56 UTC` — `READY: ... port 8443;
+head 2`. После него новый процесс stateless smoke в `19:43:29 UTC`
+проверил signed revision 2 под pinned TLS1.3/mTLS, Node Crypto и
+WebCrypto Ed25519 true, no-client-cert DENY. Ни один append/UUID
+не выполнен, оба сервиса Online. Это действительно **restart
+сервера с подключённым томом**, но не lost-ACK, cross-host DR,
+независимый WORM/HSM или release approval. Certificate expiry
+2026-10-15 13:33 UTC. [Stage 7x/7y report](RAILWAY_HIGHWATER_AUDIT_7X.ru.md). `gcPermitted=false`.

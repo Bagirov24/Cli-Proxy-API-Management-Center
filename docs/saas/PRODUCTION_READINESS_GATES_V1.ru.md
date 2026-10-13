@@ -633,3 +633,23 @@ COMMIT→external receipt, tenant/actor issuer authority, recipient ACK,
 privacy/legal/security release. Current synthetic test certs expire
 2026-10-15 13:33 UTC. No production changes, SQL019, replay/reissue,
 repair/delivery/archive or GC. `gcPermitted=false`.
+
+## Stage 2G.4d.7y — Railway volume-authority process restart PASSED, DR NOT VERIFIED
+
+**Remote sandbox VERIFIED:** the owner explicitly authorized in-place
+restart of `saas-highwater-staging-only` with the same persistent
+512 MB volume. New authority startup `2026-10-13T19:42:56Z`
+validated policy/append history and reported `READY ... head 2`.
+Afterward newly started smoke authenticated signed revision 2:
+pinned TLS1.3/mTLS, Ed25519 Node Crypto + WebCrypto true,
+missing-client-certificate DENY. No append, signer, key, volume
+or configuration changes; both services Online, no staged patch.
+
+**Still BLOCKED:** actual ACK-loss after fsync, crash/torn row,
+independent anti-rollback/WORM/HSM operator, cross-host restore/
+partition/failover, revocation/cert rotation, fenced PG COMMIT/WAL/
+PITR, actor-scoped tenant issuer, authenticated recipient ACK,
+privacy/legal/retention/security review. Synthetic TLS certs expire
+2026-10-15 13:33 UTC. No production deploy, merge, SQL019,
+UUID retry/reissue/reuse/delete, repair/delivery/GC;
+`gcPermitted=false`.

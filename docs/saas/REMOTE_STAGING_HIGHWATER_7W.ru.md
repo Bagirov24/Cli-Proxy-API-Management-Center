@@ -99,3 +99,18 @@ retry/reissue/repair/delivery/archive/GC. `gcPermitted=false`.
 исторические deployment ID/синтетические PASS остаются такими,
 какими были доказаны D-081. Не включайте workspace-wide
 `Require 2FA` без отдельного решения администратора.
+
+## Update 7y — signed high-water verified after actual authority restart
+
+The former Stage 7w "authority restart UNTESTED" state has been
+**superseded**. With explicit owner consent, `saas-highwater-staging-only`
+was restarted in-place with its original 512 MB attached volume.
+New `2026-10-13T19:42:56Z` startup log:
+`READY: sandbox-only synthetic high-water HTTPS/mTLS port 8443; head 2`.
+New restarted smoke process `19:43:29Z`: retained signed rev2
+Node+WebCrypto Ed25519 true, private pinned TLS1.3/mTLS PASS,
+no-client-cert DENY. No new append or UUID operation. This validates
+the **server process+attached-volume signed rev2**, not independent
+WORM/HSM, remote lost ACK/replay, backup/restore, or production.
+Test cert expires 2026-10-15 13:33 UTC, `gcPermitted=false`.
+[7x/7y full evidence](RAILWAY_HIGHWATER_AUDIT_7X.ru.md).
