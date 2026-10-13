@@ -144,3 +144,24 @@ real credentials, /data, management.html or live network dispatch.**
 This is strictly a limited synthetic CI proof.
 
 **CODE VERIFIED:** `8659e3c091bb4f6b3f03a8ea444ad319e73cbfe6` — [Main CI #38360039654](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38360039654), [PostgreSQL16 #38360039690](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38360039690), [Demo #38360039733](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38360039733) and [Chromium #38360039704](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38360039704) all SUCCESS. The final docs SHA needs its own Actions verification.
+
+
+## Stage 2G.4d.7j — detached checkpoint, no archive transfer
+
+A job-local Ed25519 witness now signs canonical SHA-256
+commitments for the current immutable 015/016 UUID sets and
+links each checkpoint to its predecessor. The verifier pins
+the last signature digest outside PostgreSQL and rejects a
+simulated older restored projection missing a committed ID.
+A terminated physical PostgreSQL transaction cannot appear
+in the witness until COMMIT. The signing key and pinned head
+are deleted after the ephemeral GitHub Actions test.
+
+This is NOT a durable external witness. No real backup restore,
+archival, GC, capacity refill, hostile owner-proof mechanism
+or validation on actual future UUID issuance exists.
+`gcPermitted=false` always, and migration 018 remains
+the final SQL retention hard stop. No migration 019.
+[Details](SYNTHETIC_ARCHIVE_WITNESS_PROOF_V1.ru.md).
+
+**CODE VERIFIED on `66019cd7602d256148562eafd304e9712a2d907b`:** [Main CI #38363925445](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925445), [ephemeral PostgreSQL16 #38363925442](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925442), [Demo #38363925450](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925450), [Chromium #38363925440](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925440) all SUCCESS. Final docs SHA needs its own Actions. No production release claim.

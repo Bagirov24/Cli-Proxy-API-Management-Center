@@ -212,3 +212,17 @@ observation and 013/014 local worker processing.
 The private retention snapshot is not a 012 reconciliation
 record and never certifies recipient delivery.
 [018 contract](SYNTHETIC_TOMBSTONE_RETENTION_V1.ru.md).
+
+
+## Stage 2G.4d.7j — offline witness is not a 012 reconciliation record
+
+The detached Ed25519 witness verifies only that a later
+snapshot still contains previously signed producer/issued
+UUID commitments. It does not attest 012 local audit
+observation, 013 delivery progress or 014 ACK. A killed
+pre-COMMIT PG transaction has no new immutable UUID in
+the signed projection and cannot alter 012 evidence.
+No GC, user payload or real delivery was added.
+[Proof contract](SYNTHETIC_ARCHIVE_WITNESS_PROOF_V1.ru.md).
+
+**CODE VERIFIED on `66019cd7602d256148562eafd304e9712a2d907b`:** [Main CI #38363925445](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925445), [ephemeral PostgreSQL16 #38363925442](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925442), [Demo #38363925450](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925450), [Chromium #38363925440](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925440) all SUCCESS. Final docs SHA needs its own Actions. No production release claim.

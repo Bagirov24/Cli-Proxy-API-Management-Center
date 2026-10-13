@@ -869,3 +869,26 @@ facades; 018 должен применяться ПОСЛЕДНИМ.
 Все эти ограничения — staging-only acceptance,
 а не production retention/deletion policy.
 [Подробности](SYNTHETIC_TOMBSTONE_RETENTION_V1.ru.md).
+
+
+## D-067 — detached CI witness ≠ production archival authorization
+
+Stage 2G.4d.7j принимает только **proof-only** протокол:
+новый Node offline Ed25519 witness подписывает канонический
+отсортированный набор SHA-256 commitments для issued/producer
+UUID. Подпись содержит seq, hash predecessor и projection root.
+Независимый от PG signer не получает DB credentials. Verifier
+сравнивает checkpoint с pinned latest head вне PG и заново
+считанным набором на отдельной PG connection; пропавший UUID,
+fork, stale head и подделка дают DENY.
+
+В CI ключ и trust head принадлежат ОДНОМУ временно живущему
+GitHub runner, а старое восстановление моделируется offline
+проекцией (не реальный PITR). Поэтому не доказана
+независимая долговечная история, спасение от compromised runner,
+архивный atomic cutover, внешняя trust root или non-reuse после
+удаления DB tombstones. `gcPermitted=false` неизменно;
+миграций 019, GC, удалений, экспорта IDs или публичных API НЕТ.
+См. [полный proof-контракт](SYNTHETIC_ARCHIVE_WITNESS_PROOF_V1.ru.md).
+
+**CODE VERIFIED on `66019cd7602d256148562eafd304e9712a2d907b`:** [Main CI #38363925445](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925445), [ephemeral PostgreSQL16 #38363925442](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925442), [Demo #38363925450](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925450), [Chromium #38363925440](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925440) all SUCCESS. Final docs SHA needs its own Actions. No production release claim.

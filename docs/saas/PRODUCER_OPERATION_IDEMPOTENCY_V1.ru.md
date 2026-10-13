@@ -184,3 +184,18 @@ and can still confirm the original event.
 This is not burst throttling for replay attempts, real payload
 or proof of remote delivery.
 [Retention contract](SYNTHETIC_TOMBSTONE_RETENTION_V1.ru.md).
+
+
+## Stage 2G.4d.7j — hash checkpoint is not idempotency authority
+
+The offline witness uses one SHA-256 commitment per 015
+producer-operation UUID and per 016 issued UUID, distinguished
+by domain-separated kind. Its signed head can identify a
+missing historical committed ID in a simulated restore, but
+it is never consulted in the live signed 015/016 idempotency
+transaction, cannot authorize a new ID, and cannot permit
+a second event for a reused key. This CI is not true
+crash-safe archive delivery or remote ACK.
+[Witness contract](SYNTHETIC_ARCHIVE_WITNESS_PROOF_V1.ru.md).
+
+**CODE VERIFIED on `66019cd7602d256148562eafd304e9712a2d907b`:** [Main CI #38363925445](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925445), [ephemeral PostgreSQL16 #38363925442](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925442), [Demo #38363925450](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925450), [Chromium #38363925440](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925440) all SUCCESS. Final docs SHA needs its own Actions. No production release claim.

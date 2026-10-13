@@ -172,3 +172,17 @@ No archived history, real HTTP, recipient data, payload or
 network ACK is generated. Existing unsafe pre-COMMIT
 local publication callback is unchanged and blocked for
 production. See [018 contract](SYNTHETIC_TOMBSTONE_RETENTION_V1.ru.md).
+
+
+## Stage 2G.4d.7j — signed witness ≠ signed intent
+
+A detached, offline Ed25519 proof-of-snapshot covers hashed
+UUID identities from the 015 and 016 immutable registries.
+A signed checkpoint has no authority to authorize 009/013,
+repeat a producer event, delete a tombstone, or certify
+an external receiver. Only PostgreSQL COMMIT continues
+to establish an event-only intent. Missing UUID restoration
+is rejected in CI without physically restoring/deleting rows.
+[Witness proof contract](SYNTHETIC_ARCHIVE_WITNESS_PROOF_V1.ru.md).
+
+**CODE VERIFIED on `66019cd7602d256148562eafd304e9712a2d907b`:** [Main CI #38363925445](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925445), [ephemeral PostgreSQL16 #38363925442](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925442), [Demo #38363925450](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925450), [Chromium #38363925440](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925440) all SUCCESS. Final docs SHA needs its own Actions. No production release claim.

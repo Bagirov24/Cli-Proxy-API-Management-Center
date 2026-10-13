@@ -1020,3 +1020,23 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
 - [ ] **SPEC:** legacy direct SQL caller-controlled ROLLBACK rate
   bypass; 009 callback/request bursts, global edge policy,
   public HTTP and real payload/delivery/ACK
+
+
+## Stage 2G.4d.7j — detached witness / restore rejection
+
+- [x] **IMPLEMENTED CI-only:** two-process offline Ed25519
+  canonical UUID commitment witness, sequence/previous signed chain,
+  external-to-PostgreSQL pinned checkpoint digest during one job
+- [x] **TESTED:** actual PG16 uncommitted invisibility, separate
+  committed INSERT, killed backend ROLLBACK, simulated restored
+  older projection rejection, signed-head replay, fork, tampered
+  manifest/signature, wrong key, torn bundle
+- [x] **SAFE DEFAULT:** no GC/archive/copy/export, no UUID reuse,
+  existing SQL 015–018 unchanged, `gcPermitted=false` invariant
+- [ ] **SPEC:** independently controlled persistent signing key and
+  trust head across hosts, atomic external witness protocol,
+  real PITR/backup restore and failover, non-reuse after compacted
+  archives, key rotation, legal retention and capacity relief
+- [ ] **PROPOSED:** production deployment/security release approval
+
+**CODE VERIFIED on `66019cd7602d256148562eafd304e9712a2d907b`:** [Main CI #38363925445](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925445), [ephemeral PostgreSQL16 #38363925442](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925442), [Demo #38363925450](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925450), [Chromium #38363925440](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925440) all SUCCESS. Final docs SHA needs its own Actions. No production release claim.

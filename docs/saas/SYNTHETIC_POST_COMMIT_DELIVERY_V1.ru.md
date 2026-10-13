@@ -272,3 +272,18 @@ Existing committed producer event replays do not create a new
 mapping and therefore are not rejected by the new-insert budget.
 No remote ACK or real recipient semantics are attested.
 [018 details](SYNTHETIC_TOMBSTONE_RETENTION_V1.ru.md).
+
+
+## Stage 2G.4d.7j — no recipient evidence from archival witness
+
+The detached witness covers only SHA-256 commitments to
+015 producer and 016 issued UUIDs. A committed producer
+UUID may also have 013/014 mock delivery activity, but the
+witness does NOT include local receiver ACK, transport
+payload, remote receipt or fencing state. No stage-7j
+checkpoint starts a worker or network sender.
+`gcPermitted=false` and production delivery gates
+remain unchanged.
+[Witness details](SYNTHETIC_ARCHIVE_WITNESS_PROOF_V1.ru.md).
+
+**CODE VERIFIED on `66019cd7602d256148562eafd304e9712a2d907b`:** [Main CI #38363925445](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925445), [ephemeral PostgreSQL16 #38363925442](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925442), [Demo #38363925450](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925450), [Chromium #38363925440](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925440) all SUCCESS. Final docs SHA needs its own Actions. No production release claim.

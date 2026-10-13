@@ -317,3 +317,23 @@ throttling, signed production HTTP APIs, durable payload and
 recipient ACK, dispatch-time revocation, real business/privacy
 deletion and independent security/release approvals.
 Old pre-COMMIT local handoff remains a production blocker.
+
+
+## 2G.4d.7j — offline archive witness is NOT a GC gate
+
+**Code-only VERIFIED (disposable CI):** hashed UUID commitments,
+offline Ed25519 signatures, pinned latest job-local checkpoint,
+monotonic chain, actual PostgreSQL pre-COMMIT invisibility/crash
+ROLLBACK, simulated stale restore detection. No raw operation IDs
+or customer payloads in signed files.
+
+**Production gates remain OPEN:** separately owned durable witness,
+tamper-evident out-of-DB key custody, trusted latest checkpoint
+across crashes/failover, atomic database-to-archive cutover,
+real PITR/restore verification, non-reuse checks on ALL future
+issuance, key rotation, GC/retention/privacy signoff, physical
+capacity restoration and external security approval. Old
+pre-COMMIT handoff, global quotas, actual transport and ACK
+remain unresolved. No archive deletion or migration 019.
+
+**CODE VERIFIED on `66019cd7602d256148562eafd304e9712a2d907b`:** [Main CI #38363925445](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925445), [ephemeral PostgreSQL16 #38363925442](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925442), [Demo #38363925450](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925450), [Chromium #38363925440](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925440) all SUCCESS. Final docs SHA needs its own Actions. No production release claim.

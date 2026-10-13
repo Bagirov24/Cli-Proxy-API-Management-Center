@@ -864,3 +864,21 @@ UUID НЕТ. Переигрывание старых 015–017 SQL миграц�
 и проверяет wrappers. Глобальную защиту всех legacy/009
 публикаций этот этап **не заявляет**.
 [Полный контракт](SYNTHETIC_TOMBSTONE_RETENTION_V1.ru.md).
+
+
+## Stage 2G.4d.7j — независимый CI witness, но НЕ архив / GC
+
+**CODE VERIFIED (strictly ephemeral):** две новые Node/Bun-independent
+`scripts/saas-staging/archive-witness-*.mjs` демонстрируют
+Ed25519-подписанный hash-only snapshot UUID, цепочку seq+previous,
+offline pinning последнего checkpoint и отказ при неполном restore.
+Свидетельский процесс НЕ получает PostgreSQL credentials.
+Сценарии: реальный PG16 pre-COMMIT invisibility, COMMIT,
+pg_terminate_backend → ROLLBACK, старый/подменённый snapshot,
+чужой public key, torn file и forked checkpoint. Никакого
+UUID удаления, экспорта реальных IDs или новой миграции 019.
+Это только proof-only CI: ephemeral witness и pinned head не
+долговечны, GC всегда запрещён. Подробнее:
+[7j witness protocol](SYNTHETIC_ARCHIVE_WITNESS_PROOF_V1.ru.md).
+
+**CODE VERIFIED on `66019cd7602d256148562eafd304e9712a2d907b`:** [Main CI #38363925445](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925445), [ephemeral PostgreSQL16 #38363925442](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925442), [Demo #38363925450](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925450), [Chromium #38363925440](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925440) all SUCCESS. Final docs SHA needs its own Actions. No production release claim.

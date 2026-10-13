@@ -152,3 +152,18 @@ over private cores, while the 017 issuer/status remain stricter.
 No issuer obtains a replacement ID when capacity is exhausted;
 private health `gc_permitted=false` is never a GC approval.
 [Retention contract](SYNTHETIC_TOMBSTONE_RETENTION_V1.ru.md).
+
+
+## Stage 2G.4d.7j — evidence checkpoint does not change TTL
+
+An offline witness signs hashed issued-ID commitments after
+a committed PostgreSQL snapshot. Original 120-second issuance
+and 2-hour authorized status recovery rules are unchanged.
+After the deadline, issued rows remain immutable tombstones;
+their hashes can appear in a witness candidate but cannot
+be deleted, archived or reused. The signing key/trusted head
+is only job-local, not a new client credential, status
+endpoint or durability mechanism.
+[Proof-only protocol](SYNTHETIC_ARCHIVE_WITNESS_PROOF_V1.ru.md).
+
+**CODE VERIFIED on `66019cd7602d256148562eafd304e9712a2d907b`:** [Main CI #38363925445](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925445), [ephemeral PostgreSQL16 #38363925442](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925442), [Demo #38363925450](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925450), [Chromium #38363925440](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925440) all SUCCESS. Final docs SHA needs its own Actions. No production release claim.

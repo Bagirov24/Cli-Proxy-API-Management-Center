@@ -155,3 +155,17 @@ replay requires applying 018 last to restore public metering.
 The old 009 callback path and rollback-able raw status SQL
 request counters remain outside a global abuse guarantee.
 [Detailed contract](SYNTHETIC_TOMBSTONE_RETENTION_V1.ru.md).
+
+
+## Stage 2G.4d.7j — no quota increase or GC from signed hashes
+
+Detached Ed25519 checkpoints are CI-only evidence of monotonic
+UUID commitment sets. They do not remove 017/018 lifetime caps
+(12/48 issued, 64/256 producer), refill actor/tenant budgets,
+allow TRUNCATE/DELETE, or establish a production non-reuse registry.
+A stale, forged or incomplete witness is rejected against the
+job-local pinned head; true external persistence and
+capacity relief remain SPEC.
+[Proof-only protocol](SYNTHETIC_ARCHIVE_WITNESS_PROOF_V1.ru.md).
+
+**CODE VERIFIED on `66019cd7602d256148562eafd304e9712a2d907b`:** [Main CI #38363925445](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925445), [ephemeral PostgreSQL16 #38363925442](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925442), [Demo #38363925450](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925450), [Chromium #38363925440](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38363925440) all SUCCESS. Final docs SHA needs its own Actions. No production release claim.
