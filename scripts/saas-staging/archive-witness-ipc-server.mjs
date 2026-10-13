@@ -4,6 +4,8 @@
 // It cannot access PG, Railway, HTTP, client secrets, issue UUIDs or GC.
 // Signed envelopes are only canonical synthetic UUID commitments.
 import { createServer } from 'node:net';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import {
   existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync,
   openSync, closeSync, fsyncSync, renameSync, chmodSync, unlinkSync,
@@ -26,6 +28,9 @@ const ID=/^[0-9a-f]{32}$/;
 const PG_ATTEST='saas-synthetic-pg-projection-attestation-v1';
 const PG_CHALLENGE='saas-synthetic-pg-projection-challenge-v1';
 const PG_PIN='saas-synthetic-ipc-pg-projector-pin-v1';
+const HIGHWATER='saas-synthetic-ipc-highwater-receipt-v1';
+const HIGHWATER_PIN='saas-synthetic-ipc-highwater-pin-v1';
+const highwaterClient=fileURLToPath(new URL('./archive-witness-highwater-ipc.mjs',import.meta.url));
 const check=(v,why)=>{if(!v)throw Error(why);};
 const exact=(x,names)=>x!==null&&typeof x==='object'&&!Array.isArray(x)&&
   Object.keys(x).sort().join(',')===names.slice().sort().join(',');
@@ -68,7 +73,27 @@ function guard() {
       createPublicKey(projectorPem).asymmetricKeyType==='ed25519',
       'Malformed pinned ephemeral Ed25519 projector key');
   } else check(!pinPath,'Projector key only allowed in proof-only mode');
-  return {dir,socket,proofMode,projectorPem};
+  // Optional 7q LOCAL journal mode is not an independently administered
+  // root. Strictly avoid silent downgrade of an already journal-fenced state.
+  const highwaterEnabled=process.env.SAAS_EPHEMERAL_HIGHWATER_CI==='true';
+  const highwaterSocket=process.env.SAAS_EPHEMERAL_HIGHWATER_SOCKET_PATH;
+  const highwaterPublicPath=process.env.SAAS_EPHEMERAL_HIGHWATER_PUBLIC_KEY_PATH;
+  let highwater=null;
+  if(highwaterEnabled) {
+    check(proofMode&&typeof highwaterSocket==='string'&&
+      typeof highwaterPublicPath==='string'&&
+      resolve(highwaterSocket).startsWith(dirname(dir)+'/')&&
+      resolve(highwaterPublicPath).startsWith(dirname(dir)+'/')&&
+      existsSync(highwaterPublicPath),
+      'Local high-water requires protected staging witness and private pin');
+    const publicPem=readFileSync(highwaterPublicPath,'utf8');
+    check(publicPem.length>0&&publicPem.length<16000&&
+      createPublicKey(publicPem).asymmetricKeyType==='ed25519',
+      'Invalid high-water public root');
+    highwater={socket:resolve(highwaterSocket),publicPem};
+  } else check(!highwaterSocket&&!highwaterPublicPath,
+    'Refusing unsigned high-water configuration downgrade');
+  return {dir,socket,proofMode,projectorPem,highwater};
 }
 function fsyncDir(path) {
   const fd=openSync(path,'r');
@@ -167,7 +192,7 @@ function sourceProjection(proof,challenge,projectorPem) {
     'Untrusted source signature or signed projection');
   return projection;
 }
-function initialize(dir,proofMode,projectorPem) {
+function initialize(dir,proofMode,projectorPem,highwater) {
   if(!existsSync(dir)) {
     mkdirSync(join(dir,'checkpoints'),{recursive:true,mode:0o700});
     chmodSync(dir,0o700);
@@ -181,9 +206,22 @@ function initialize(dir,proofMode,projectorPem) {
       protocol:PG_PIN,fingerprint:projectorFingerprint(projectorPem),
     })+'\n');
   }
+  // Bootstrap journal fencing ONLY onto a still-EMPTY witness. Existing
+  // signed checkpoints cannot silently acquire a different trust root.
+  const highwaterPin=join(dir,'highwater-pin.json');
+  if(highwater&&!existsSync(highwaterPin)) {
+    check(!existsSync(join(dir,'head.json'))&&
+      readdirSync(join(dir,'checkpoints')).length===0,
+      'Refusing retrospective local journal enrollment');
+    exclusive(highwaterPin,JSON.stringify({
+      protocol:HIGHWATER_PIN,
+      fingerprint:projectorFingerprint(highwater.publicPem),
+    })+'\n');
+  }
   const files=readdirSync(dir).sort();
   const expected=['checkpoints','private.pem','public.pem',
     ...(proofMode?['projector-pin.json']:[]),
+    ...(highwater?['highwater-pin.json']:[]),
     ...(existsSync(join(dir,'head.json'))?['head.json']:[])].sort();
   check(equal(files,expected),'Witness orphan, pending file, or foreign state: DENY');
   const privatePem=readFileSync(join(dir,'private.pem'),'utf8');
@@ -198,10 +236,17 @@ function initialize(dir,proofMode,projectorPem) {
       pin.fingerprint===projectorFingerprint(projectorPem),
       'Projector trust root changed on restart: DENY');
   }
+  if(highwater) {
+    const pin=readJson(highwaterPin);
+    check(exact(pin,['protocol','fingerprint'])&&
+      pin.protocol===HIGHWATER_PIN&&
+      pin.fingerprint===projectorFingerprint(highwater.publicPem),
+      'High-water trust root substitution denied');
+  }
   const entries=readdirSync(join(dir,'checkpoints')).sort();
   check(entries.length<=128,'Witness history capacity exhausted');
   const state={history:[],head:null,privatePem,publicPem,
-    proofMode,projectorPem,pending:new Map(),seenNonces:new Set()};
+    proofMode,projectorPem,highwater,pending:new Map(),seenNonces:new Set()};
   const ids=new Set();
   for(let i=0;i<entries.length;i++) {
     check(entries[i]===String(i+1).padStart(8,'0')+'.json',
@@ -245,6 +290,46 @@ function initialize(dir,proofMode,projectorPem) {
   }
   return state;
 }
+function highwaterAction(state,request,expectedHead) {
+  if(!state.highwater)return;
+  const message=JSON.stringify(request);
+  check(message.length<140000,'Journal IPC capacity exhausted: DENY');
+  // Synchronous local child invocation preserves 7n single-writer
+  // processing, without passing SQL credentials to either signer.
+  const response=spawnSync(process.execPath,[
+    highwaterClient,'client',state.highwater.socket,message,
+  ],{
+    env:{
+      GITHUB_ACTIONS:'true',SAAS_EPHEMERAL_IPC_WITNESS_CI:'true',
+      SAAS_EPHEMERAL_WITNESS_OFFLINE:'true',
+      SAAS_EPHEMERAL_HIGHWATER_CI:'true',
+      PATH:process.env.PATH||'/usr/bin:/bin',
+      HOME:dirname(state.highwater.socket),LANG:'C',
+    },
+    encoding:'utf8',timeout:5500,maxBuffer:250000,
+  });
+  check(response.status===0,
+    'High-water IPC unavailable or disputed: DENY');
+  const reply=JSON.parse(response.stdout);
+  check(exact(reply,['ok','state','receipt','gcPermitted'])&&
+    reply.ok===true&&reply.state==='HIGHWATER'&&
+    reply.gcPermitted===false&&
+    exact(reply.receipt,['data','signature'])&&
+    exact(reply.receipt.data,
+      ['protocol','witnessFingerprint','head'])&&
+    reply.receipt.data.protocol===HIGHWATER&&
+    reply.receipt.data.witnessFingerprint===
+      projectorFingerprint(state.publicPem)&&
+    canonicalHead(reply.receipt.data.head)&&
+    equal(reply.receipt.data.head,expectedHead)&&
+    typeof reply.receipt.signature==='string'&&
+    /^[A-Za-z0-9_-]{80,120}$/.test(reply.receipt.signature),
+    'Unsigned or stale high-water response: DENY');
+  const sig=Buffer.from(reply.receipt.signature,'base64url');
+  check(sig.length===64&&edVerify(null,Buffer.from(HIGHWATER+'\n'+
+    JSON.stringify(reply.receipt.data)),state.highwater.publicPem,sig),
+    'High-water signer identity mismatch: DENY');
+}
 function sealed(row) {
   return {ok:true,state:'SEALED',head:headOf(row.envelope),
     envelope:row.envelope,receipt:row.receipt,gcPermitted:false};
@@ -252,6 +337,7 @@ function sealed(row) {
 function handle(message,state,dir) {
   check(message!==null&&typeof message==='object'&&!Array.isArray(message),
     'Malformed witness request');
+  if(state.highwater)highwaterAction(state,{op:'status'},state.head);
   if(message.op==='head') {
     check(exact(message,['op']),'Invalid head operation');
     return state.history.length?sealed(state.history.at(-1)):
@@ -342,6 +428,15 @@ function handle(message,state,dir) {
     atomic(join(dir,'head.json'),headOf(envelope));
     state.history.push(row);
     state.head=headOf(envelope);
+    if(state.highwater) {
+      if(process.env.SAAS_WITNESS_TEST_KILL_BEFORE_HIGHWATER===
+        String(envelope.payload.sequence))process.kill(process.pid,'SIGKILL');
+      // A signed witness fsync is NOT a positive ACK until a SECOND
+      // separately signed journal head has been persisted and verified.
+      // Crash between these two local publications means DENY on restart,
+      // never automatic duplicate issuance or silent journal repair.
+      highwaterAction(state,{op:'advance',envelope},state.head);
+    }
     if(protectedAppend)state.pending.delete(message.requestId);
     // Simulate a durable witness ACK lost AFTER fsync+rename, BEFORE any
     // bytes of the receipt reach caller. Restart must replay same receipt.
@@ -351,9 +446,12 @@ function handle(message,state,dir) {
   }
   throw Error('Unknown operation');
 }
-const {dir,socket,proofMode,projectorPem}=guard();
+const {dir,socket,proofMode,projectorPem,highwater}=guard();
 let state;
-try {state=initialize(dir,proofMode,projectorPem);}
+try {
+  state=initialize(dir,proofMode,projectorPem,highwater);
+  if(state.highwater)highwaterAction(state,{op:'status'},state.head);
+}
 catch(error) {
   process.stderr.write('IPC WITNESS DENIED: '+error.message+'\n');
   process.exit(2);
