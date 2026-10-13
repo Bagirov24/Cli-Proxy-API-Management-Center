@@ -19,6 +19,7 @@ on:
       - 'tests/sql/saas_synthetic_delivery_intent_ack.test.sql'
       - 'tests/sql/saas_synthetic_receiver_ledger.test.sql'
       - 'tests/sql/saas_synthetic_producer_operations.test.sql'
+      - 'tests/sql/saas_synthetic_operation_issuance.test.sql'
       - 'scripts/saas-staging/**'
       - 'src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts'
       - 'src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts'
@@ -244,6 +245,14 @@ jobs:
               exit 1
             }
           tail -n 4 /tmp/saas-producer-id-install.log
+          # 016: signed, time-bounded issued UUIDs and read-only recovery.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/016_synthetic_operation_issuance_pilot.sql \
+            > /tmp/saas-operation-issue-install.log 2>&1 || {
+              tail -n 120 /tmp/saas-operation-issue-install.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-operation-issue-install.log
           # Synthetic RS256 keys are generated only in this Bun process.
           # Real wire SQL uses only saas_ci_runner, never the postgres login.
           timeout --signal=TERM --kill-after=5s 90s env \
@@ -467,6 +476,31 @@ jobs:
               exit 1
             }
           tail -n 5 /tmp/saas-producer-id-test.log
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_synthetic_operation_issuance.test.sql \
+            > /tmp/saas-operation-issue-test.log 2>&1 || {
+              tail -n 130 /tmp/saas-operation-issue-test.log
+              exit 1
+            }
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/016_synthetic_operation_issuance_pilot.sql \
+            > /tmp/saas-operation-issue-replay.log 2>&1 || {
+              tail -n 115 /tmp/saas-operation-issue-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 -c "SELECT saas_rls_test.assert_true(
+            (SELECT COUNT(*)=1 FROM saas_rls_private.synthetic_operation_issues
+             WHERE operation_id='44444444-4444-4444-8444-444444444444'::UUID)
+            AND (SELECT COUNT(*)=1 FROM saas_rls_private.synthetic_producer_operations
+             WHERE operation_id='44444444-4444-4444-8444-444444444444'::UUID)
+            AND (SELECT COUNT(*)=1 FROM saas_rls_private.synthetic_operation_issues
+             WHERE operation_id='55555555-5555-4555-8555-555555555555'::UUID),
+            '016 replay must preserve committed operation and expired tombstone')" \
+            > /tmp/saas-operation-issue-replay-check.log 2>&1 || {
+              tail -n 90 /tmp/saas-operation-issue-replay-check.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-operation-issue-test.log
           timeout --signal=TERM --kill-after=5s 35s env \
             SAAS_EPHEMERAL_PRODUCER_CI=true \
             bash scripts/saas-staging/verify-producer-operation-concurrency.sh

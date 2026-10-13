@@ -11,12 +11,17 @@ import { createTrustedIssuerSessionProvisioner } from
   '../../src/features/saasBlueprint/controlApi/server/issuerSessionProvisioning.ts';
 import { createTrustedSqlReadBoundary, createTrustedSqlPublishedBoundary } from
   '../../src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts';
-import { createTrustedSyntheticCommittedIntentBoundary } from
-  '../../src/features/saasBlueprint/controlApi/server/syntheticCommittedIntent.ts';
+import {
+  createTrustedSyntheticCommittedIntentBoundary,
+  createTrustedSyntheticOperationIssuer,
+  createTrustedSyntheticOperationStatusBoundary,
+  createTrustedReservedSyntheticIntentBoundary,
+} from '../../src/features/saasBlueprint/controlApi/server/syntheticCommittedIntent.ts';
 import { createPinnedHmacScopeIssuer, CONTROL_READ_SELECT_SQL, SCOPED_READ_GATE_SQL,
   SCOPED_AUTHORIZATION_REVISION_SQL, SCOPED_PUBLICATION_BARRIER_SQL,
   SCOPED_PUBLICATION_OUTBOX_SQL, SCOPED_PRODUCER_OPERATION_SQL,
-  withSignedScopedPublicationBarrier } from
+  SCOPED_PRODUCER_ISSUE_SQL, SCOPED_PRODUCER_RESERVED_SQL,
+  SCOPED_PRODUCER_STATUS_SQL, withSignedScopedPublicationBarrier } from
   '../../src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts';
 import { createSecurityAuditRecorder, createSyntheticAuditBuffer } from
   '../../src/features/saasBlueprint/controlApi/server/securityAudit.ts';
@@ -74,7 +79,10 @@ function safeStatement(sql, params) {
      sql === SCOPED_AUTHORIZATION_REVISION_SQL && params.length === 4 ||
      sql === SCOPED_PUBLICATION_BARRIER_SQL && params.length === 4 ||
      sql === SCOPED_PUBLICATION_OUTBOX_SQL && params.length === 5 ||
-     sql === SCOPED_PRODUCER_OPERATION_SQL && params.length === 7);
+     sql === SCOPED_PRODUCER_OPERATION_SQL && params.length === 7 ||
+     sql === SCOPED_PRODUCER_ISSUE_SQL && params.length === 7 ||
+     sql === SCOPED_PRODUCER_RESERVED_SQL && params.length === 7 ||
+     sql === SCOPED_PRODUCER_STATUS_SQL && params.length === 6);
 }
 
 /** A disposable adapter, NOT proof of per-connection Bun discard safety. */
@@ -1300,6 +1308,177 @@ try {
   '1');
   console.info('PASS: real COMMIT with lost reply yields 503/UNKNOWN, yet independent PG worker recovers single durable intent');
 
+
+  // Stage 2G.4d.7g: signed server-ISSUED UUID, immutable DB reservation,
+  // status-only recovery and reserved commit, all without network traffic.
+  const issueOperation=createTrustedSyntheticOperationIssuer(safeDependencies);
+  const statusOperation=createTrustedSyntheticOperationStatusBoundary(safeDependencies);
+  const commitIssued=createTrustedReservedSyntheticIntentBoundary(safeDependencies);
+  const stagingRequest=(operationId,actor=north,tenant='demo-north',limit=1)=>
+    request(actor,tenant,'projects',{limit,producerOperationId:operationId});
+  const preIssuedOutbox=readPrivateOutboxCount();
+  const attackerChosen=crypto.randomUUID();
+  const issued=await issueOperation(stagingRequest(attackerChosen));
+  assert.equal(issued.ok,true);
+  assert.equal(issued.source,'staging-operation-issued');
+  assert.equal(issued.maxIssueWindowSeconds,120);
+  assert.match(issued.operationId,/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  assert.notEqual(issued.operationId,attackerChosen,
+    'Issuer must mint UUID independently from any caller-provided value');
+  assert.equal(readPrivateOutboxCount(),preIssuedOutbox,
+    'Issuance alone must not create a delivery intent');
+  const firstStatus=await statusOperation(stagingRequest(issued.operationId));
+  assert.equal(firstStatus.ok,true);
+  assert.equal(firstStatus.operationState,'issued');
+  assert.equal(firstStatus.externalReceipt,'not_attested');
+  assert.equal('eventId' in firstStatus,false);
+  assert.equal('tenantId' in firstStatus,false);
+  const crossStatus=await statusOperation(
+    stagingRequest(issued.operationId,orbit,'demo-orbit'));
+  assert.equal(crossStatus.status,404,'Foreign tenant UUID must be hidden');
+  const wrongShapeStatus=await statusOperation(
+    stagingRequest(issued.operationId,north,'demo-north',2));
+  assert.equal(wrongShapeStatus.status,404);
+  assert.equal((await statusOperation(stagingRequest(crypto.randomUUID()))).status,404);
+  assert.equal((await commitIssued(stagingRequest(attackerChosen))).status,404,
+    'Arbitrary unissued UUID cannot create signed 009/013 event');
+  assert.equal(readPrivateOutboxCount(),preIssuedOutbox);
+
+  const goodCommit=await commitIssued(stagingRequest(issued.operationId));
+  assert.equal(goodCommit.ok,true);
+  assert.equal(goodCommit.intentCommitted,true);
+  assert.equal(goodCommit.externalReceipt,'not_attested');
+  assert.equal(readPrivateOutboxCount(),preIssuedOutbox+1);
+  const committedIssueEvent=readLastCommittedNorthAuditId();
+  assert.equal((await statusOperation(stagingRequest(issued.operationId)))
+    .operationState,'committed');
+  assert.equal((await commitIssued(stagingRequest(issued.operationId))).ok,true);
+  assert.equal(readPrivateOutboxCount(),preIssuedOutbox+1);
+  assert.equal(readLastCommittedNorthAuditId(),committedIssueEvent,
+    'Recovered commit may not mint a new event');
+  for(const obj of [firstStatus,goodCommit]) {
+    for(const forbidden of ['north-project','idempotencyKey','fencingToken',north]) {
+      assert.equal(JSON.stringify(obj).includes(forbidden),false,
+        'No SQL payload, actor, key or worker state in operation receipt');
+    }
+  }
+  console.info('PASS: trusted JWT -> signed issue -> status issued -> reserved COMMIT -> status committed');
+
+  // A separate physical PG16 pool successfully COMMITS a reserved 016
+  // operation, but loses its COMMIT response. Signed status on a clean pool
+  // must recover the ORIGINAL 009/013 event without re-publishing.
+  const uncertainIssued=await issueOperation(request(north,'demo-north','projects',{limit:1}));
+  assert.equal(uncertainIssued.ok,true);
+  const uncertainIssueId=uncertainIssued.operationId;
+  const uncertainIssueSql=nativeSql(1);
+  const uncertainIssueBase=boundedDriver(uncertainIssueSql);
+  let issueAttemptStaged=false, issueReplyLost=false;
+  const brokenIssuePool={
+    quarantine(reason){ uncertainIssueBase.quarantine(reason); },
+    async connect(signal){
+      const reserved=await uncertainIssueBase.connect(signal);
+      return {
+        release(discard){return reserved.release(discard);},
+        async query(statement,params,querySignal){
+          if(statement===SCOPED_PRODUCER_RESERVED_SQL){
+            const result=await reserved.query(statement,params,querySignal);
+            if(result.rows?.[0]?.recorded===true) issueAttemptStaged=true;
+            return result;
+          }
+          if(statement==='COMMIT' && issueAttemptStaged){
+            await reserved.query('COMMIT',[],querySignal);
+            issueReplyLost=true;
+            throw new Error('Synthetic 016 unknown COMMIT response');
+          }
+          return reserved.query(statement,params,querySignal);
+        },
+      };
+    },
+  };
+  const beforeUnknownIssue=readPrivateOutboxCount();
+  let unknownIssue;
+  try {
+    const unsafeReplyCommit=createTrustedReservedSyntheticIntentBoundary({
+      ...createTrustedDependencies(brokenIssuePool,audit,
+        createSignedPgAuthorizationRevisionSource(brokenIssuePool,signer)),
+      recordStagingOutbox:true,
+    });
+    unknownIssue=await unsafeReplyCommit(stagingRequest(uncertainIssueId));
+  } finally {
+    if(!uncertainIssueBase.stats().poisoned)
+      await uncertainIssueSql.close({timeout:0});
+  }
+  assert.equal(issueAttemptStaged,true);
+  assert.equal(issueReplyLost,true);
+  assert.equal(unknownIssue.ok,false);
+  assert.equal(unknownIssue.status,503);
+  assert.equal(readPrivateOutboxCount(),beforeUnknownIssue+1,
+    'Unknown producer outcome must retain committed 009/013 event');
+  const originalCommittedEvent=readLastCommittedNorthAuditId();
+  const recoveredStatus=await statusOperation(stagingRequest(uncertainIssueId));
+  assert.equal(recoveredStatus.ok,true);
+  assert.equal(recoveredStatus.operationState,'committed');
+  assert.equal('eventId' in recoveredStatus,false);
+  assert.equal((await commitIssued(stagingRequest(uncertainIssueId))).ok,true);
+  assert.equal(readLastCommittedNorthAuditId(),originalCommittedEvent);
+  assert.equal(readPrivateOutboxCount(),beforeUnknownIssue+1,
+    'Recovery after lost response cannot mint another 009/013 event');
+  console.info('PASS: PG16 real 016 COMMIT reply LOST -> 503 -> signed status committed and dedup retry');
+
+  // Opposite failure: reserved 016 transaction ROLLBACKS before COMMIT.
+  // Durable issuance survives; status remains issued, and the first future
+  // successful commit creates exactly one event, not a false recovery.
+  const rolledIssued=await issueOperation(request(north,'demo-north','projects',{limit:1}));
+  assert.equal(rolledIssued.ok,true);
+  const rolledIssueSql=nativeSql(1);
+  const rolledIssueBase=boundedDriver(rolledIssueSql);
+  let rolledStaged=false, reallyRolledBack=false;
+  const rollbackIssuedPool={
+    quarantine(reason){rolledIssueBase.quarantine(reason);},
+    async connect(signal){
+      const reserved=await rolledIssueBase.connect(signal);
+      return {
+        release(discard){return reserved.release(discard);},
+        async query(statement,params,querySignal){
+          if(statement===SCOPED_PRODUCER_RESERVED_SQL){
+            const result=await reserved.query(statement,params,querySignal);
+            if(result.rows?.[0]?.recorded===true) rolledStaged=true;
+            return result;
+          }
+          if(statement==='COMMIT' && rolledStaged){
+            await reserved.query('ROLLBACK',[],querySignal);
+            reallyRolledBack=true;
+            throw new Error('Synthetic reserved operation rolled back');
+          }
+          return reserved.query(statement,params,querySignal);
+        },
+      };
+    },
+  };
+  const beforeRollbackIssue=readPrivateOutboxCount();
+  let rolledResult;
+  try {
+    const brokenCommit=createTrustedReservedSyntheticIntentBoundary({
+      ...createTrustedDependencies(rollbackIssuedPool,audit,
+        createSignedPgAuthorizationRevisionSource(rollbackIssuedPool,signer)),
+      recordStagingOutbox:true,
+    });
+    rolledResult=await brokenCommit(stagingRequest(rolledIssued.operationId));
+  } finally {
+    if(!rolledIssueBase.stats().poisoned)
+      await rolledIssueSql.close({timeout:0});
+  }
+  assert.equal(rolledStaged,true);
+  assert.equal(reallyRolledBack,true);
+  assert.equal(rolledResult.status,503);
+  assert.equal(readPrivateOutboxCount(),beforeRollbackIssue);
+  const rolledStatus=await statusOperation(stagingRequest(rolledIssued.operationId));
+  assert.equal(rolledStatus.operationState,'issued');
+  assert.equal((await commitIssued(stagingRequest(rolledIssued.operationId))).ok,true);
+  assert.equal((await statusOperation(stagingRequest(rolledIssued.operationId)))
+    .operationState,'committed');
+  assert.equal(readPrivateOutboxCount(),beforeRollbackIssue+1);
+  console.info('PASS: PG16 real 016 ROLLBACK -> status issued -> first valid retry commit');
 
   // 2G.4d.7a: real ephemeral PostgreSQL with TWO verified RS256 bearer
   // tokens for the SAME actor. The server derives SHA-256 of each exact

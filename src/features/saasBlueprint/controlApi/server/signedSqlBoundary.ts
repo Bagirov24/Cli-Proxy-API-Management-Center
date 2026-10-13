@@ -76,6 +76,21 @@ export const SCOPED_PRODUCER_OPERATION_SQL =
   '$1::text, $2::text, $3::text, $4::text, $5::text, ' +
   '$6::uuid, $7::integer) AS recorded';
 
+/** Staging 016: issue / commit reserved / read status under signed RLS. */
+export const SCOPED_PRODUCER_ISSUE_SQL =
+  'SELECT saas_rls.issue_signed_synthetic_operation(' +
+  '$1::text, $2::text, $3::text, $4::text, ' +
+  '$5::uuid, $6::integer, $7::integer) AS recorded';
+export const SCOPED_PRODUCER_RESERVED_SQL =
+  'SELECT saas_rls.record_signed_reserved_operation(' +
+  '$1::text, $2::text, $3::text, $4::text, $5::text, ' +
+  '$6::uuid, $7::integer) AS recorded';
+export const SCOPED_PRODUCER_STATUS_SQL =
+  'SELECT saas_rls.read_signed_synthetic_operation_status(' +
+  '$1::text, $2::text, $3::text, $4::text, ' +
+  '$5::uuid, $6::integer) AS operation_state';
+export type ScopedOperationState = 'issued' | 'committed' | 'expired';
+
 /** A DB-signed epoch with the next cutoff for any active expiring grant. */
 export interface ScopedSqlRevisionState {
   readonly revision: string;
@@ -98,6 +113,8 @@ export interface ScopedSqlPublication extends ScopedSqlRead {
   readonly recordStagingOutbox?: boolean;
   /** Only migration 015 staging uses this UUIDv4, never as authorization. */
   readonly producerOperationId?: string;
+  /** Only isolated 016 port opts in to these SQL verbs. */
+  readonly operationMode?: 'issue' | 'reserved_commit' | 'status';
 }
 
 /** Safe generic denial: never attach tenant, actor, resource or PG details. */
@@ -234,7 +251,7 @@ async function executeSignedScopedRead(
   purpose: 'metadata' | 'revision' | 'publication',
   nowSeconds: () => number,
   publication?: Pick<ScopedSqlPublication,
-    'baseline' | 'handoff' | 'recordStagingOutbox' | 'producerOperationId'>
+    'baseline' | 'handoff' | 'recordStagingOutbox' | 'producerOperationId' | 'operationMode'>
 ): Promise<readonly SqlRow[]> {
   const { scope, collection, signal } = request;
   const limit = request.limit ?? 50;
@@ -252,9 +269,16 @@ async function executeSignedScopedRead(
         (!publication ||
          (publication.recordStagingOutbox !== undefined &&
           typeof publication.recordStagingOutbox !== 'boolean') ||
-         (publication.producerOperationId !== undefined &&
-          (publication.recordStagingOutbox !== true ||
-           typeof publication.producerOperationId !== 'string' ||
+         (publication.operationMode === undefined &&
+          publication.producerOperationId !== undefined &&
+          publication.recordStagingOutbox !== true) ||
+         (publication.operationMode !== undefined &&
+           (!['issue', 'reserved_commit', 'status'].includes(publication.operationMode) ||
+            (publication.operationMode === 'reserved_commit') !==
+              (publication.recordStagingOutbox === true))) ||
+         ((publication.producerOperationId !== undefined ||
+           publication.operationMode !== undefined) &&
+          (typeof publication.producerOperationId !== 'string' ||
            !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
              publication.producerOperationId))) ||
          !publication.handoff ||
@@ -325,6 +349,7 @@ async function executeSignedScopedRead(
     };
 
     let output: readonly SqlRow[] = [];
+    let operationState: ScopedOperationState | undefined;
     let releaseFailed = false;
     let denied = false;
     try {
@@ -433,24 +458,52 @@ async function executeSignedScopedRead(
                   Date.now() >= publication.baseline.notAfterMs))) {
               denied = true;
             }
-            if (!denied && publication.recordStagingOutbox) {
-              // Same signed PostgreSQL transaction and held FOR SHARE:
-              // authorization audit is pending until COMMIT. A false
-              // response -> 404/ROLLBACK; malformed/error -> quarantine.
-              const withOperation = publication.producerOperationId !== undefined;
-              const audit = await query(
-                withOperation ? SCOPED_PRODUCER_OPERATION_SQL : SCOPED_PUBLICATION_OUTBOX_SQL,
-                withOperation
-                  ? [scope.tenantId, scope.actorId, scope.role, collection,
-                    scope.correlationId, publication.producerOperationId as string, limit]
-                  : [scope.tenantId, scope.actorId, scope.role,
-                    collection, scope.correlationId]
-              );
-              if (!Array.isArray(audit.rows) || audit.rows.length !== 1 ||
-                  typeof audit.rows[0]?.recorded !== 'boolean') {
-                throw new Error('Malformed signed outbox attestation');
+            if (!denied && (publication.recordStagingOutbox ||
+                publication.operationMode !== undefined)) {
+              // Only pinned signed 009/015/016 SQL can execute here.
+              const mode = publication.operationMode;
+              const prefix = [scope.tenantId, scope.actorId, scope.role, collection];
+              let fixedSql: string;
+              let params: readonly SqlValue[];
+              if (mode === 'issue') {
+                fixedSql = SCOPED_PRODUCER_ISSUE_SQL;
+                params = [...prefix, publication.producerOperationId as string, limit, 120];
+              } else if (mode === 'status') {
+                fixedSql = SCOPED_PRODUCER_STATUS_SQL;
+                params = [...prefix, publication.producerOperationId as string, limit];
+              } else if (mode === 'reserved_commit') {
+                fixedSql = SCOPED_PRODUCER_RESERVED_SQL;
+                params = [...prefix, scope.correlationId,
+                  publication.producerOperationId as string, limit];
+              } else if (publication.producerOperationId !== undefined) {
+                fixedSql = SCOPED_PRODUCER_OPERATION_SQL;
+                params = [...prefix, scope.correlationId,
+                  publication.producerOperationId, limit];
+              } else {
+                fixedSql = SCOPED_PUBLICATION_OUTBOX_SQL;
+                params = [...prefix, scope.correlationId];
               }
-              if (!audit.rows[0].recorded) denied = true;
+              const operation = await query(fixedSql, params);
+              if (!Array.isArray(operation.rows) || operation.rows.length !== 1 ||
+                  !operation.rows[0] || typeof operation.rows[0] !== 'object' ||
+                  Array.isArray(operation.rows[0])) {
+                throw new Error('Malformed signed operation attestation');
+              }
+              if (mode === 'status') {
+                const state = operation.rows[0].operation_state;
+                if (state === null) {
+                  denied = true;
+                } else if (state === 'issued' || state === 'committed' ||
+                           state === 'expired') {
+                  operationState = state;
+                } else {
+                  throw new Error('Malformed signed operation state');
+                }
+              } else if (typeof operation.rows[0].recorded !== 'boolean') {
+                throw new Error('Malformed signed operation acknowledgement');
+              } else if (!operation.rows[0].recorded) {
+                denied = true;
+              }
             }
             if (!denied) {
               // Synchronous audit is the final fail-closed prepublication
@@ -468,6 +521,7 @@ async function executeSignedScopedRead(
               }
               await query('COMMIT', []);
               transactionEnded = true;
+              if (operationState !== undefined) output = [{ operation_state: operationState }];
               if (controller.signal.aborted) {
                 throw new Error('Publication cancelled after handoff');
               }
@@ -626,11 +680,19 @@ export async function withSignedScopedPublicationBarrier(
   issuer: SignedTransactionIssuer,
   request: ScopedSqlPublication,
   nowSeconds: () => number = () => Math.floor(Date.now() / 1000)
-): Promise<void> {
-  await executeSignedScopedRead(
+): Promise<ScopedOperationState | undefined> {
+  const rows = await executeSignedScopedRead(
     pool, issuer, request, 'publication', nowSeconds,
     { baseline: request.baseline, handoff: request.handoff,
       recordStagingOutbox: request.recordStagingOutbox,
-      producerOperationId: request.producerOperationId }
+      producerOperationId: request.producerOperationId,
+      operationMode: request.operationMode }
   );
+  if (request.operationMode !== 'status') return undefined;
+  const state = rows[0]?.operation_state;
+  if (rows.length !== 1 || (state !== 'issued' &&
+      state !== 'committed' && state !== 'expired')) {
+    throw new Error('Malformed post-COMMIT operation status');
+  }
+  return state;
 }

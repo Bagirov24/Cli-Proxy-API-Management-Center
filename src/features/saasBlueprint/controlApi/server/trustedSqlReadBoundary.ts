@@ -45,6 +45,8 @@ export interface TrustedSqlReadDependencies {
   readonly recordStagingOutbox?: boolean;
   /** Strict opt-in to PG16 015; arbitrary operation UUID never authenticates. */
   readonly recordStagingProducerOperation?: boolean;
+  /** 016 issuer/recovery mode is never enabled on ordinary reads/HTTP. */
+  readonly recordStagingOperationMode?: 'issue' | 'reserved_commit' | 'status';
   /**
    * Stage 2G.4d.7a: STRICT opt-in for migration-010 fingerprint-enrolled
    * synthetic sessions. No implicit fallback to actor-only PG scope.
@@ -76,6 +78,7 @@ export type TrustedSqlReadResult =
     readonly tenantId: string;
     readonly collection: ControlCollection;
     readonly rows: readonly SqlRow[];
+    readonly operationState?: 'issued' | 'committed' | 'expired';
   }
   | {
     readonly ok: false;
@@ -128,6 +131,7 @@ export type TrustedSqlPublishedResult =
     readonly correlationId: string;
     readonly source: 'staging-local-publication';
     readonly published: true;
+    readonly operationState?: 'issued' | 'committed' | 'expired';
   };
 
 const SAFE_ACTOR = /^[A-Za-z0-9_-]{1,128}$/;
@@ -196,7 +200,8 @@ function createTrustedSqlReadBoundaryEngine(
       const requestedTenant = request.tenantId;
       const requestedLimit = request.limit;
       const requestedOperation = request.producerOperationId;
-      if (publisher && deps.recordStagingProducerOperation === true &&
+      if (publisher && (deps.recordStagingProducerOperation === true ||
+          deps.recordStagingOperationMode !== undefined) &&
           (typeof requestedOperation !== 'string' ||
            !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
              requestedOperation))) {
@@ -337,12 +342,14 @@ function createTrustedSqlReadBoundaryEngine(
             throw new AuthorizationRevisionChanged();
           }
         };
-        await withSignedScopedPublicationBarrier(deps.pool, deps.signer, {
+        const operationState = await withSignedScopedPublicationBarrier(deps.pool, deps.signer, {
           scope, collection: requestedCollection, baseline: initialRevision, signal,
           limit: requestedLimit,
           recordStagingOutbox: deps.recordStagingOutbox === true,
-          producerOperationId: deps.recordStagingProducerOperation === true
+          producerOperationId: (deps.recordStagingProducerOperation === true ||
+              deps.recordStagingOperationMode !== undefined)
             ? requestedOperation : undefined,
+          operationMode: deps.recordStagingOperationMode,
           handoff: {
             async prepare(leaseSignal) {
               await assertTrustedActor(leaseSignal);
@@ -351,6 +358,8 @@ function createTrustedSqlReadBoundaryEngine(
               return commit;
             },
             beforeCommit() {
+              // Pure signed status lookup logs once AFTER COMMIT via finish().
+              if (deps.recordStagingOperationMode === 'status') return;
               // Fail-closed audit is immediately BEFORE local handoff, with
               // no intervening await; an audit exception suppresses commit.
               // It records read authorization, NOT remote delivery.
@@ -362,6 +371,16 @@ function createTrustedSqlReadBoundaryEngine(
             },
           },
         });
+        if (deps.recordStagingOperationMode === 'status') {
+          // Read-only outcome is truthful only after signed PostgreSQL COMMIT.
+          // A failed audit still denies without exposing even the state enum.
+          if (!operationState) return finish(response(UNAVAILABLE), 'source-unavailable');
+          return finish({
+            ok: true, status: 200, source: 'staging-signed-rls',
+            correlationId, tenantId: scope.tenantId,
+            collection: requestedCollection, rows: [], operationState,
+          }, 'read-allowed');
+        }
         // Audit already succeeded before handoff. Return no SQL bytes to
         // the published-mode caller and DO NOT record a duplicate Allow.
         return {
@@ -412,9 +431,14 @@ export function createTrustedSqlPublishedBoundary(
   },
   publisher: TrustedLocalPublicationSink
 ) {
+  const mode = deps?.recordStagingOperationMode;
   if (!deps?.revisions || !publisher || typeof publisher.stage !== 'function' ||
       (deps.recordStagingProducerOperation === true &&
-       deps.recordStagingOutbox !== true)) {
+       deps.recordStagingOutbox !== true) ||
+      (deps.recordStagingProducerOperation === true && mode !== undefined) ||
+      (mode !== undefined && !['issue', 'reserved_commit', 'status'].includes(mode)) ||
+      (mode !== undefined && (mode === 'reserved_commit') !==
+       (deps.recordStagingOutbox === true))) {
     throw new Error('Invalid staging publication dependency');
   }
   const run = createTrustedSqlReadBoundaryEngine(deps, publisher);
@@ -426,6 +450,8 @@ export function createTrustedSqlPublishedBoundary(
     return Object.freeze({
       ok: true, status: 200, source: 'staging-local-publication',
       correlationId: result.correlationId, published: true,
+      ...(result.operationState === undefined ? {} :
+        { operationState: result.operationState }),
     });
   };
 }
