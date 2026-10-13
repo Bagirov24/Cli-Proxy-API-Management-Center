@@ -134,7 +134,7 @@ BEGIN
      AND p.tenant_id=expected_tenant AND p.actor_id=expected_actor
      AND p.membership_role=expected_role AND
          p.collection=expected_collection AND
-         p.requested_limit=requested_limit
+         p.requested_limit=issue_row.requested_limit
  ) INTO already_committed;
  IF NOT already_committed AND clock_timestamp()>=issue_row.issue_expires_at
  THEN RETURN FALSE; END IF;
@@ -186,7 +186,7 @@ BEGIN
       AND p.tenant_id=expected_tenant AND p.actor_id=expected_actor
       AND p.membership_role=expected_role AND
           p.collection=expected_collection AND
-          p.requested_limit=requested_limit)
+          p.requested_limit=issue_row.requested_limit)
  THEN RETURN 'committed'; END IF;
  IF clock_timestamp()>=issue_row.issue_expires_at THEN
    RETURN 'expired'; END IF;
