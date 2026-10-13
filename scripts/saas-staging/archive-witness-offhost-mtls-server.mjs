@@ -33,7 +33,8 @@ const exact=(x,keys)=>x!==null&&typeof x==='object'&&
   Object.keys(x).sort().join(',')===keys.slice().sort().join(',');
 const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const sha=v=>createHash('sha256').update(v).digest('hex');
-const fp=pem=>sha(createPublicKey(pem).export({type:'spki',format:'der'}));
+const fp=pem=>sha((pem?.type==='public'?pem:createPublicKey(pem))
+  .export({type:'spki',format:'der'}));
 const x509fp=cert=>sha(new X509Certificate(cert).publicKey
   .export({type:'spki',format:'der'}));
 const headOf=env=>({sequence:env.payload.sequence,digest:envelopeDigest(env)});

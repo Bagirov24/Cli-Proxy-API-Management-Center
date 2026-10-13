@@ -35,7 +35,8 @@ const TRANSPORT='saas-synthetic-offhost-mtls-append-v1';
 const JOURNAL='saas-synthetic-ipc-highwater-receipt-v1';
 const WIT='saas-synthetic-uuid-witness-v1';
 const sha=x=>createHash('sha256').update(x).digest('hex');
-const fp=x=>sha(createPublicKey(x).export({type:'spki',format:'der'}));
+const fp=x=>sha((x?.type==='public'?x:createPublicKey(x))
+  .export({type:'spki',format:'der'}));
 const nonce=()=>randomBytes(16).toString('hex');
 const env={
   GITHUB_ACTIONS:'true',
