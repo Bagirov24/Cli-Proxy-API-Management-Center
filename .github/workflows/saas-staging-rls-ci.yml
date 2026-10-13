@@ -655,5 +655,23 @@ jobs:
             SAAS_EPHEMERAL_HIGHWATER_CI=true \
             node scripts/saas-staging/verify-archive-witness-highwater.mjs
 
+      - name: Verify lost-commit-ack settlement against signed offline high-water
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7m: actual postgres session termination immediately
+          # after COMMIT vs before COMMIT; offline signed witness cannot
+          # access PG or authorize retried issue, event, network ACK or GC.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 105s env \
+            SAAS_EPHEMERAL_SETTLEMENT_CI=true \
+            node scripts/saas-staging/verify-archive-witness-settlement.mjs
+
 
       # No deploy, repository secrets, production SQL connections or credentials.
