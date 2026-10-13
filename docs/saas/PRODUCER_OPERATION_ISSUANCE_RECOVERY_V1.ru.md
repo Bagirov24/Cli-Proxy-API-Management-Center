@@ -197,3 +197,16 @@ does not create a public witness API, and never authorizes
 tombstone deletion or post-restore issuance against an
 independent non-reuse registry.
 [7l contract](SYNTHETIC_WITNESS_HIGHWATER_GAP_V1.ru.md).
+
+
+## Stage 2G.4d.7m — offline evidence only, no issue/status change
+
+The 7m separate offline proof gate binds one prepared UUID
+SHA-256 commitment to a signed snapshot, independently
+observes a real post-COMMIT UUID after a deliberately lost
+reply, then requires exactly one signed successor and
+all 7l high-water replicas. The earlier 120-second
+first-use and two-hour recovery windows remain unchanged.
+No new authenticated HTTP endpoint, client recovery token,
+issuer trust root, GC, removal or lifetime-cap refill.
+[7m contract](SYNTHETIC_UNKNOWN_COMMIT_SETTLEMENT_V1.ru.md).

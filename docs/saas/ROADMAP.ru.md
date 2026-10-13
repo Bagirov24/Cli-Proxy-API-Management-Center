@@ -1082,3 +1082,21 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
   live DB projection and real PITR/failover
 - [ ] **NOT ALLOWED:** tombstone GC/deletion/reuse, capacity reclaim,
   production deployment, public issue/status or external sender
+
+
+## Stage 2G.4d.7m — unknown PG COMMIT / offline witness reconciliation
+
+- [x] **IMPLEMENTED CI-only:** strict offline proof gate binding
+  expected hashed operation to a previously signed baseline and
+  exactly one later UUID, plus direct successor and 7l high-water
+- [x] **TEST ADDED:** actual PG backend kill before COMMIT gives
+  ROLLBACK/UNKNOWN and DENY; kill after COMMIT gives committed
+  UUID but still DENY until both signed heads and journal publish
+- [x] **ADVERSARIAL:** wrong candidate/hash/registry, unexpected
+  extra UUID, stale projection, forged baseline and partial
+  witness publication DENY; 009/013 untouched and GC=false
+- [ ] **SPEC:** actual independently durable off-host witness and
+  authenticated cross-host trust root, competing writer fencing,
+  atomic PG→external settlement, verified live issuer rules
+- [ ] **SPEC:** real partitions/WAL/PITR, full production recovery,
+  durable operation payload/ACK, safe archive/non-reuse and GC

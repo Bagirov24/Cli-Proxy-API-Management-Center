@@ -923,3 +923,21 @@ old consistent view. All copies and the signer still share one CI host,
 not a durable independently administered witness. No migration 019,
 GC, archive removal, real traffic or endpoint. Read
 [stage 7l contract](SYNTHETIC_WITNESS_HIGHWATER_GAP_V1.ru.md).
+
+
+## Stage 2G.4d.7m — signed UNKNOWN-COMMIT settlement (CI-only)
+
+New disposable PG16 tests terminate one connection **before COMMIT**
+and another **after real COMMIT** but before the caller sees a
+reliable reply. The offline verification requires the exact expected
+single UUID commitment AND a signed direct-successor checkpoint on
+both witness histories plus the third high-water journal. A missing
+UUID, unauthorized extra UUID, incorrect candidate, lagging witness
+or partial publication DENIES instead of granting a retry, issuing
+another UUID or releasing a network event.
+
+This is LOCAL observation only. Witness files and temporary Ed25519
+key reside on ONE runner, candidate is not signed actor approval,
+there is no atomic PG→external witness protocol or production
+identity/failover guarantee. No archive/GC/UUID reuse.
+[7m contract](SYNTHETIC_UNKNOWN_COMMIT_SETTLEMENT_V1.ru.md).

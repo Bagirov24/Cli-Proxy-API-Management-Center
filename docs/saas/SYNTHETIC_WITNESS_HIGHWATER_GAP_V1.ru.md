@@ -150,3 +150,20 @@ Core/Gateway/CPA/OAuth, `/data`, `management.html` and live traffic.
 with a deliberately recorded all-local-copies rollback counterexample.
 `gcPermitted=false` remains mandatory. No SQL migration 019,
 deployment, public SaaS endpoint, force push or merge.
+
+
+## Stage 2G.4d.7m — COMMIT lost-reply evidence after local high-water
+
+The follow-on CI-only settlement gate observes a real PG16
+INSERT+COMMIT with caller connection terminated before the
+post-COMMIT read reply, as well as an INSERT killed before
+COMMIT. It DENIES either caller UNKNOWN until it sees
+exactly one newly committed expected UUID and its sealed
+signed direct-successor checkpoint in both local witness
+replicas and the third high-water journal.
+
+The existing 7l proof that **all local witness copies can
+be rolled back together** still applies. No external
+independent signer, physical other host, atomic settlement
+or real issuer non-reuse rule is supplied. `gcPermitted=false`.
+[7m details](SYNTHETIC_UNKNOWN_COMMIT_SETTLEMENT_V1.ru.md).

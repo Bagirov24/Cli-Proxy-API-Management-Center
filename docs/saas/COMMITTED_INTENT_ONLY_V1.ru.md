@@ -214,3 +214,15 @@ real external delivery. The actual transaction and
 unsafe pre-COMMIT local handoff remain independent,
 unresolved release gates.
 [7l details](SYNTHETIC_WITNESS_HIGHWATER_GAP_V1.ru.md).
+
+
+## 2G.4d.7m — signed UUID settlement not a delivery receipt
+
+The new offline synthetic unknown-COMMIT checker confirms
+only a later committed issued-UUID row is present in a
+signed local witness successor. It never verifies a 009
+audit allow, 013 intent dispatch, 014 receiver processing,
+network ACK or an external exactly-once delivery.
+An unswept post-COMMIT identity DENIES until its witness
+is sealed. `gcPermitted=false` and no real payload.
+[7m proof](SYNTHETIC_UNKNOWN_COMMIT_SETTLEMENT_V1.ru.md).

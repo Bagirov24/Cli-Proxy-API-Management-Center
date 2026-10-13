@@ -230,3 +230,19 @@ issuer from reusing a deleted UUID. Exact old-ID replay
 remains governed by the original immutable SQL mapping;
 GC stays forbidden.
 [7l details](SYNTHETIC_WITNESS_HIGHWATER_GAP_V1.ru.md).
+
+
+## Stage 2G.4d.7m — unknown COMMIT is not retry authorization
+
+A synthetic PostgreSQL issue row genuinely COMMITs and
+the writer loses its connection. A separate PG reader sees
+the original UUID, while a detached witness still has a
+pre-COMMIT snapshot. Only the exact new UUID commitment
+and direct signed successor across both local 7l witness
+heads/high-water can satisfy a *read-only test proof*.
+No new 009/013 event, retry, duplicate producer ID,
+signed production caller or network dispatch is created.
+A killed pre-COMMIT writer leaves an unobserved UUID,
+which this proof also DENIES rather than declaring a
+safe-to-reissue key.
+[7m proof](SYNTHETIC_UNKNOWN_COMMIT_SETTLEMENT_V1.ru.md).

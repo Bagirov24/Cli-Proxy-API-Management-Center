@@ -941,3 +941,26 @@ digest, весь Ed25519 chain, signed UUID set и high-water tip.
 restore lifetime capacity, production commit, public API
 или новый SQL migration. `gcPermitted=false` неизменно.
 [Контракт 7l](SYNTHETIC_WITNESS_HIGHWATER_GAP_V1.ru.md).
+
+
+## D-070 — UNKNOWN PG COMMIT требует подписанного successor, не нового UUID
+
+Stage 2G.4d.7m моделирует два физических PG16 случая:
+падение соединения ДО COMMIT и разрыв ответа ПОСЛЕ
+реального COMMIT. Оба caller-side исхода — UNKNOWN.
+Второй исход подтверждается новой независимой SQL-сессией,
+но без successor Ed25519 witness и совпадения двух локальных
+heads + high-water он остаётся DENY. Локальный offline
+gate принимает только ровно один ожидаемый hash commitment
+относительно ранее подписанной базы. Чужой UUID,
+лишняя операция, пустой результат или fork — DENY.
+
+**Решение:** это proof-only и не полноценное право повторить,
+отправить или очистить операцию. Candidate здесь не
+аутентифицирован реальным tenant/actor/issuer signer. Нет
+атомарного PostgreSQL COMMIT→external witness, физически
+независимого сервера или rollback-resistant root, и все
+локальные копии остаются совместно откатываемыми.
+Даже успешное локальное settlement не означает ACK получателя.
+Граница `gcPermitted=false` и lifetime caps неизменны.
+[Контракт 7m](SYNTHETIC_UNKNOWN_COMMIT_SETTLEMENT_V1.ru.md).

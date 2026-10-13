@@ -383,3 +383,22 @@ actual PITR/failover/partition tests, true live projection
 binding, key rotation and custody, retention/privacy signoff
 and explicit security authorization for any archive/GC.
 No deletion, migration 019, real delivery or Railway.
+
+
+## 2G.4d.7m — detected COMMIT gap is not settled production delivery
+
+**Stage-only proof:** a real PostgreSQL connection drops before
+and after COMMIT; the offline witness refuses missing UUID,
+unsigned post-COMMIT identity and partially published
+signed heads/high-water until the exact signed successor is
+available. A matching local proof DOES NOT grant a sender
+retry, production issue/status result, GC or external ACK.
+
+**Production OPEN / SPEC:** independently operated durable
+off-host witness and anti-rollback high-water, authority for
+the prepared tenant/actor/role binding, fenced/atomic
+PG-commit-to-witness settlement, uncertain commit resolution
+during partitions and lag, immutable WORM/non-reuse across
+actual PITR and host failover, external payload/delivery/ACK,
+privacy retention, pre-COMMIT handoff remediation and final
+independent security signoff. SQL 015–018 unchanged.
