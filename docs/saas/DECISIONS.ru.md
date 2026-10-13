@@ -989,3 +989,31 @@ issuer tenant/actor/role не связан с receipt, PG COMMIT
 non-reuse archival или новый SQL migration. Всегда
 `gcPermitted=false`.
 [Контракт 7n](SYNTHETIC_IPC_WITNESS_LOST_ACK_V1.ru.md).
+
+
+## D-072 — read-only PG snapshot attestor закрывает подмену JSON лишь в CI
+
+2G.4d.7o создаёт временную restricted SQL роль с
+SELECT только UUID колонок двух immutable таблиц.
+В отдельном Node процессе эта роль под одним
+`REPEATABLE READ READ ONLY` snapshot формирует
+SHA-256 commitments и подписывает nonce, источник,
+PG transaction snapshot descriptor, predecessor head
+и проектированный набор отдельным Ed25519 ключом.
+Verifier без PG credentials проверяет подпись
+projector и прямой signed witness successor.
+
+Реальный COMMIT без следующего checkpoint, подмена
+клиентского UUID snapshot, повтор с другим challenge,
+чужой ключ, неверный trusted head и отзыв SELECT
+дают DENY. **Решение:** это не криптографическая
+сигнатура PostgreSQL, не внешний host/operator и
+не доказательство отсутствия параллельного COMMIT.
+Ключи и challenge под одним CI администратором.
+Существующий тестовый 7n IPC `append` не требует
+этот proof; реальный issuer не интегрирован.
+Поэтому независимый durable source trust и
+PG→witness atomic fencing остаются SPEC.
+`gcPermitted=false`; production, GC, archive,
+UUID reuse, migration 019 ЗАПРЕЩЕНЫ.
+[Контракт](SYNTHETIC_PG_PROJECTION_ATTESTATION_V1.ru.md).

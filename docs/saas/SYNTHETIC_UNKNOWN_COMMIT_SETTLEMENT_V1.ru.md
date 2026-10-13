@@ -169,3 +169,18 @@ idempotency request or stale expected head is denied.
 The 7m lost PostgreSQL COMMIT response remains separate:
 the new IPC daemon is not transactionally bound to SQL.
 [7n proof](SYNTHETIC_IPC_WITNESS_LOST_ACK_V1.ru.md).
+
+
+## Follow-on 2G.4d.7o — source-backed snapshot verification
+
+The 7o proof signs an actual repeatable-read PG16 projection
+under an ephemeral UUID-column-only database role, not a
+client's invented commitment array. A newly committed UUID
+cannot match an older signed witness checkpoint; a fresh
+direct successor and matching projector signature are needed.
+The verification remains offline and CI-only: no real
+producer prepared candidate is issuer-authenticated and
+the PG16 source is not independently trusted across
+PITR/host rollback. Nothing settles an external ACK or
+authorizes another issuance.
+[7o contract](SYNTHETIC_PG_PROJECTION_ATTESTATION_V1.ru.md).

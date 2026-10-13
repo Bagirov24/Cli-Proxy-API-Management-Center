@@ -196,3 +196,16 @@ Therefore lifetime 016/015 UUID rows remain immutable;
 no GC/archive delete, reset of 017/018 caps or reissue
 permission is added. `gcPermitted=false` remains fixed.
 [7l proof](SYNTHETIC_WITNESS_HIGHWATER_GAP_V1.ru.md).
+
+
+## 2G.4d.7o — signed PG snapshot does NOT release tombstones
+
+The restricted SQL projector reads 015/016 issued and
+producer operation UUIDs inside one PG16 read-only
+transaction and signs hashed commitments. Its distinct
+public key and challenge are pinned only within one CI
+runner. The proof detects a mismatched source projection
+but offers no external immutable history, authorized
+archive, safe GC, UUID deletion/reuse or cap restoration.
+`gcPermitted=false` remains unchanged.
+[7o proof](SYNTHETIC_PG_PROJECTION_ATTESTATION_V1.ru.md).

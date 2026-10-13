@@ -265,3 +265,16 @@ a lost IPC ACK, competing writers and a crash. The signed
 receipt is not a 013 event intent, a 014 recipient ACK or
 a remote delivery proof, and cannot authorize any GC.
 [7n contract](SYNTHETIC_IPC_WITNESS_LOST_ACK_V1.ru.md).
+
+
+## 2G.4d.7o — signed PG source is not audit reconciliation
+
+A new read-only projection role can select only UUID
+columns from 015/016, not audit/secret fields or mutation
+functions. Its challenge-bound Ed25519 snapshot proves
+consistency to a CI witness checkpoint while rejecting
+forged client arrays. It does not sign 009 Allow,
+create 012 reconciliation, emit 013/014 delivery intent
+or remotely ACK a recipient. The test verifies no new
+audit effects. GC stays denied.
+[7o proof](SYNTHETIC_PG_PROJECTION_ATTESTATION_V1.ru.md).

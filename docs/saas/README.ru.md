@@ -961,3 +961,23 @@ domain; PostgreSQL projection приходит от клиента и не
 подтверждается независимым источником. Никакого external
 durable witness, production, GC, архива, реальной delivery.
 [Контракт 7n](SYNTHETIC_IPC_WITNESS_LOST_ACK_V1.ru.md).
+
+
+## Stage 2G.4d.7o — read-only signed PG16 snapshot (CI only)
+
+**IMPLEMENTED as disposable proof:** отдельный PG16 projector с
+ограниченным правом SELECT только `operation_id` самостоятельно
+считывает оба immutable UUID реестра в REPEATABLE READ READ ONLY
+transaction, подписывает canonical SHA-256 commitments и свежий
+challenge nonce своим Ed25519 ключом. Offline verifier проверяет
+этот сертификат и точное соответствие отдельному signed witness
+checkpoint. Реальный COMMIT без нового свидетельства, подменённый
+клиентский snapshot, чужой ключ, старый nonce и отозванный SELECT
+получают DENY.
+
+**Важно:** ключи, projector и trusted challenge находятся на
+ОДНОМ CI runner. Это **не** независимый durable root, истинный
+PG COMMIT certificate или атомарное external settlement; 7n
+IPC append остаётся test-only и НЕ использует этот gate.
+Никаких GC/архива/UUID reuse/production.
+[Детальный контракт 7o](SYNTHETIC_PG_PROJECTION_ATTESTATION_V1.ru.md).

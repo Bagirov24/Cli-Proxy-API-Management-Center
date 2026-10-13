@@ -421,3 +421,22 @@ network partition/consensus recovery, persistent key rotation,
 actual PITR/WAL failover, real delivery/recipient ACK, privacy
 retention/GC approval and security review. No API, deployment,
 reuse, archive or quota relief.
+
+
+## 2G.4d.7o — signed least-privilege projection not production attestation
+
+**CI-only implemented:** restricted PG16 `operation_id` SELECT,
+repeatable-read projection, separate ephemeral Ed25519 source
+signature, nonce+predecessor+database binding, offline
+exact signed-witness projection matching, forged source
+and revoked privilege DENY. A PG transaction snapshot
+descriptor is only context, **not trusted WAL/LSN proof**.
+
+**Production still OPEN:** independent attestor host/key and
+trusted database/source integrity; durable nonce/root across
+runner rollback, attestation enforcement inside all witness
+append/issuer paths, authorized actor/tenant/role, fenced
+atomic PostgreSQL COMMIT→external signed head, genuine
+PITR/network partition/failover and remote delivery/ACK,
+privacy/legal/GC/capacity sign-off, real API readiness
+and independent security review. No SQL 019 or production.

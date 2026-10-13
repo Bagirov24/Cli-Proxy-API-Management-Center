@@ -1119,3 +1119,25 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
   PITR/failover/keeper recovery and safe production operation
 - [ ] **NOT AUTHORIZED:** tombstone deletion/reuse, GC, capacity
   reset, public producer endpoints and production deployment
+
+
+## Stage 2G.4d.7o — least-privilege source-backed witness proof
+
+- [x] **CI-only implemented:** dedicated PostgreSQL role with
+  column SELECT on issued/producer `operation_id` only,
+  one REPEATABLE READ READ ONLY transaction, a separate
+  ephemeral Ed25519 projector signature binding nonce,
+  fixed source database and signed witness predecessor
+- [x] **ADVERSARIAL:** real post-COMMIT UUID changes accepted
+  only with fresh attestation and direct signed successor;
+  forged client array, wrong key, replayed challenge,
+  stale pinned head and revoked SELECT all DENY
+- [x] **NON-DESTRUCTIVE:** zero new 009/013 audit/intent from
+  witness, previous SQL 015–018 unchanged, GC always false
+- [ ] **SPEC:** actual attestor and witness split across host,
+  independent durable replay-resistant nonce/head state,
+  authenticated database identity and issuer grant for
+  real paths; strict proof enforcement on every IPC append
+- [ ] **SPEC:** fenced PG COMMIT→external witness atomic
+  settlement, WAL/PITR/failover, partition resilience,
+  remote delivery ACK, safe archive/non-reuse/GC approval

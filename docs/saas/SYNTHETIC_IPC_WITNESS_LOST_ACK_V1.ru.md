@@ -178,3 +178,21 @@ startup DENY, PG-env credential guard, no audit/intent/GC, and an explicit
 counterexample that local trust state plus lost pin can be rolled back.
 This is **NOT** an independently durable external witness. The final
 documentation SHA must pass its own 4/4 CI before marking final VERIFIED.
+
+
+## Follow-on 2G.4d.7o — signed source only in a separate CI gate
+
+7o adds a restricted PostgreSQL read-only projector role and
+a separate ephemeral Ed25519 attestation for canonical UUID
+commitments read in one REPEATABLE READ transaction. A
+challenge-bound offline verifier compares that source-signed
+projection to a pinned signed witness checkpoint. Forged
+client arrays and revoked source grants DENY.
+
+**Crucial:** 7n's Unix IPC `append` still accepts caller
+projections in its own synthetic test route. The new source
+proof is NOT enforced by that daemon or any production
+issuer. There is no real independent off-host attestor,
+durable anti-rollback pin or atomic PostgreSQL COMMIT→head.
+No remote ACK or GC authority.
+[7o contract](SYNTHETIC_PG_PROJECTION_ATTESTATION_V1.ru.md).

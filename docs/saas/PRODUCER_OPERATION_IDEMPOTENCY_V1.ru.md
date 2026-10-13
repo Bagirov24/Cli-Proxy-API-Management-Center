@@ -259,3 +259,18 @@ tenant authorization, external ACK or database non-reuse
 registry, and it does not change transactional 015/016
 UUID idempotency or enable archive GC.
 [7n contract](SYNTHETIC_IPC_WITNESS_LOST_ACK_V1.ru.md).
+
+
+## 2G.4d.7o — proof of read-only source UUIDs is not producer authority
+
+A dedicated PG16 attestor role reads only immutable
+issued/producer UUID columns and signs a nonce-bound
+snapshot under its own ephemeral Ed25519 key. This
+helps reject a forged caller-provided UUID projection in
+one CI-only verifier. It does not participate in real
+015 producer UUID issuance, prove the identity/grant
+of a caller, prevent a future post-restore UUID reuse,
+or provide an atomic cross-system settlement.
+Existing immutable SQL 015–018 remains the authority,
+and GC always stays prohibited.
+[7o contract](SYNTHETIC_PG_PROJECTION_ATTESTATION_V1.ru.md).
