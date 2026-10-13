@@ -1173,3 +1173,28 @@ issuer, repair, dispatch, UUID retry/reuse/delete or GC.
 Separate infrastructure and security review remain required.
 `gcPermitted=false`.
 [7v contract](SYNTHETIC_OFFHOST_MTLS_TRANSPORT_V1.ru.md).
+
+
+## D-080 — remote Railway sandbox running is not an independent operator
+
+Stage 2G.4d.7w (code `ba8503a5`) successfully creates one
+**remote runtime** in the existing isolated
+`cpa-gateway-sandbox/sandbox`, with 512 MB persistent volume,
+synthetic PEM bundle held only in Railway variables, mTLS listener
+and `head 0`; no public domain or TCP port and no production DB.
+This is a real deploy, but sandbox and production share one
+**personal Railway workspace**. Therefore runtime separation
+**does not** provide independent administration, WORM/HSM or an
+externally retained monotonic high-water.
+
+A second no-domain synthetic private mTLS smoke Function was staged.
+Railway requires interactive 2FA for staged Function activation;
+API refused it, and **this guard must not be bypassed**.
+Consequently no cross-container mTLS request or signed remote
+append has been proved. Mark **pending account-holder Dashboard 2FA**,
+not VERIFIED. If/when separately enabled, test results must be
+read directly from deployment logs; passing those still would not
+solve PG atomic settlement, actor authorization or GC.
+Synthetic certificate expires October 15, 2026 (UTC).
+**No production, merge, SQL019, reissue/retry/repair/delivery/GC.**
+[Exact 7w report](REMOTE_STAGING_HIGHWATER_7W.ru.md).

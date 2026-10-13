@@ -1105,3 +1105,20 @@ recovery и DENY для fork/stale/nonce/key/torn record. Это
 settlement и не producer/retry/GC API. Старые 7l–7u
 adversarial suites сохранены.
 [7v контракт](SYNTHETIC_OFFHOST_MTLS_TRANSPORT_V1.ru.md).
+
+
+## Stage 2G.4d.7w — real Railway sandbox container (NOT independent root)
+
+**DEPLOYED:** отдельный `cpa-gateway-sandbox/sandbox` Railway
+контейнер `saas-highwater-staging-only`, source pinned to
+`ba8503a5`, persistent 512 MB volume, TLS/mTLS process `Online`
+with empty synthetic head revision 0; **no public domain or TCP
+proxy**. Test TLS identities expire 2026-10-15 13:33 UTC.
+
+**UNVERIFIED:** отдельно подготовленный private-network smoke Function
+`saas-highwater-private-smoke` **только STAGED**: Railway
+требует Dashboard 2FA для применения. Нет доказанного remote
+handshake/append, independent WORM/HSM/operator, fenced PG COMMIT,
+production retry/reissue/repair/delivery/GC. Оба проекта в одной
+Railway workspace. `gcPermitted=false`.
+[Отчёт 7w](REMOTE_STAGING_HIGHWATER_7W.ru.md).

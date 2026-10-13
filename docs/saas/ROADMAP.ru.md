@@ -1283,3 +1283,22 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
   issuer actor auth, recipient ACK, privacy/security/retention
 - [ ] **NO RELEASE:** no deploy, merge, 019, UUID reissue/reuse/
   delete, repair, archive, delivery or GC
+
+
+## Stage 2G.4d.7w — remote sandbox, not independent trust
+
+- [x] **REMOTE DEPLOYMENT VERIFIED:** private Railway sandbox-only
+  high-water service `885ee1a7` SUCCESS, `Online`, 1 replica,
+  512 MB private volume and TLS listener head 0; no public route
+- [x] **SOURCE VERIFIED:** pinned GitHub `ba8503a5` with 4/4 CI;
+  only synthetic secrets in service variables, no DB access
+- [x] **SMOKE PREPARED:** private test Function and certificate-backed
+  challenge/signing fixtures staged without public domain
+- [ ] **MANUAL 2FA REQUIRED:** Railway refuses API accept-deploy
+  of pending smoke Function; account owner must apply from Dashboard
+- [ ] **REAL TRUST DOMAIN:** independent operator / workspace/HSM,
+  WORM high-water, externally pinned minimum, certificate rotation,
+  authenticated partition/failover/restore drills
+- [ ] **PRODUCTION BLOCKED:** fenced PG COMMIT/WAL/PITR,
+  actor-scoped issuer, authenticated recipient ACK, retention/security
+  release. No merge, SQL 019, UUID reuse, retry, repair or GC

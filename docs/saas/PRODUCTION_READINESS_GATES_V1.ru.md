@@ -570,3 +570,22 @@ PG COMMIT WAL/PITR fencing, actor/issuer authorization,
 durable authenticated recipient ACK, privacy/legal/security
 approval. No live endpoints, Railway deploy, SQL 019,
 UUID delete/reuse/retry or GC.
+
+
+## Stage 2G.4d.7w — remote staging runtime success != independent custody
+
+**Deployment:** separate Railway sandbox runtime, committed volume
+and synthetic TLS identities are online, pinned to 7w SHA;
+no public route or production DB. HEAD starts at 0.
+**Network acceptance:** private two-container mTLS test is STAGED
+but Railway API refuses deploy without human Dashboard 2FA.
+It has NOT run, and no remote signed-append verification is claimed.
+
+**Production blockers:** common admin across personal workspace,
+no independent operator/KMS/HSM/WORM, no independently preserved
+monotonic minimum, no 2-host partition/PITR/failover drill,
+no independent anti-equivocation/nonce ledger or certificate
+revocation/rotation; no atomic/fenced PG COMMIT/WAL proof, issuer
+actor auth, durable receiver ACK, retention/privacy/security release.
+Synthetic certs expire 2026-10-15 UTC. No production deploy,
+UUID issue/reuse/delete/retry, auto-repair, migration 019 or GC.
