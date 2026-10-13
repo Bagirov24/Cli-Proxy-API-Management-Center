@@ -162,8 +162,11 @@ export function createM1ProjectCommandBoundary(deps: M1ProjectDependencies) {
       if (!verified) return fail(401);
       const actor = await deps.actors.lookup(verified.actorId, signal);
       if (signal.aborted) return fail(503);
+      // The actor store must return exactly the identity resolved from the
+      // server-held issuer/subject directory, never a different admin record.
+      if (!actor || actor.id !== verified.actorId) return fail(401);
       const role = roleOf(actor, tenantId);
-      if (!role || !actor) return fail(404);
+      if (!role) return fail(404);
       const initialMemberships = JSON.stringify(actor.memberships);
 
       // Recheck verification and server-held role immediately before write.
