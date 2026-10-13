@@ -572,20 +572,23 @@ approval. No live endpoints, Railway deploy, SQL 019,
 UUID delete/reuse/retry or GC.
 
 
-## Stage 2G.4d.7w — remote staging runtime success != independent custody
+## Stage 2G.4d.7w — remote HTTPS/mTLS synthetic transport tested, production BLOCKED
 
-**Deployment:** separate Railway sandbox runtime, committed volume
-and synthetic TLS identities are online, pinned to 7w SHA;
-no public route or production DB. HEAD starts at 0.
-**Network acceptance:** private two-container mTLS test is STAGED
-but Railway API refuses deploy without human Dashboard 2FA.
-It has NOT run, and no remote signed-append verification is claimed.
+**Actual railway runtime:** separate sandbox high-water authority
+`885ee1a7` and private smoke Function `d3e4ee3d` both deployed.
+A read-only operator signer inspection plus runtime smoke logs proved
+an authentic retained Ed25519 revision-1 head (Node + WebCrypto), pinned
+TLS1.3/mTLS, client-cert DENY, and one winner/one 409 for two
+competing signed revision-2 requests; final signed head matches winner.
+No public domain or TCP proxy, no production DB/issuer. The prior
+`2FA PENDING` state has been superseded by an owner-approved deploy.
 
-**Production blockers:** common admin across personal workspace,
-no independent operator/KMS/HSM/WORM, no independently preserved
-monotonic minimum, no 2-host partition/PITR/failover drill,
-no independent anti-equivocation/nonce ledger or certificate
-revocation/rotation; no atomic/fenced PG COMMIT/WAL proof, issuer
-actor auth, durable receiver ACK, retention/privacy/security release.
-Synthetic certs expire 2026-10-15 UTC. No production deploy,
-UUID issue/reuse/delete/retry, auto-repair, migration 019 or GC.
+**Still open:** lost-ACK identical nonce replay/restart/torn-record
+scenarios were tested on CI loopback but NOT remote Railway. No
+independent operator/admin, WORM/KMS/HSM, externally retained minimum,
+cross-host restore/partition/failover, CA rotation/revocation, fenced
+PG COMMIT/WAL/PITR, issuer actor authorization, durable recipient ACK,
+security/privacy/legal/retention approval. Synthetic TLS certificates
+expire 2026-10-15 UTC; rotate or decommission. **No release**,
+production changes, SQL 019, UUID retry/reissue/delete, repair or GC.
+`gcPermitted=false`.

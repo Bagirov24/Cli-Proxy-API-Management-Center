@@ -1198,3 +1198,36 @@ solve PG atomic settlement, actor authorization or GC.
 Synthetic certificate expires October 15, 2026 (UTC).
 **No production, merge, SQL019, reissue/retry/repair/delivery/GC.**
 [Exact 7w report](REMOTE_STAGING_HIGHWATER_7W.ru.md).
+
+## D-081 — signed off-host remote staging transport observed; not independently administered
+
+**Decision 13 October 2026:** D-080's `PENDING 2FA` was a snapshot
+at creation, **superseded** for the synthetic smoke by Railway Dashboard
+approval and successful deployment `d3e4ee3d-5d74-4fb1-a28d-c9fd04e33c2f`.
+
+Initially the remote signed revision-1 receipt failed authentication
+under manually pinned **incorrect** public keys. A read-only operator
+SSH audit of the live server verified `recordCount=1`,
+`revision=1`, `keyPairMatches=true`, `signatureValid=true`
+under the actual server keypair, public SPKI SHA256
+`5c55326f3c90215556c8bdac77ecc9c6d152cdf1e59253492a208f5e18a16411`.
+The client was changed **only to pin this observed public root**;
+the authority's signer, volume and signed journal stayed unchanged.
+This operator audit does not establish independent key custody.
+
+New runtime logs proved: separate Railway container-to-container
+TLS1.3/mTLS under client/server pin, no-client-cert DENY, read-only
+signed head revision 1 validated by Node Crypto and WebCrypto,
+two competing signed successors with one 200 and one fork 409,
+and signed final head matching the winner (revision 2).
+
+**Evidence limits:** historical v7v ephemeral runner tests cover
+same-nonce replay after lost ACK and crash/restart, but these have
+**NOT** been rerun on remote Railway. No external WORM/HSM, independent
+operator, independently retained minimum, failover/certificate
+revocation, fenced atomic PG COMMIT, tenant issuer identity or delivery
+ACK. Both services share one Railway personal workspace. This
+**does not** permit production deployment, retry/reissue/repair,
+UUID reuse/delete, archive/delivery or GC. `gcPermitted=false`.
+Test identities expire October 15, 2026 UTC.
+[Runbook and evidence](REMOTE_STAGING_HIGHWATER_7W.ru.md).

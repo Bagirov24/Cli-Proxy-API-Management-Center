@@ -1285,20 +1285,14 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
   delete, repair, archive, delivery or GC
 
 
-## Stage 2G.4d.7w — remote sandbox, not independent trust
+## Stage 2G.4d.7w — remote Railway staging verified, independent root remains OPEN
 
-- [x] **REMOTE DEPLOYMENT VERIFIED:** private Railway sandbox-only
-  high-water service `885ee1a7` SUCCESS, `Online`, 1 replica,
-  512 MB private volume and TLS listener head 0; no public route
-- [x] **SOURCE VERIFIED:** pinned GitHub `ba8503a5` with 4/4 CI;
-  only synthetic secrets in service variables, no DB access
-- [x] **SMOKE PREPARED:** private test Function and certificate-backed
-  challenge/signing fixtures staged without public domain
-- [ ] **MANUAL 2FA REQUIRED:** Railway refuses API accept-deploy
-  of pending smoke Function; account owner must apply from Dashboard
-- [ ] **REAL TRUST DOMAIN:** independent operator / workspace/HSM,
-  WORM high-water, externally pinned minimum, certificate rotation,
-  authenticated partition/failover/restore drills
-- [ ] **PRODUCTION BLOCKED:** fenced PG COMMIT/WAL/PITR,
-  actor-scoped issuer, authenticated recipient ACK, retention/security
-  release. No merge, SQL 019, UUID reuse, retry, repair or GC
+- [x] Remote synthetic-only `saas-highwater-staging-only` deployment `885ee1a7`, private 512 MB volume, no public route, no PG/issuer
+- [x] `ba8503a5` source, 4/4 GitHub Actions; same-admin isolated sandbox project
+- [x] Smoke `d3e4ee3d` `SUCCESS` following human Railway Dashboard 2FA
+- [x] Actual private TLS1.3/mTLS pinned SPKI head; client without certificate DENY
+- [x] Retained signed high-water revision 1 verified by Node Crypto + WebCrypto against operator-audited public SPKI
+- [x] Real 2 competing signed revision-2 publishers: exactly one 200, one 409; signed head equals winning reply
+- [ ] **UNTESTED REMOTELY:** identical nonce/lost-ACK recovery, high-water restart/restore, torn record, rollback/partition/failover, external monotonic minimum, cert rotation
+- [ ] **INDEPENDENT ROOT:** separate operator/workspace, HSM/KMS/WORM and revocation/governance with anti-rollback
+- [ ] **PRODUCTION BLOCKED:** fenced PG COMMIT/WAL/PITR, issuer/actor auth, authenticated recipient ACK, privacy/security/retention; no merge, SQL 019, UUID retry/reissue/repair/GC

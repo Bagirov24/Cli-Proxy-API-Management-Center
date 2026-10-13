@@ -1107,18 +1107,22 @@ adversarial suites сохранены.
 [7v контракт](SYNTHETIC_OFFHOST_MTLS_TRANSPORT_V1.ru.md).
 
 
-## Stage 2G.4d.7w — real Railway sandbox container (NOT independent root)
+## Stage 2G.4d.7w — Railway remote sandbox transport: real mTLS smoke VERIFIED, NOT independent custody
 
-**DEPLOYED:** отдельный `cpa-gateway-sandbox/sandbox` Railway
-контейнер `saas-highwater-staging-only`, source pinned to
-`ba8503a5`, persistent 512 MB volume, TLS/mTLS process `Online`
-with empty synthetic head revision 0; **no public domain or TCP
-proxy**. Test TLS identities expire 2026-10-15 13:33 UTC.
+**Railway remote staging VERIFIED:** `saas-highwater-staging-only`
+(512 MB private volume, no public domain/TCP proxy) and internal
+`saas-highwater-private-smoke` have separate running containers
+within the **same** personal Railway workspace. Smoke deployment
+`d3e4ee3d` `SUCCESS`: pinned TLS1.3/mTLS, unauthenticated client
+DENY, Ed25519 retained revision-1 signed head verified by Node Crypto
+**and** WebCrypto, and one winner/one 409 in the real competing signed
+revision-2 append. Final `GET /v1/head` matches the winner.
+The operator independently read-only checked the live signer pairing
+and original receipt, without altering the journal.
 
-**UNVERIFIED:** отдельно подготовленный private-network smoke Function
-`saas-highwater-private-smoke` **только STAGED**: Railway
-требует Dashboard 2FA для применения. Нет доказанного remote
-handshake/append, independent WORM/HSM/operator, fenced PG COMMIT,
-production retry/reissue/repair/delivery/GC. Оба проекта в одной
-Railway workspace. `gcPermitted=false`.
-[Отчёт 7w](REMOTE_STAGING_HIGHWATER_7W.ru.md).
+**NOT remote verified:** same-nonce replay after lost ACK, remote process
+restart/restore, rollback/WORM/HSM, independent operator, key rotation,
+PG COMMIT fencing, issuer/recipient/retry/repair/GC. Same Railway
+workspace is NOT independent trust. Test cert expires 2026-10-15 UTC;
+`gcPermitted=false`. [7w report](REMOTE_STAGING_HIGHWATER_7W.ru.md),
+[D-081](DECISIONS.ru.md).

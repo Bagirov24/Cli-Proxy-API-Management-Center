@@ -37,3 +37,50 @@ Open [Railway sandbox project](https://railway.com/project/dba33407-7200-40e0-a9
 - No production Railway deployment or modification of existing `cliproxyapi-personal` services, no SQL 019/migration edits, no Core/Gateway/CPA/OAuth, real payloads, `/data`, `management.html`, merge/force push, issuer retry/reissue/UUID reuse/delete, automatic repair, archive, tombstone/quota resets or GC. **`gcPermitted=false`**.
 
 **Release status:** `7w REMOTE SANDBOX SERVICE DEPLOYED`; `7w CROSS-CONTAINER mTLS TEST PENDING 2FA`; `INDEPENDENT OFF-HOST ROOT NOT VERIFIED`; `PRODUCTION BLOCKED`. No future completion is implied.
+
+## Фактическое завершение staging mTLS smoke — 13 октября 2026 (обновление D-081)
+
+**Эта секция заменяет прежнее утверждение выше о `PENDING MANUAL 2FA`.**
+Владелец Railway подтвердил изменения через Dashboard 2FA; отдельный
+`saas-highwater-private-smoke` реально запущен в том же `sandbox`.
+Сначала тестовый клиент падал на неверном публичном authority pin.
+Оператор выполнил read-only SSH-аудит реального контейнера
+`saas-highwater-staging-only`: синтетический журнал содержал одну запись,
+ревизию 1, `keyPairMatches=true` и `signatureValid=true` под фактическим
+серверным ключом. Его SHA256 публичного SPKI:
+`5c55326f3c90215556c8bdac77ecc9c6d152cdf1e59253492a208f5e18a16411`.
+Это **operator-observed**, а не доказательство независимой key custody.
+Сверенный публичный ключ закрепили в smoke Function, сохранив строгую
+Ed25519 проверку; server signer, PG, volume, original log, certificate
+и прочие секреты **не изменялись**.
+
+**Финальный подтверждённый deployment:** smoke
+`d3e4ee3d-5d74-4fb1-a28d-c9fd04e33c2f` — Railway `SUCCESS`, без
+ожидающих staged изменений. Его runtime logs содержат:
+- `PASS 7w: private-network HTTPS TLS1.3/mTLS head read with pinned server SPKI`;
+- `PASS 7w: missing client certificate denied by actual remote authority`;
+- `DIAG 7w: localEd25519=true, authoritySigBytes=64, cryptoVerifier=true, webVerifier=true, webStatus=completed`;
+- `PASS 7w: retained signed remote head authenticated, revision=1`;
+- `PASS 7w: two genuine remote competing signed publishers: exactly one successor, one fork denial`.
+
+В том же коде после one-winner теста выполняется `GET /v1/head`
+и проверяется точное равенство signed receipt с выигравшим ответом.
+Таким образом **подтверждены** реальные private-network mTLS,
+проверка retained head и monotonic `revision 1 → 2`, выбор
+одного из двух competing signed successors (второй `409`).
+
+**Пока НЕ проверены на отдельном Railway runtime:** идентичный повтор
+того же nonce после потери ACK, реальный перезапуск high-water
+с сохранением подписанной ревизии 2, torn record/rollback, network
+partition, certificate rotation/revocation, external immutable minimum,
+separately owned HSM/WORM. Эти случаи ранее моделировались в 7v CI,
+но не являются доказанными remote staging. Сам runtime `SUCCESS`
+не свидетельствует о durable/independent fsync или PG settlement.
+
+**Production остаётся BLOCKED:** оба Railway сервиса принадлежат
+одной personal workspace, нет независимого trust domain, HSM/WORM,
+atomic/fenced PG COMMIT + WAL/PITR, tenant/actor issuer authorization,
+recipient ACK, privacy/retention/security approvals. Синтетические
+сертификаты истекают **2026-10-15 13:33 UTC** и должны быть
+rotated/decommissioned. Ни SQL 019, ни production, ни merge,
+retry/reissue/repair/delivery/archive/GC. `gcPermitted=false`.
