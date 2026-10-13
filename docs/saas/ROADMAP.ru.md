@@ -1380,3 +1380,14 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
 
 Этап не подключён к production, публичному HTTP, Core/Gateway, Railway,
 CPA keys и SQL019. [M1b acceptance and limitations](M1B_SIGNED_PG_DRIVER_E2E.ru.md).
+
+
+## Stage M1c — transactional project audit outbox (STACKED DRAFT / CI-only)
+
+- [x] Изолированная ветка от точного M1b HEAD, SQL 021 с disposable PG16 guard, NOLOGIN audit owner, FORCE RLS, signed scope и trigger-owned audit в той же транзакции.
+- [x] В GitHub workflow включены legacy M1a SQL tests, signed native M1b Bun.SQL E2E и новые adversarial audit/rollback/conflict/replay SQL проверки.
+- [ ] Подтвердить 4/4 GitHub Actions SUCCESS на итоговом M1c SHA (а не только родительском PR).
+- [ ] Durable independent audit/WORM, serialized tenant revocation across post-COMMIT, idempotency and manual UNKNOWN COMMIT settlement — все отдельные задачи.
+
+Без public API, реальных ключей, production PostgreSQL и Railway. SQL 019 запрещена.
+[M1c acceptance checklist](M1C_PROJECT_ATOMIC_AUDIT_PG16.ru.md).
