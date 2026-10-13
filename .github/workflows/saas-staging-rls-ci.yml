@@ -21,6 +21,7 @@ on:
       - 'tests/sql/saas_synthetic_producer_operations.test.sql'
       - 'tests/sql/saas_synthetic_operation_issuance.test.sql'
       - 'tests/sql/saas_synthetic_operation_abuse_limits.test.sql'
+      - 'tests/sql/saas_synthetic_retention_legacy_hardstop.test.sql'
       - 'scripts/saas-staging/**'
       - 'src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts'
       - 'src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts'
@@ -262,6 +263,15 @@ jobs:
               exit 1
             }
           tail -n 4 /tmp/saas-operation-abuse-install.log
+          # 018: immutable insertion caps and metered legacy SQL facades.
+          # No deletion/archiving; this is a one-off disposable PG16 only.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/018_synthetic_retention_legacy_hardstop_pilot.sql \
+            > /tmp/saas-retention-legacy-install.log 2>&1 || {
+              tail -n 135 /tmp/saas-retention-legacy-install.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-retention-legacy-install.log
           # Synthetic RS256 keys are generated only in this Bun process.
           # Real wire SQL uses only saas_ci_runner, never the postgres login.
           timeout --signal=TERM --kill-after=5s 90s env \
@@ -535,6 +545,42 @@ jobs:
               exit 1
             }
           tail -n 5 /tmp/saas-operation-abuse-test.log
+          # Privileged replays 015-017 replaced SQL wrappers intentionally.
+          # 018 must be last; reinstall and assert its rate gates after replay.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/018_synthetic_retention_legacy_hardstop_pilot.sql \
+            > /tmp/saas-retention-legacy-reapply.log 2>&1 || {
+              tail -n 135 /tmp/saas-retention-legacy-reapply.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_synthetic_retention_legacy_hardstop.test.sql \
+            > /tmp/saas-retention-legacy-test.log 2>&1 || {
+              tail -n 155 /tmp/saas-retention-legacy-test.log
+              exit 1
+            }
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/018_synthetic_retention_legacy_hardstop_pilot.sql \
+            > /tmp/saas-retention-legacy-final-replay.log 2>&1 || {
+              tail -n 135 /tmp/saas-retention-legacy-final-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 -c "SELECT saas_rls_test.assert_true(
+            (SELECT COUNT(*)=48 FROM saas_rls_private.synthetic_operation_issues
+              WHERE tenant_id='demo-north')
+            AND (SELECT COUNT(*)=12 FROM saas_rls_private.synthetic_operation_issues
+              WHERE tenant_id='demo-orbit' AND actor_id='actor-orbit')
+            AND (SELECT used_count=32 FROM saas_rls_private.synthetic_operation_budgets
+              WHERE scope_kind='actor' AND tenant_id='demo-orbit'
+                AND actor_id='actor-orbit' AND action_kind='producer_event')
+            AND position('legacy_status' IN pg_get_functiondef(
+              'saas_rls.read_signed_synthetic_operation_status(text,text,text,text,uuid,integer)'::regprocedure))>0,
+            '018 final replay preserves UUID identity, producer limit and guarded facade')" \
+            > /tmp/saas-retention-legacy-final-check.log 2>&1 || {
+              tail -n 110 /tmp/saas-retention-legacy-final-check.log
+              exit 1
+            }
+          tail -n 6 /tmp/saas-retention-legacy-test.log
           timeout --signal=TERM --kill-after=5s 35s env \
             SAAS_EPHEMERAL_ABUSE_CI=true \
             bash scripts/saas-staging/verify-operation-abuse-concurrency.sh
