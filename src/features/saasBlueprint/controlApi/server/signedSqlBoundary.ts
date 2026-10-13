@@ -70,6 +70,12 @@ export const SCOPED_PUBLICATION_OUTBOX_SQL =
   'SELECT saas_rls.record_signed_local_publication(' +
   '$1::text, $2::text, $3::text, $4::text, $5::text) AS recorded';
 
+/** Staging PG16 migration 015: signed producer idempotency, no payload. */
+export const SCOPED_PRODUCER_OPERATION_SQL =
+  'SELECT saas_rls.record_signed_synthetic_operation(' +
+  '$1::text, $2::text, $3::text, $4::text, $5::text, ' +
+  '$6::uuid, $7::integer) AS recorded';
+
 /** A DB-signed epoch with the next cutoff for any active expiring grant. */
 export interface ScopedSqlRevisionState {
   readonly revision: string;
@@ -90,6 +96,8 @@ export interface ScopedSqlPublication extends ScopedSqlRead {
   readonly handoff: ScopedPublicationHandoff;
   /** Explicit opt-in only. Requires guarded disposable PG16 migration 009. */
   readonly recordStagingOutbox?: boolean;
+  /** Only migration 015 staging uses this UUIDv4, never as authorization. */
+  readonly producerOperationId?: string;
 }
 
 /** Safe generic denial: never attach tenant, actor, resource or PG details. */
@@ -226,7 +234,7 @@ async function executeSignedScopedRead(
   purpose: 'metadata' | 'revision' | 'publication',
   nowSeconds: () => number,
   publication?: Pick<ScopedSqlPublication,
-    'baseline' | 'handoff' | 'recordStagingOutbox'>
+    'baseline' | 'handoff' | 'recordStagingOutbox' | 'producerOperationId'>
 ): Promise<readonly SqlRow[]> {
   const { scope, collection, signal } = request;
   const limit = request.limit ?? 50;
@@ -244,6 +252,11 @@ async function executeSignedScopedRead(
         (!publication ||
          (publication.recordStagingOutbox !== undefined &&
           typeof publication.recordStagingOutbox !== 'boolean') ||
+         (publication.producerOperationId !== undefined &&
+          (publication.recordStagingOutbox !== true ||
+           typeof publication.producerOperationId !== 'string' ||
+           !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+             publication.producerOperationId))) ||
          !publication.handoff ||
          typeof publication.handoff.prepare !== 'function' ||
          !publication.baseline ||
@@ -424,10 +437,15 @@ async function executeSignedScopedRead(
               // Same signed PostgreSQL transaction and held FOR SHARE:
               // authorization audit is pending until COMMIT. A false
               // response -> 404/ROLLBACK; malformed/error -> quarantine.
-              const audit = await query(SCOPED_PUBLICATION_OUTBOX_SQL, [
-                scope.tenantId, scope.actorId, scope.role,
-                collection, scope.correlationId,
-              ]);
+              const withOperation = publication.producerOperationId !== undefined;
+              const audit = await query(
+                withOperation ? SCOPED_PRODUCER_OPERATION_SQL : SCOPED_PUBLICATION_OUTBOX_SQL,
+                withOperation
+                  ? [scope.tenantId, scope.actorId, scope.role, collection,
+                    scope.correlationId, publication.producerOperationId as string, limit]
+                  : [scope.tenantId, scope.actorId, scope.role,
+                    collection, scope.correlationId]
+              );
               if (!Array.isArray(audit.rows) || audit.rows.length !== 1 ||
                   typeof audit.rows[0]?.recorded !== 'boolean') {
                 throw new Error('Malformed signed outbox attestation');
@@ -612,6 +630,7 @@ export async function withSignedScopedPublicationBarrier(
   await executeSignedScopedRead(
     pool, issuer, request, 'publication', nowSeconds,
     { baseline: request.baseline, handoff: request.handoff,
-      recordStagingOutbox: request.recordStagingOutbox }
+      recordStagingOutbox: request.recordStagingOutbox,
+      producerOperationId: request.producerOperationId }
   );
 }

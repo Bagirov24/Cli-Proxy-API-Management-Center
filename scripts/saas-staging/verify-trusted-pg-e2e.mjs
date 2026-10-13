@@ -15,7 +15,8 @@ import { createTrustedSyntheticCommittedIntentBoundary } from
   '../../src/features/saasBlueprint/controlApi/server/syntheticCommittedIntent.ts';
 import { createPinnedHmacScopeIssuer, CONTROL_READ_SELECT_SQL, SCOPED_READ_GATE_SQL,
   SCOPED_AUTHORIZATION_REVISION_SQL, SCOPED_PUBLICATION_BARRIER_SQL,
-  SCOPED_PUBLICATION_OUTBOX_SQL, withSignedScopedPublicationBarrier } from
+  SCOPED_PUBLICATION_OUTBOX_SQL, SCOPED_PRODUCER_OPERATION_SQL,
+  withSignedScopedPublicationBarrier } from
   '../../src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts';
 import { createSecurityAuditRecorder, createSyntheticAuditBuffer } from
   '../../src/features/saasBlueprint/controlApi/server/securityAudit.ts';
@@ -72,7 +73,8 @@ function safeStatement(sql, params) {
      sql === SCOPED_READ_GATE_SQL && params.length === 4 ||
      sql === SCOPED_AUTHORIZATION_REVISION_SQL && params.length === 4 ||
      sql === SCOPED_PUBLICATION_BARRIER_SQL && params.length === 4 ||
-     sql === SCOPED_PUBLICATION_OUTBOX_SQL && params.length === 5);
+     sql === SCOPED_PUBLICATION_OUTBOX_SQL && params.length === 5 ||
+     sql === SCOPED_PRODUCER_OPERATION_SQL && params.length === 7);
 }
 
 /** A disposable adapter, NOT proof of per-connection Bun discard safety. */
@@ -437,6 +439,7 @@ function request(accessToken, tenantId, collection = 'projects', options = {}) {
     accessToken, tenantId, collection,
     signal: options.signal ?? AbortSignal.timeout(15000),
     limit: options.limit ?? 30,
+    producerOperationId: options.producerOperationId,
   };
 }
 
@@ -1036,10 +1039,12 @@ try {
     'Intent-only publication MUST require signed staging outbox'
   );
   const safeIntent = createTrustedSyntheticCommittedIntentBoundary(safeDependencies);
+  const originalProducerOperation=crypto.randomUUID();
+  const operationOpts={ limit:1, producerOperationId:originalProducerOperation };
   const beforeSafeOutbox=readPrivateOutboxCount();
   const beforeSafeEvent=readLastCommittedNorthAuditId();
   const safeIntentReceipt=await safeIntent(
-    request(north,'demo-north','projects',{limit:1})
+    request(north,'demo-north','projects',operationOpts)
   );
   assert.equal(safeIntentReceipt.ok,true);
   assert.equal(safeIntentReceipt.status,200);
@@ -1055,13 +1060,39 @@ try {
     'Intent must be durable only after signed SQL COMMIT');
   const safeEventId=readLastCommittedNorthAuditId();
   assert.ok(safeEventId>beforeSafeEvent);
+  const afterOriginalIntent=readPrivateOutboxCount();
+  const duplicateProducer=await safeIntent(
+    request(north,'demo-north','projects',operationOpts)
+  );
+  assert.equal(duplicateProducer.ok,true);
+  assert.equal(duplicateProducer.intentCommitted,true);
+  assert.equal(readPrivateOutboxCount(),afterOriginalIntent,
+    'Same producer UUID must not append a second signed audit/intent');
+  assert.equal(readLastCommittedNorthAuditId(),safeEventId);
+  const changedShape=await safeIntent(
+    request(north,'demo-north','projects',
+      {limit:2,producerOperationId:originalProducerOperation})
+  );
+  assert.equal(changedShape.status,404);
+  const badProducer=await safeIntent(
+    request(north,'demo-north','projects',
+      {limit:1,producerOperationId:'not-a-uuid'})
+  );
+  assert.equal(badProducer.status,404);
+  const crossActorProducer=await safeIntent(
+    request(orbit,'demo-orbit','projects',operationOpts)
+  );
+  assert.equal(crossActorProducer.status,404,
+    'Another tenant cannot reuse the same producer operation');
+  assert.equal(readPrivateOutboxCount(),afterOriginalIntent,
+    'Conflict/IDOR/invalid operation must not mint any event');
   assert.equal(syntheticDeliveryFixtureSql(safeEventId,id =>
     'SELECT COUNT(*) FROM saas_rls_private.synthetic_receiver_effects WHERE event_id='+id),
   '0','No downstream LOCAL effect is allowed in a pre-COMMIT callback');
   assert.equal(mockDeliveryLease(safeEventId,1),null,
     'A committed event does not skip independently durable audit observation');
   const foreignSafeIntent=await safeIntent(
-    request(north,'demo-orbit','projects',{limit:1})
+    request(north,'demo-orbit','projects',operationOpts)
   );
   assert.equal(foreignSafeIntent.ok,false);
   assert.equal(foreignSafeIntent.status,404);
@@ -1142,7 +1173,7 @@ try {
       return {
         release(discard){return reserved.release(discard);},
         async query(statement,params,querySignal){
-          if(statement===SCOPED_PUBLICATION_OUTBOX_SQL){
+          if(statement===SCOPED_PRODUCER_OPERATION_SQL){
             const result=await reserved.query(statement,params,querySignal);
             if(result.rows?.[0]?.recorded===true) hadStagedOutbox=true;
             return result;
@@ -1157,6 +1188,7 @@ try {
       };
     },
   };
+  const rolledOperationId=crypto.randomUUID();
   const beforeFailedOutbox=readPrivateOutboxCount();
   try {
     const interruptedIntent=createTrustedSyntheticCommittedIntentBoundary({
@@ -1165,7 +1197,8 @@ try {
       recordStagingOutbox:true,
     });
     const failed=await interruptedIntent(
-      request(north,'demo-north','projects',{limit:1})
+      request(north,'demo-north','projects',
+        {limit:1,producerOperationId:rolledOperationId})
     );
     assert.equal(hadStagedOutbox,true,
       'Failure must actually occur after signed audit + intent insertion');
@@ -1179,7 +1212,14 @@ try {
   } finally {
     if(!failingBase.stats().poisoned) await failingSql.close({timeout:0});
   }
-  console.info('PASS: injected pre-COMMIT ROLLBACK keeps synthetic receiver unreachable without emitting local effect');
+  const firstRetryAfterRollback=await safeIntent(
+    request(north,'demo-north','projects',
+      {limit:1,producerOperationId:rolledOperationId})
+  );
+  assert.equal(firstRetryAfterRollback.ok,true);
+  assert.equal(readPrivateOutboxCount(),beforeFailedOutbox+1,
+    'Retry after real ROLLBACK can create the FIRST valid event');
+  console.info('PASS: pre-COMMIT rollback then same-operation retry creates one intent');
 
   // Opposite uncertainty: PostgreSQL COMMIT SUCCEEDS but its reply is
   // artificially lost. No caller-facing success is permitted; an independent
@@ -1196,7 +1236,7 @@ try {
       return {
         release(discard){return reserved.release(discard);},
         async query(statement,params,querySignal){
-          if(statement===SCOPED_PUBLICATION_OUTBOX_SQL){
+          if(statement===SCOPED_PRODUCER_OPERATION_SQL){
             const result=await reserved.query(statement,params,querySignal);
             if(result.rows?.[0]?.recorded===true) uncertainStaged=true;
             return result;
@@ -1211,6 +1251,7 @@ try {
       };
     },
   };
+  const unknownOperationId=crypto.randomUUID();
   const beforeUnknown=readPrivateOutboxCount();
   const previousUnknownEvent=readLastCommittedNorthAuditId();
   try {
@@ -1220,7 +1261,8 @@ try {
       recordStagingOutbox:true,
     });
     const unknown=await uncertainBoundary(
-      request(north,'demo-north','projects',{limit:1})
+      request(north,'demo-north','projects',
+        {limit:1,producerOperationId:unknownOperationId})
     );
     assert.equal(uncertainStaged,true);
     assert.equal(committedReplyLost,true,
@@ -1236,6 +1278,14 @@ try {
   }
   const survivedId=readLastCommittedNorthAuditId();
   assert.ok(survivedId>previousUnknownEvent);
+  const recoveredProducer=await safeIntent(
+    request(north,'demo-north','projects',
+      {limit:1,producerOperationId:unknownOperationId})
+  );
+  assert.equal(recoveredProducer.ok,true,
+    'Same operation UUID resolves after lost COMMIT reply');
+  assert.equal(readPrivateOutboxCount(),beforeUnknown+1);
+  assert.equal(readLastCommittedNorthAuditId(),survivedId);
   assert.equal(syntheticDeliveryFixtureSql(survivedId,id =>
     'SELECT COUNT(*) FROM saas_rls_private.synthetic_receiver_effects WHERE event_id='+id),
   '0','Commit-response uncertainty must not accidentally send before worker claim');

@@ -1,5 +1,5 @@
 /**
- * Stage 2G.4d.7e — a deliberately payload-free synthetic post-COMMIT port.
+ * Stage 2G.4d.7e/f — payload-free synthetic post-COMMIT producer idempotency.
  *
  * Existing local publication invokes an injected synchronous handoff before
  * PostgreSQL COMMIT. This NEW, isolated port injects NO application handoff:
@@ -35,14 +35,16 @@ export type SyntheticCommittedIntentResult =
 
 /**
  * Fail closed unless the staging-only, guarded outbox path is explicitly
- * enabled. No caller supplies a stage, commit, callback, payload or worker.
+ * enabled. Caller supplies a stable UUIDv4 operation ID, NEVER an identity
+ * grant, stage/commit callback, payload or worker.
  * The closure returned by stage is intentionally inert before SQL COMMIT.
  */
 export function createTrustedSyntheticCommittedIntentBoundary(
   deps: TrustedSqlReadDependencies & {
     readonly revisions: ServerAuthorizationRevisionSource;
   }
-): (request: TrustedSqlReadRequest) => Promise<SyntheticCommittedIntentResult> {
+): (request: TrustedSqlReadRequest & { readonly producerOperationId: string }) =>
+  Promise<SyntheticCommittedIntentResult> {
   if (typeof process === 'undefined' ||
       process.env.GITHUB_ACTIONS !== 'true' ||
       process.env.SAAS_EPHEMERAL_E2E_CI !== 'true' ||
@@ -56,7 +58,10 @@ export function createTrustedSyntheticCommittedIntentBoundary(
     throw new Error('Refusing post-COMMIT intent outside disposable PG16');
   }
 
-  const stageIntent = createTrustedSqlPublishedBoundary(deps, {
+  const stageIntent = createTrustedSqlPublishedBoundary({
+    ...deps,
+    recordStagingProducerOperation: true,
+  }, {
     // Never inspect/store/emit the sanitized rows passed by the old local
     // publication engine; only its signed 009 audit/013 intent is durable.
     async stage(_privatePayload, signal) {

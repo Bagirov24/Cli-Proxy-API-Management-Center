@@ -43,6 +43,8 @@ export interface TrustedSqlReadDependencies {
   readonly revisions?: ServerAuthorizationRevisionSource;
   /** Only explicit staging PG16 opt-in: migration 009 signed audit outbox. */
   readonly recordStagingOutbox?: boolean;
+  /** Strict opt-in to PG16 015; arbitrary operation UUID never authenticates. */
+  readonly recordStagingProducerOperation?: boolean;
   /**
    * Stage 2G.4d.7a: STRICT opt-in for migration-010 fingerprint-enrolled
    * synthetic sessions. No implicit fallback to actor-only PG scope.
@@ -61,6 +63,8 @@ export interface TrustedSqlReadRequest {
   readonly collection: ControlCollection;
   readonly signal: AbortSignal;
   readonly limit?: number;
+  /** Stable UUIDv4 identifier only consumed by the separate 015 staging mode. */
+  readonly producerOperationId?: string;
 }
 
 export type TrustedSqlReadResult =
@@ -191,6 +195,13 @@ function createTrustedSqlReadBoundaryEngine(
       const requestedCollection = request.collection;
       const requestedTenant = request.tenantId;
       const requestedLimit = request.limit;
+      const requestedOperation = request.producerOperationId;
+      if (publisher && deps.recordStagingProducerOperation === true &&
+          (typeof requestedOperation !== 'string' ||
+           !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+             requestedOperation))) {
+        return finish(response(NOT_FOUND), 'invalid-request');
+      }
       const signal = request.signal;
       const accessToken = request.accessToken;
       collection = requestedCollection;
@@ -329,6 +340,8 @@ function createTrustedSqlReadBoundaryEngine(
         await withSignedScopedPublicationBarrier(deps.pool, deps.signer, {
           scope, collection: requestedCollection, baseline: initialRevision, signal,
           recordStagingOutbox: deps.recordStagingOutbox === true,
+          producerOperationId: deps.recordStagingProducerOperation === true
+            ? requestedOperation : undefined,
           handoff: {
             async prepare(leaseSignal) {
               await assertTrustedActor(leaseSignal);
@@ -398,7 +411,9 @@ export function createTrustedSqlPublishedBoundary(
   },
   publisher: TrustedLocalPublicationSink
 ) {
-  if (!deps?.revisions || !publisher || typeof publisher.stage !== 'function') {
+  if (!deps?.revisions || !publisher || typeof publisher.stage !== 'function' ||
+      (deps.recordStagingProducerOperation === true &&
+       deps.recordStagingOutbox !== true)) {
     throw new Error('Invalid staging publication dependency');
   }
   const run = createTrustedSqlReadBoundaryEngine(deps, publisher);
