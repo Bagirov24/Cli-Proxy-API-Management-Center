@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// 2G.4d.7q: physical disposable PG16 -> attested IPC witness ->
-// separate signed local high-water process. ONE CI RUNNER, NOT WORM.
+// Stages 2G.4d.7q/7r: physical disposable PostgreSQL16,
+// attested local witness + high-water; optional offline UNKNOWN observer.
+// ONE CI RUNNER, NOT WORM, atomic issuer settlement or GC.
 import assert from 'node:assert/strict';
 import {spawn,spawnSync} from 'node:child_process';
 import {once} from 'node:events';
@@ -16,12 +17,13 @@ import {
   generateKeyPairSync,randomBytes,createHash,createPublicKey,
   verify as edVerify,
 } from 'node:crypto';
-import {envelopeDigest,verifyEnvelope,verifyCheckpoint}
+import {envelopeDigest,verifyEnvelope,verifyCheckpoint,projectionFromSql}
   from './archive-witness-protocol.mjs';
 
 const ROLE='saas_witness_projection_7o',DB='saas_ephemeral_test';
 const JPROTOCOL='saas-synthetic-ipc-highwater-receipt-v1';
 const RPROTOCOL='saas-synthetic-ipc-witness-receipt-v1';
+const extended=process.env.SAAS_EPHEMERAL_UNKNOWN_OBSERVATION_CI==='true';
 const ci=process.env.GITHUB_ACTIONS==='true'&&
   process.env.SAAS_EPHEMERAL_HIGHWATER_TEST_CI==='true'&&
   process.env.PGHOST==='127.0.0.1'&&process.env.PGPORT==='5432'&&
@@ -34,6 +36,7 @@ chmodSync(work,0o700);
 const witnessFile=fileURLToPath(new URL('./archive-witness-ipc-server.mjs',import.meta.url));
 const journalFile=fileURLToPath(new URL('./archive-witness-highwater-ipc.mjs',import.meta.url));
 const projectorFile=fileURLToPath(new URL('./archive-witness-pg-projection-proof.mjs',import.meta.url));
+const observerFile=fileURLToPath(new URL('./archive-witness-unknown-observer.mjs',import.meta.url));
 const state=join(work,'witness-state'),socket=join(work,'witness.sock');
 const journalState=join(work,'highwater-state'),journalSocket=join(work,'highwater.sock');
 const attPriv=join(work,'projector-private.pem'),attPub=join(work,'projector-public.pem');
@@ -58,16 +61,29 @@ const journalEnv={
   SAAS_EPHEMERAL_HIGHWATER_CI:'true',
   PATH:process.env.PATH||'/usr/bin:/bin',HOME:work,LANG:'C',
 };
-const ids=[
+const ids=extended?[
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7f01',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7f02',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7f03',
+]:[
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7e01',
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7e02',
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7e03',
 ];
+const preCommitUuid='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7f00';
+const driftUuid=['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7f04',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7f05'];
+const observerEnv={
+  GITHUB_ACTIONS:'true',
+  SAAS_EPHEMERAL_WITNESS_OFFLINE:'true',
+  SAAS_EPHEMERAL_UNKNOWN_OBSERVATION_CI:'true',
+  PATH:process.env.PATH||'/usr/bin:/bin',HOME:work,LANG:'C',
+};
 const freshId=()=>randomBytes(16).toString('hex');
 const hash=v=>createHash('sha256').update(v).digest('hex');
 const fingerprint=pem=>hash(createPublicKey(pem)
   .export({type:'spki',format:'der'}));
-let hasRole=false,witness=null,journal=null,serial=0;
+let hasRole=false,witness=null,journal=null,serial=0,observationCount=0;
 const other=new Set();
 function command(cmd,args,env,deny=false) {
   const output=spawnSync(cmd,args,{env,cwd:work,encoding:'utf8',
@@ -85,6 +101,47 @@ function sql(query) {
 function restricted(query,deny=false) {
   return command('psql',['-X','-q','-A','-t','-v','ON_ERROR_STOP=1',
     '--dbname',DB,'-c',query],restrictedEnv,deny);
+}
+function issueSql(uuid) {
+  assert.match(uuid,/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  return "INSERT INTO saas_rls_private.synthetic_operation_issues "+
+    "(operation_id,tenant_id,actor_id,membership_role,collection,"+
+    "requested_limit,issued_at,issue_expires_at,recovery_expires_at) VALUES "+
+    "('"+uuid+"'::uuid,'ci-7r-proof','ci-7r-actor','tenant-viewer',"+
+    "'projects',1,clock_timestamp(),clock_timestamp()+interval '2 minutes',"+
+    "clock_timestamp()+interval '2 hours');";
+}
+async function unknownCommit(uuid,afterCommit) {
+  const app=afterCommit?'ci_7r_killed_post_commit':'ci_7r_killed_pre_commit';
+  const query=afterCommit?
+    'BEGIN;\n'+issueSql(uuid)+'\nCOMMIT;\nSELECT pg_sleep(12);\n':
+    'BEGIN;\n'+issueSql(uuid)+'\nSELECT pg_sleep(12);\nCOMMIT;\n';
+  const child=spawn('psql',['-X','-q','-v','ON_ERROR_STOP=1'],{
+    env:{...sqlEnv,PGAPPNAME:app},stdio:['pipe','pipe','pipe'],
+  });
+  child.stdout.resume();
+  let stderr='';
+  child.stderr.on('data',part=>{stderr+=String(part);});
+  const finished=once(child,'exit');
+  child.stdin.end(query);
+  let staged=false;
+  for(let i=0;i<130;i++) {
+    const current=sql("SELECT COUNT(*) FROM pg_stat_activity WHERE "+
+      "application_name='"+app+"' AND wait_event='PgSleep'");
+    if(current==='1'){staged=true;break;}
+    await new Promise(resolve=>setTimeout(resolve,35));
+  }
+  assert.ok(staged,'Physical pre/post COMMIT disconnect probe was not staged');
+  const killed=sql("SELECT COUNT(*) FROM (SELECT pg_terminate_backend(pid) "+
+    "AS terminated FROM pg_stat_activity WHERE application_name='"+
+    app+"') q WHERE terminated");
+  assert.equal(killed,'1','Expected independent PG backend termination');
+  const [exitCode]=await finished;
+  assert.notEqual(exitCode,0,'Unknown caller unexpectedly received COMMIT ACK');
+  assert.ok(stderr.length>0,'Expected PostgreSQL disconnection evidence');
+  assert.equal(sql("SELECT COUNT(*) FROM saas_rls_private.synthetic_operation_issues "+
+    "WHERE operation_id='"+uuid+"'::uuid"),afterCommit?'1':'0',
+    'Physical PostgreSQL COMMIT/ROLLBACK outcome not independently observed');
 }
 function commit(uuid) {
   const query="SELECT COUNT(*) FROM saas_rls_private.synthetic_operation_issues "+
@@ -190,6 +247,52 @@ function save(name,data) {
   writeFileSync(filename,JSON.stringify(data)+'\n',{flag:'wx',mode:0o600});
   return filename;
 }
+function candidate(uuid,baselineHead) {
+  return {
+    protocol:'saas-synthetic-uuid-unknown-commit-v1',kind:'issued',
+    commitment:projectionFromSql('issued|'+uuid).issued[0],
+    baselineHead,
+  };
+}
+function observation(ch,proof,env,previous,journalReceipt,pinnedHead,
+  prepared,{deny=false,projectorKey=attPub,
+    witnessKey=join(state,'public.pem'),
+    highwaterKey=join(journalState,'public.pem'),
+    processEnv=observerEnv}={}) {
+  const index=String(++observationCount);
+  const paths=[
+    save('7r-observer-challenge-'+index+'.json',ch),
+    save('7r-observer-proof-'+index+'.json',proof),
+    save('7r-observer-envelope-'+index+'.json',env),
+    previous?save('7r-observer-previous-'+index+'.json',previous):'-',
+    save('7r-observer-journal-'+index+'.json',journalReceipt),
+    save('7r-observer-pinned-'+index+'.json',pinnedHead),
+    save('7r-observer-candidate-'+index+'.json',prepared),
+  ];
+  const result=spawnSync(process.execPath,[observerFile,'verify',
+    projectorKey,witnessKey,highwaterKey,...paths,'--no-gc'],{
+    env:processEnv,cwd:work,encoding:'utf8',timeout:15000,maxBuffer:250000,
+  });
+  if(deny) {
+    assert.notEqual(result.status,0,
+      'Unsafe observation accepted as valid: '+index);
+    assert.match(result.stderr||'',/RECONCILIATION DENIED:/);
+    return null;
+  }
+  assert.equal(result.status,0,
+    'Signed offline observation unexpectedly denied: '+(result.stderr||''));
+  const data=JSON.parse(result.stdout.trim());
+  assert.equal(data.protocol,'saas-synthetic-unknown-outcome-observation-v1');
+  assert.equal(data.sourceSnapshotOnly,true);
+  assert.equal(data.locallySignedOnly,true);
+  for(const field of ['authorizationGranted','reissuePermitted',
+    'retryPermitted','deliveryPermitted','gcPermitted'])
+    assert.equal(data[field],false,'Offline observer must not grant '+field);
+  assert.ok(!JSON.stringify(data).includes('ci-7r-actor')&&
+    !JSON.stringify(data).includes('aaaaaaaa-aaaa'),
+    'Observer leaked raw actor or operation UUID');
+  return data;
+}
 function source(challenge) {
   const n=String(++serial);
   const chfile=save('7q-challenge-'+n+'.json',challenge);
@@ -294,14 +397,34 @@ try {
   const first=await exchange(socket,proposal(req1,null,proof1));
   const head1=verifyWitness(first,null,null,req1);
   await checkedJournal(head1);
+  if(extended) {
+    // A real PostgreSQL transaction is severed while INSERT is still
+    // uncommitted. The caller sees UNKNOWN; a fresh signed read-only PG
+    // snapshot that omits the candidate cannot authorize reissuance.
+    await unknownCommit(preCommitUuid,false);
+    const beforeCh=await challenge(freshId(),head1);
+    const beforeProof=source(beforeCh);
+    const absent=observation(beforeCh,beforeProof,first.envelope,null,
+      await checkedJournal(head1),head1,candidate(preCommitUuid,head1));
+    assert.equal(absent.status,'NOT_OBSERVED_IN_ONE_SNAPSHOT_UNKNOWN');
+    console.info('PASS 7r: physical pre-COMMIT connection death stays UNKNOWN; signed source absence never authorizes retry');
+  }
   const journalGenesis=join(work,'saved-journal-genesis');
   const witnessGenesis=join(work,'saved-witness-genesis');
   clone(journalState,journalGenesis);clone(state,witnessGenesis);
   console.info('PASS 7q: independently signed local high-water genesis before witness ACK, no raw UUID/DB credentials in either signer');
 
   // A committed UUID is NOT sufficient while separate journal is down.
-  commit(ids[0]);
-  const req2=freshId(),proof2=source(await challenge(req2,head1));
+  if(extended)await unknownCommit(ids[0],true);
+  else commit(ids[0]);
+  const req2=freshId(),ch2=await challenge(req2,head1),proof2=source(ch2);
+  const preparedFirst=extended?candidate(ids[0],head1):null;
+  if(extended) {
+    const waiting=observation(ch2,proof2,first.envelope,null,
+      await checkedJournal(head1),head1,preparedFirst);
+    assert.equal(waiting.status,'PG_SNAPSHOT_ONLY_UNWITNESSED');
+    console.info('PASS 7r: physical post-COMMIT connection death and signed PostgreSQL UUID remain UNWITNESSED without direct high-water successor');
+  }
   const p2=proposal(req2,head1,proof2);
   await stop(journal);journal=null;
   await denied(socket,{op:'head'});
@@ -327,6 +450,60 @@ try {
   assert.deepEqual(recovered.receipt,witnessRow2.receipt);
   assert.equal(recovered.head.sequence,2);
   await checkedJournal(head2);
+  if(extended) {
+    // A fresh independent PG read and separately signed journal/witness
+    // converge after lost ACK. This is OBSERVATION ONLY, not a producer
+    // release/GC authorization or permission to retry the UUID.
+    const currentCh=await challenge(freshId(),head2);
+    const currentProof=source(currentCh);
+    const high=await checkedJournal(head2);
+    const latest=observation(currentCh,currentProof,recovered.envelope,
+      first.envelope,high,head2,preparedFirst);
+    assert.equal(latest.status,'DUAL_LOCAL_SIGNED_IDENTITY_OBSERVED');
+    assert.equal(latest.reissuePermitted,false);
+    assert.equal(latest.deliveryPermitted,false);
+    const wrong=join(work,'7r-wrong-signer.pem');
+    writeFileSync(wrong,
+      generateKeyPairSync('ed25519').publicKey.export({type:'spki',format:'pem'}),
+      {flag:'wx',mode:0o600});
+    const fakeProof=structuredClone(currentProof);
+    fakeProof.statement.projection.issuedCount++;
+    observation(currentCh,fakeProof,recovered.envelope,first.envelope,
+      high,head2,preparedFirst,{deny:true});
+    const badNonce={...currentCh,nonce:randomBytes(16).toString('hex')};
+    observation(badNonce,currentProof,recovered.envelope,first.envelope,
+      high,head2,preparedFirst,{deny:true});
+    const otherHead={sequence:head2.sequence,digest:'f'.repeat(64)};
+    observation(currentCh,currentProof,recovered.envelope,first.envelope,
+      high,otherHead,preparedFirst,{deny:true});
+    observation(currentCh,currentProof,recovered.envelope,first.envelope,
+      high,head2,preparedFirst,{deny:true,projectorKey:wrong});
+    observation(currentCh,currentProof,recovered.envelope,first.envelope,
+      high,head2,preparedFirst,{deny:true,highwaterKey:wrong});
+    observation(currentCh,currentProof,recovered.envelope,first.envelope,
+      high,head2,preparedFirst,{deny:true,witnessKey:wrong});
+    const alteredHigh=structuredClone(high);
+    alteredHigh.data.head.digest='f'.repeat(64);
+    observation(currentCh,currentProof,recovered.envelope,first.envelope,
+      alteredHigh,head2,preparedFirst,{deny:true});
+    observation(currentCh,proof2,recovered.envelope,first.envelope,
+      high,head2,preparedFirst,{deny:true});
+    observation(currentCh,currentProof,recovered.envelope,null,
+      high,head2,preparedFirst,{deny:true});
+    observation(currentCh,currentProof,recovered.envelope,first.envelope,
+      high,head2,{...preparedFirst,commitment:'f'.repeat(64)},
+      {deny:true});
+    observation(currentCh,currentProof,recovered.envelope,first.envelope,
+      high,head2,{...preparedFirst,baselineHead:head2},
+      {deny:true});
+    observation(currentCh,currentProof,recovered.envelope,first.envelope,
+      high,head2,{...preparedFirst,unknown:'smuggled'},{deny:true});
+    observation(currentCh,currentProof,recovered.envelope,first.envelope,
+      high,head2,preparedFirst,{
+        deny:true,processEnv:{...observerEnv,PGHOST:'127.0.0.1'},
+      });
+    console.info('PASS 7r: 3-source signed observation after lost ACK, all reissue/delivery/GC flags false; forged nonce/key/proof/head/candidate/PG-credential verifier deny');
+  }
   console.info('PASS 7q: journal outage DENY; fsynced journal+witness lose ACK -> identical signed receipt after restart');
 
   // Independent rollback: either only witness OR only high-water is
@@ -352,6 +529,18 @@ try {
   const rolled=await exchange(join(work,'joint-rollback.sock'),{op:'head'});
   assert.deepEqual(rolled.head,head1);
   assert.notDeepEqual(rolled.head,head2);
+  if(extended) {
+    // A valid historical journal signature is not evidence for the
+    // newer pinned head. A coordinated rollback defeats a LOST pin,
+    // but never the externally preserved newer head in this test.
+    const staleChallenge=await challenge(freshId(),head1,
+      join(work,'joint-rollback.sock'));
+    const staleProof=source(staleChallenge);
+    const staleHigh=await checkedJournal(head1,staleJournalSocket,journalGenesis);
+    observation(staleChallenge,staleProof,rolled.envelope,null,staleHigh,
+      head2,preparedFirst,{deny:true});
+    console.info('PASS 7r: historical two-signer rollback with newer independently pinned head DENY (joint rollback with lost pin remains SPEC)');
+  }
   await stop(oldWitness);other.delete(oldWitness);
   await stop(oldJournal);other.delete(oldJournal);
   console.info('PASS 7q: partial witness/journal rollback DENY; joint runner rollback remains open production blocker');
@@ -371,6 +560,17 @@ try {
   await lost(crashedSocket,proposal(req3,head2,pg3));
   await stop(crashed,true);other.delete(crashed);staleSocket(crashedSocket);
   assert.ok(existsSync(join(crashedWitnessState,'checkpoints','00000003.json')));
+  if(extended) {
+    const orphan=JSON.parse(readFileSync(join(crashedWitnessState,
+      'checkpoints','00000003.json'),'utf8'));
+    const supposed={sequence:3,digest:envelopeDigest(orphan.envelope)};
+    const olderJournal=await checkedJournal(head2);
+    observation({protocol:'saas-synthetic-pg-projection-challenge-v1',
+      nonce:pg3.statement.challenge,expected:head2},pg3,orphan.envelope,
+      recovered.envelope,olderJournal,supposed,candidate(ids[1],head2),
+      {deny:true});
+    console.info('PASS 7r: fsynced witness but lagging signed high-water cannot be treated as verified settlement');
+  }
   await checkedJournal(head2);
   await failedStart(witnessFile,[crashedWitnessState,crashedSocket],fencedEnv());
   // An intact signer can still publish the same committed identity once.
@@ -403,6 +603,18 @@ try {
   await stop(dyingJournal,true);other.delete(dyingJournal);
   staleSocket(brokenJournalSocket);
   assert.ok(existsSync(join(brokenJournal,'checkpoints','00000004.json')));
+  if(extended) {
+    const orphanJournal=JSON.parse(readFileSync(join(brokenJournal,
+      'checkpoints','00000004.json'),'utf8'));
+    const supposed={sequence:4,
+      digest:envelopeDigest(orphanJournal.envelope)};
+    observation({protocol:'saas-synthetic-pg-projection-challenge-v1',
+      nonce:proof4.statement.challenge,expected:head3},
+      proof4,orphanJournal.envelope,r3.envelope,
+      orphanJournal.receipt,supposed,candidate(ids[2],head3),
+      {deny:true});
+    console.info('PASS 7r: crash before journal head publication yields an orphan, not an independently current settlement certificate');
+  }
   await failedStart(journalFile,['serve',brokenJournal,brokenJournalSocket,
     join(state,'public.pem')],journalEnv);
   await stop(dyingWitness);other.delete(dyingWitness);
@@ -412,6 +624,18 @@ try {
   const r4=await exchange(socket,proposal(req4b,head3,safe4));
   const head4=verifyWitness(r4,head3,r3.envelope,req4b);
   await checkedJournal(head4);
+  if(extended) {
+    // Two physically distinct COMMITs arriving since the same signed
+    // witness head may never be downgraded to a single-operation
+    // identity settlement in this bounded proof.
+    commit(driftUuid[0]);commit(driftUuid[1]);
+    const ch=await challenge(freshId(),head4);
+    const snapshot=source(ch);
+    observation(ch,snapshot,r4.envelope,r3.envelope,
+      await checkedJournal(head4),head4,candidate(driftUuid[0],head4),
+      {deny:true});
+    console.info('PASS 7r: multiple newly COMMITTED UUIDs since pinned head are not mistaken for one recoverable operation');
+  }
   console.info('PASS 7q: journal-fsynced / head-not-published crash DENY, original journal+witness can publish fresh direct successor');
 
   // A journal key replacement and retrospective journal downgrade are

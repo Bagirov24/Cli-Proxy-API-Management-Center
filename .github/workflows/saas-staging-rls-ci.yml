@@ -748,4 +748,24 @@ jobs:
             SAAS_EPHEMERAL_HIGHWATER_TEST_CI=true \
             node scripts/saas-staging/verify-archive-witness-ipc-highwater.mjs
 
+      - name: Verify UNKNOWN PostgreSQL COMMIT observations across signed witness and journal
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Stage 2G.4d.7r: rerun isolated 7q fixture with independent
+          # synthetic UUIDs, physical pre/post-COMMIT disconnects and
+          # strict PG-credential-free offline UNKNOWN observer.
+          # No new issuer, delivery/ACK authorization, GC, or archive.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 160s env \
+            SAAS_EPHEMERAL_HIGHWATER_TEST_CI=true \
+            SAAS_EPHEMERAL_UNKNOWN_OBSERVATION_CI=true \
+            node scripts/saas-staging/verify-archive-witness-ipc-highwater.mjs
+
       # No deploy, repository secrets, production SQL connections or credentials.
