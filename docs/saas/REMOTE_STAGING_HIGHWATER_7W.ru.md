@@ -88,8 +88,7 @@ retry/reissue/repair/delivery/archive/GC. `gcPermitted=false`.
 
 ## Как оператор настраивает 2FA и вручную подтверждает новый Railway patch
 
-Для будущих работ используйте [подробный пошаговый Railway 2FA runbook]
-(RAILWAY_2FA_OPERATOR_RUNBOOK.ru.md): `https://railway.com/account/security`
+Для будущих работ используйте [подробный пошаговый Railway 2FA runbook](RAILWAY_2FA_OPERATOR_RUNBOOK.ru.md): `https://railway.com/account/security`
 для personal TOTP/passkeys/recovery и `cpa-gateway-sandbox/sandbox`
 `Staged Changes → Details → Deploy` для точечного source-only
 изменения с interactive Dashboard 2FA. У аккаунта может уже быть

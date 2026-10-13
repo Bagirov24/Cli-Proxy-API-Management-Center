@@ -1244,8 +1244,7 @@ workspace Pro+ `Require 2FA` и Dashboard 2FA confirmation при
 Состояние account MFA по Railway OAuth не доступно: документируем
 шаги, но **не утверждаем**, что 2FA любого пользователя включена.
 
-**Implementation:** подробный [операторский runbook]
-(RAILWAY_2FA_OPERATOR_RUNBOOK.ru.md) с TOTP/passkey/recovery,
+**Implementation:** подробный [операторский runbook](RAILWAY_2FA_OPERATOR_RUNBOOK.ru.md) с TOTP/passkey/recovery,
 проверкой exact sandbox diff, human approval через Dashboard,
 логами независимого deployment, PowerShell SSH troubleshooting,
 границей Pro+ enforcement и запретом публикации OTP/seed/keys.
