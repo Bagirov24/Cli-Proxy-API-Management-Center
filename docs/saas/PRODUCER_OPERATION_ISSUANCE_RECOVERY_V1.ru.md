@@ -112,3 +112,29 @@ OAuth settings, /data, management.html, public routes, real traffic or merge.
 [Demo #38354372683](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372683),
 [Chromium #38354372700](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372700) — **4/4 SUCCESS**.
 The final documentation SHA requires its own independent CI; this does not authorize production delivery.
+
+
+## 2G.4d.7h — optional bounded staging calls
+
+The isolated issuer/status boundary now uses **separate** signed
+017 templates. The original 016 issue/read SQL is retained for
+local backward-compatible PostgreSQL fixtures. 017 adds 12/48
+lifetime actor/tenant tombstone caps, 4/16 issued IDs per 5 minutes,
+and 16/64 status checks per minute. A status miss and an exceeded
+budget have the same tenantless generic 404; both are accounted
+against the authenticated caller, never against the foreign UUID
+owner. Status counter updates COMMIT before the generic denial,
+preventing ROLLBACK from erasing attempted ID guesses.
+
+Expired issuance remains a permanent tombstone with no GC. Issued,
+committed and expired *truth values* remain unchanged from 016;
+the new limits add denial, not external delivery semantics.
+[Security boundaries](TOMBSTONE_RETENTION_ABUSE_GATES_V1.ru.md).
+
+
+**CODE VERIFIED on SHA `64d93a034face985d07aa990085d56678e441715`:**
+[Main CI #38356159803](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159803),
+[PostgreSQL16 #38356159812](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159812),
+[Demo #38356159923](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159923),
+[Chromium #38356159948](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159948)
+all SUCCESS. The final documentation commit requires independent Actions on its own SHA.

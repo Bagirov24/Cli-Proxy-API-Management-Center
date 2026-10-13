@@ -273,3 +273,29 @@ real credentials, HTTP transport, Core/Gateway or production migration.
 [Demo #38354372683](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372683),
 [Chromium #38354372700](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372700) — **4/4 SUCCESS**.
 The final documentation SHA requires its own independent CI; this does not authorize production delivery.
+
+
+## 2G.4d.7h — bounded synthetic issuer does not unblock production
+
+**Code-only staging proof:** issuer 4 per actor / 16 per tenant per
+5 minutes, status read 16 per actor / 64 per tenant per minute,
+hard lifetime cap 12 per actor / 48 per tenant. All tombstones remain
+append-only; actor/tenant counters mutate ONLY privately, in place.
+Unknown or throttled status returns generic 404 after a committed
+counter debit; no operation existence oracle is exposed by this port.
+
+**Still OPEN / SPEC:** safe tombstone archival/GC, global rate limits,
+unbounded tenant/actor identity proliferation, quotas for legacy
+direct-SQL paths and reserved-commit bursts, operational cap exhaustion,
+production public API, real remote delivery, durable payload, ACK,
+dispatch revocation, DLP/audit and independent security approval.
+A fail-closed pilot lifetime ceiling does NOT prove viable production
+retention or erase the original pre-COMMIT handoff risk.
+
+
+**CODE VERIFIED on SHA `64d93a034face985d07aa990085d56678e441715`:**
+[Main CI #38356159803](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159803),
+[PostgreSQL16 #38356159812](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159812),
+[Demo #38356159923](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159923),
+[Chromium #38356159948](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159948)
+all SUCCESS. The final documentation commit requires independent Actions on its own SHA.

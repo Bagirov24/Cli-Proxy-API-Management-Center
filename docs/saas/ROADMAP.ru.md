@@ -975,3 +975,28 @@ The documentation commit must be checked independently on its own SHA.
 [Demo #38354372683](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372683),
 [Chromium #38354372700](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372700) — **4/4 SUCCESS**.
 The final documentation SHA requires its own independent CI; this does not authorize production delivery.
+
+
+## 2G.4d.7h — permanent tombstones and scoped anti-abuse budgets
+
+- [x] **IMPLEMENTED in 017**: no tombstone GC/reuse; immutable 016
+  entries with actor/tenant lifetime caps 12/48 and signed issuer
+  short-window ceilings 4/16 IDs per 5 minutes
+- [x] **IMPLEMENTED**: signed metered status 16/64 lookups per minute;
+  status unknown/foreign probes persist counters on 404 after COMMIT;
+  bounded counter rows reset in place, not per-attempt logs
+- [x] **VERIFIED by ephemeral PG16/Bun**: tenant/actor separation,
+  denial parity, immutable tombstones, migration replay and
+  physical session race for last status slot
+- [ ] **SPEC**: safe archival/non-reuse proof, capacity relief once
+  lifetime caps reached, global edge rate limits, per-plan policy,
+  secure retention and user-facing exhaustion handling
+- [ ] **PROPOSED**: public producer API and actual remote delivery
+
+
+**CODE VERIFIED on SHA `64d93a034face985d07aa990085d56678e441715`:**
+[Main CI #38356159803](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159803),
+[PostgreSQL16 #38356159812](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159812),
+[Demo #38356159923](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159923),
+[Chromium #38356159948](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159948)
+all SUCCESS. The final documentation commit requires independent Actions on its own SHA.

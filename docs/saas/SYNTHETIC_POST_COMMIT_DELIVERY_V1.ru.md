@@ -243,3 +243,21 @@ UUID for reuse. Separate 012/013/014 worker fencing remains required.
 [Demo #38354372683](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372683),
 [Chromium #38354372700](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372700) — **4/4 SUCCESS**.
 The final documentation SHA requires its own independent CI; this does not authorize production delivery.
+
+
+## 017 quota is on producer issuer/status, NOT worker ACK
+
+The 017 issuer/status budgets only restrict issuance and read-only
+state polling for the opted-in staging port. They do not alter 012
+audit observation, 013 synthetic attempts, 014 receiver receipt,
+or real network delivery. Counter exhaustion changes neither
+previously committed producer UUID nor its immutable 009/013 intent.
+[017 abuse contract](TOMBSTONE_RETENTION_ABUSE_GATES_V1.ru.md).
+
+
+**CODE VERIFIED on SHA `64d93a034face985d07aa990085d56678e441715`:**
+[Main CI #38356159803](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159803),
+[PostgreSQL16 #38356159812](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159812),
+[Demo #38356159923](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159923),
+[Chromium #38356159948](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159948)
+all SUCCESS. The final documentation commit requires independent Actions on its own SHA.

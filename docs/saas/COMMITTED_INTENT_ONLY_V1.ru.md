@@ -143,3 +143,21 @@ only be settled during the authorized recovery window.
 [Demo #38354372683](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372683),
 [Chromium #38354372700](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372700) — **4/4 SUCCESS**.
 The final documentation SHA requires its own independent CI; this does not authorize production delivery.
+
+
+## 017 throttle cannot be a false delivery receipt
+
+An issuer quota denial cannot create a new 009/013 event. A status
+budget denial is a generic 404 after the private quota COMMIT; it
+does not change a committed event into a failed delivery. An expired
+UUID's immutable tombstone persists, and neither the 016 nor 017
+read-only status can attest real receiver delivery.
+[017 contract](TOMBSTONE_RETENTION_ABUSE_GATES_V1.ru.md).
+
+
+**CODE VERIFIED on SHA `64d93a034face985d07aa990085d56678e441715`:**
+[Main CI #38356159803](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159803),
+[PostgreSQL16 #38356159812](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159812),
+[Demo #38356159923](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159923),
+[Chromium #38356159948](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159948)
+all SUCCESS. The final documentation commit requires independent Actions on its own SHA.

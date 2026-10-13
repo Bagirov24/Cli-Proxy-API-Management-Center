@@ -181,3 +181,22 @@ semantics or protected SQL migration are altered.
 [Demo #38354372683](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372683),
 [Chromium #38354372700](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372700) — **4/4 SUCCESS**.
 The final documentation SHA requires its own independent CI; this does not authorize production delivery.
+
+
+## 017 quota requests do not create 009 Allow events
+
+An issued UUID still has no 009 Allow/013 intent until its own
+authorized reserved commit. A denied issuance or denied status probe
+only updates the separate private quota budget (where applicable);
+it cannot create a new audit event or change `reconciled_local`
+state. 012 remains proof of observing an existing committed audit
+record, not an external ACK.
+[Limits](TOMBSTONE_RETENTION_ABUSE_GATES_V1.ru.md).
+
+
+**CODE VERIFIED on SHA `64d93a034face985d07aa990085d56678e441715`:**
+[Main CI #38356159803](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159803),
+[PostgreSQL16 #38356159812](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159812),
+[Demo #38356159923](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159923),
+[Chromium #38356159948](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159948)
+all SUCCESS. The final documentation commit requires independent Actions on its own SHA.

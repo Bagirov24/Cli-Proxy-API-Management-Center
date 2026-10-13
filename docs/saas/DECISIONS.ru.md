@@ -804,3 +804,37 @@ event-only synthetic path сохранён для совместимости и 
 [Demo #38354372683](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372683),
 [Chromium #38354372700](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372700) — **4/4 SUCCESS**.
 The final documentation SHA requires its own independent CI; this does not authorize production delivery.
+
+
+## D-065 — 017: quotas не заменяют глобальную retention/GC policy
+
+Для staging-issued UUID через новый 017 fixed SQL issuer приняты
+неудаляемые 016 tombstones. Их очистка **не реализуется**, поскольку
+удалённый UUID без независимой долговечной истории может получить
+новую операцию. Чтобы не раздувать записи бесконечно, 017 блокирует
+новую выдачу после 12 на actor/tenant или 48 на tenant, независимо
+от истечения короткого окна. Это строгое fail-closed решение для
+одноразовой PostgreSQL16 CI, не production-capacity plan.
+
+Краткие квоты — 4/16 issued UUID за 5 минут (actor/tenant)
+и 16/64 status probes в минуту. Внутренние результаты absent и
+throttled возвращаются SQL, чтобы **сохранить** счётчик после
+коммита; вызывающий видит одинаковый generic 404. Foreign UUID
+потребляет квоту только аутентифицированного вызывающего, не
+владельца чужого ID.
+
+Старые direct SQL функции 016 и legacy 015 event-only pathway
+сохранены для ранее проверенных synthetic fixtures — глобальное
+enforcement всех путей НЕ заявлено. Reserved-commit burst не
+имеет отдельного status-бюджета; первый 009/013 по-прежнему
+дедуплицирован. Production safe GC, аудит, edge и per-plan
+лимиты, кросс-инстансовый клиентский API остаются SPEC.
+[Полный контракт](TOMBSTONE_RETENTION_ABUSE_GATES_V1.ru.md).
+
+
+**CODE VERIFIED on SHA `64d93a034face985d07aa990085d56678e441715`:**
+[Main CI #38356159803](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159803),
+[PostgreSQL16 #38356159812](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159812),
+[Demo #38356159923](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159923),
+[Chromium #38356159948](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159948)
+all SUCCESS. The final documentation commit requires independent Actions on its own SHA.

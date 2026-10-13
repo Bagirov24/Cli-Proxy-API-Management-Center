@@ -818,3 +818,30 @@ DB срок первого использования — не более 120 с
 [Demo #38354372683](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372683),
 [Chromium #38354372700](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38354372700) — **4/4 SUCCESS**.
 The final documentation SHA requires its own independent CI; this does not authorize production delivery.
+
+
+## Stage 2G.4d.7h — bounded issuance/status, no tombstone GC
+
+**IMPLEMENTED / CODE VERIFIED (staging only):** guarded 017
+installs signed, per-actor/tenant issuance limits (4/16 UUID in 5 minutes)
+and status limits (16/64 requests in 1 minute). The issuer also refuses
+new IDs when there are 12 immutable issue tombstones for an actor/tenant
+or 48 for a tenant overall. Expired UUIDs remain permanent and cannot
+be reissued; this is deliberately a fail-closed lifetime ceiling, **not**
+a production archival or safe deletion policy.
+
+Unknown/foreign status probes debit the requesting authenticated
+principal's private PostgreSQL budget *before* ID lookup. The fixed
+staging status boundary commits the debit and still returns identical
+generic 404 for absent/throttled status, without leaking the UUID's
+existence or event/receiver information. Older direct 016/015 SQL
+fixtures are unchanged, so **not every legacy path is globally
+throttled**. See [the 017 contract](TOMBSTONE_RETENTION_ABUSE_GATES_V1.ru.md).
+
+
+**CODE VERIFIED on SHA `64d93a034face985d07aa990085d56678e441715`:**
+[Main CI #38356159803](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159803),
+[PostgreSQL16 #38356159812](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159812),
+[Demo #38356159923](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159923),
+[Chromium #38356159948](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38356159948)
+all SUCCESS. The final documentation commit requires independent Actions on its own SHA.
