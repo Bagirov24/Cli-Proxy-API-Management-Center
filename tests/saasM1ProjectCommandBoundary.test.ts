@@ -74,11 +74,18 @@ function fixture() {
     },
     newCorrelationId: () => 'm1-correlation-server-only',
   });
-  const issue = (overrides: Partial<M1ProjectCommand> = {}) => ({
-    operation: 'create' as const, accessToken: 'signed-north',
-    tenantId: 'demo-north', projectId: 'project-m1',
-    name: 'Test project', signal: controller.signal, ...overrides,
-  }) as M1ProjectCommand;
+  const issue = (overrides: Partial<M1ProjectCommand> = {}): M1ProjectCommand => {
+    const operation = overrides.operation ?? 'create';
+    const args = {
+      operation, accessToken: 'signed-north',
+      tenantId: 'demo-north', projectId: 'project-m1',
+      // disable has no name by design. Preserve an explicitly supplied
+      // forbidden name in negative tests instead of silently discarding it.
+      ...(operation === 'disable' ? {} : { name: 'Test project' }),
+      signal: controller.signal, ...overrides,
+    };
+    return args as M1ProjectCommand;
+  };
   return {
     handler, actors, writes, controller, issue,
     revokeBeforeWrite() {
