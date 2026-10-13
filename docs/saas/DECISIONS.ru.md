@@ -1396,3 +1396,19 @@ SQL021 после установки SQL022 не может случайно в�
 persistent OIDC, не устранение unknown COMMIT или независимый WORM.
 Любая production integration по-прежнему требует отдельных решений и approvals.
 [M1d signed epoch fence](M1D_PROJECT_AUTHORIZATION_FENCE_PG16.ru.md).
+
+
+## M1e — no retry after physical disconnect or unknown COMMIT (CI-only)
+
+Decision: a lost client ACK is an UNKNOWN state, not permission to call
+project create again. M1b already demonstrates an actually committed write
+whose ACK is lost, retaining project + audit. M1e intentionally terminates
+the real reserved PG16 backend **before** COMMIT and separately aborts
+between mutation/audit and COMMIT. Both yield sanitized 503; both poison
+the whole disposable Bun pool and require the physical PID to disappear.
+A fresh signed read and privileged isolated PG acceptance must see
+zero project and audit for the precommit faults, but exactly one of each
+for the existing postcommit lost-ACK case. This is NOT a production proof
+of physical pool discard, network partitions, session-bound identity,
+exactly-once, or independent recovery store. Any auto retry remains forbidden.
+[M1e evidence](M1E_PG_PHYSICAL_DISCONNECT_CI.ru.md).
