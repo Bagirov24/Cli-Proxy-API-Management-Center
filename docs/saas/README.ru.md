@@ -1056,3 +1056,24 @@ high-water. `inspect` выявляет частичный split, локальн�
 нет. Совместный rollback с потерянным reviewer pin остаётся
 необнаружимым; никаких production, UUID reuse, archive или GC.
 [Контракт 7s](SYNTHETIC_MANUAL_REVIEW_PIN_V1.ru.md).
+
+
+## Stage 2G.4d.7t — independent off-host high-water SPEC, signed wire conformance
+
+**SPEC only for actual off-host authority:** описаны независимые
+оператор/key custody, authenticated compare-and-append, WORM/
+монотонный trusted minimum, anti-replay, crash/partition manual
+runbooks. **Никакой внешней службы, отдельного хоста, HSM или WORM
+в 7t не развёрнуто.**
+
+**IMPLEMENTED CI-only:** offline verifier подписанного
+`saas-synthetic-offhost-highwater-receipt-v1` с pinned
+authority/witness/journal keys, nonce, epoch, direct predecessor,
+journal digest и независимо supplied retained minimum.
+Физические PG16 и signed 7p–7s сценарии вновь проверяются на
+отдельных UUID fixtures; mock external signer остаётся на
+ОДНОМ CI runner. Результат всегда `manualReviewRequired=true`
+и `actualOffHostCustodyVerified=false`,
+`reissuePermitted=false`, `deliveryPermitted=false`,
+`repairPermitted=false`, `gcPermitted=false`.
+[7t контракт](SYNTHETIC_OFFHOST_HIGHWATER_CONTRACT_V1.ru.md).

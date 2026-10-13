@@ -1106,3 +1106,27 @@ reviewer pin показывает совместный rollback witness + journa
 trusted root и операторской проверки проблема остаётся SPEC.
 Никаких 019/production изменений, `gcPermitted=false`.
 [Контракт 7s](SYNTHETIC_MANUAL_REVIEW_PIN_V1.ru.md).
+
+
+## D-077 — genuine off-host high-water requires independent custody, not a third CI signer
+
+Stage 2G.4d.7t фиксирует `saas-synthetic-offhost-highwater-receipt-v1`
+с `logId`/`epoch`/nonce, pinned authority+witness+journal
+public fingerprints, monotonic revision, direct signed predecessor,
+journal receipt digest и клиентским **retained minimum**.
+Отдельный offline verifier проверяет этот signed wire contract
+и классифицирует локальное расхождение для **ручного** разбора.
+Все результаты принудительно запрещают reissue, retry, delivery,
+repair, GC и production authorization.
+
+**Решение:** signer в GitHub Actions — только mock; его
+Ed25519 key и minimum находятся в той же trust domain, что
+все локальные witness и reviewer. Даже корректная цепочка
+не подтверждает remote off-host, HSM, WORM, atomic COMMIT,
+реальную actor authorization, trusted time или отсутствие
+equivocation. Против rollback действительно защищает только
+**отдельно сохранённый** trusted receipt в независимой
+административной границе, проверенный оператором.
+Remote authority/spec остаётся `PRODUCTION BLOCKER`;
+автоматическое восстановление запрещено. `gcPermitted=false`.
+[Контракт 7t](SYNTHETIC_OFFHOST_HIGHWATER_CONTRACT_V1.ru.md).

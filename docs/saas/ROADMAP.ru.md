@@ -1223,3 +1223,24 @@ all SUCCESS. The final documentation commit requires independent Actions on its 
   security/retention/legal review
 - [ ] **NOT ALLOWED:** deployment, merge, SQL 019, UUID
   delete/reuse, automatic recovery, quota/retention/GC reset
+
+
+## Stage 2G.4d.7t — genuine off-host authority contract (SPEC)
+
+- [x] **STAGING CONTRACT:** pinned external authority/logId/epoch,
+  challenge-bound signed receipt, direct predecessor, immutable
+  synthetic revision, independently supplied minimum and
+  witness+journal digest verification
+- [x] **ADVERSARIAL CI:** physical PG16 COMMIT/crash/lost ACK plus
+  simulated external authority; rollback/replay/fork, key/epoch/
+  nonce substitution, local split and gap DENY/manual-only
+- [x] **CODE VERIFIED:** 4/4 GitHub Actions SUCCESS on `264df12e`; docs HEAD independently rechecked
+- [ ] **REMOTE DEPLOYMENT NOT DONE:** separate operator/service,
+  off-runner signing key/HSM, verified WORM monotonic log,
+  authenticated append transport, retained off-host minimum,
+  equivocation detection and independent drill
+- [ ] **PRODUCTION BLOCKED:** atomic/fenced PG COMMIT,
+  PITR/failover/partition recovery, issuer authorization,
+  durable payload/recipient ACK and security/retention approval
+- [ ] **NOT AUTHORIZED:** production issuer, merge/deploy,
+  SQL 019, UUID delete/reuse, auto-repair/retry, cap reset/GC

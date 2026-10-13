@@ -514,3 +514,25 @@ network partition, external recipient ACK or issuer-actor auth.
 Joint rollback of reviewer + both local roots remains undetected
 after loss of a newer independent pin. No SQL 019, deployment,
 UUID reuse/archive, tombstone deletion or GC.
+
+
+## Stage 2G.4d.7t — synthetic external receipt does NOT prove off-host custody
+
+**CI implementation:** offline signed contract verifier binds
+authority/key/epoch/logId/challenge, source-attested witness
+head, local journal receipt, previous external signed receipt,
+and user-retained minimum. Synthetic signer and all storage
+still run on SAME ephemeral GitHub Actions host; statuses
+are read-only manual-review hints, `offHost` and
+`independentDurability` always FALSE.
+
+**OPEN release gates:** independently administered remote
+signer/HSM and monotonic WORM storage, separately retained
+client high-water with unforgeable anti-replay/equivocation,
+mTLS authorization, failover/partition/restore verified
+audit trail, fenced atomic PostgreSQL COMMIT→remote witness,
+manual-only orphan reconciliation, producer actor/tenant
+authorization, delivery/recipient ACK, privacy/retention
+and full security sign-off. No production/deploy/SQL019,
+UUID reuse/delete, archive, receipt-delivery release,
+auto-recovery or GC.
