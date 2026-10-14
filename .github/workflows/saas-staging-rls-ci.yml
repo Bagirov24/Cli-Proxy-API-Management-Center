@@ -12,6 +12,7 @@ on:
       - 'tests/sql/saas_m1_pg_driver_role.test.sql'
       - 'tests/sql/saas_m1_project_atomic_audit.test.sql'
       - 'tests/sql/saas_m1_physical_disconnect.test.sql'
+      - 'tests/sql/saas_m1_unknown_commit_readonly_review.test.sql'
       - 'tests/sql/saas_m1_project_authorization_fence.test.sql'
       - 'tests/sql/saas_e2e_grants_fixture.test.sql'
       - 'tests/sql/saas_authorization_coverage.test.sql'
@@ -310,6 +311,23 @@ jobs:
               exit 1
             }
           echo "PASS M1d: SQL021 downgrade is rejected, SQL022 replay retains fence"
+          # M1f STACKED DRAFT: closed NOLOGIN operator-only READ ONLY
+          # snapshot of M1b/M1c/E local project+audit evidence. This
+          # NEVER settles an UNKNOWN COMMIT or authorizes automatic retry.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/023_m1_unknown_commit_readonly_review_pilot.sql \
+            > /tmp/saas-m1f-review-install.log 2>&1 || {
+              tail -n 100 /tmp/saas-m1f-review-install.log
+              exit 1
+            }
+          tail -n 3 /tmp/saas-m1f-review-install.log
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1_unknown_commit_readonly_review.test.sql \
+            > /tmp/saas-m1f-review-acceptance.log 2>&1 || {
+              tail -n 120 /tmp/saas-m1f-review-acceptance.log
+              exit 1
+            }
+          tail -n 6 /tmp/saas-m1f-review-acceptance.log
           PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
             -f staging/saas-rls/009_signed_publication_outbox_pilot.sql \
             > /tmp/saas-outbox-install.log 2>&1 || {
