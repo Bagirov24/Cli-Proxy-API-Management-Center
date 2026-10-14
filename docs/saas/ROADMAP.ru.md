@@ -1435,8 +1435,20 @@ production/Railway/SQL019 or delivery/GC. [M1f evidence and limits](M1F_UNKNOWN_
 - [x] Base exact M1f Draft PR №9 `ad0cc9f4` has 4/4 GitHub Actions SUCCESS; no parent merge or deploy.
 - [x] New guarded staging SQL024 (NOLOGIN attempt owner, FORCE RLS, immutable UUIDv4 PK → unique M1c/M1d audit event FK); keeps existing M1d signed trigger untouched.
 - [x] CI-only Bun wrapper mints per-write UUIDv4 before signed write; tests committed UUID reuse, legacy missing stamp, CAS/disable, lost ACK after real PG COMMIT and NOLOGIN read-only attempt review.
-- [ ] Verify new M1g exact final HEAD 4/4 GitHub Actions, in particular real disposable PostgreSQL16 SQL024 and adversarial acceptance.
+- [x] Verified M1g HEAD `2f96c60` 4/4 GitHub Actions SUCCESS including disposable PG16 SQL024 and adversarial acceptance.
 - [ ] Future: independent pre-COMMIT operation intent, cryptographic attempt provenance bound to actor/tenant/version, durable external WORM/human adjudication, network partition during COMMIT — BLOCKED.
 
 No real HTTP/API, Railway change, production PostgreSQL/SQL019, automatic retry/reissue/delivery/GC.
 [M1g contract](M1G_ATTEMPT_UUID_BOUND_PROJECT_AUDIT_PG16.ru.md).
+
+
+## M1h — local fsync + Ed25519 PRE-COMMIT intent (STACKED DRAFT / CI-only)
+
+- [x] Parent M1g PR №10 HEAD `2f96c60`, 4/4 SUCCESS, still Draft/unmerged.
+- [x] Separate GitHub disposable Node signer has no SQL credentials; fsync-only local intent and chained Ed25519 proof precede actual M1g signed PG write.
+- [x] New adversarial CI harness contrasts lost ACK post-COMMIT 1/1/1 vs physically terminated backend pre-COMMIT 0/0/0, denies signer crash, duplicate intent, tampering, truncated expected high-water and replacement key.
+- [ ] Verify final M1h exact HEAD has Main/PG16/Demo/Chromium all SUCCESS.
+- [ ] Off-host anchored durable high-water, independent WORM/DBA, real network partition DURING COMMIT, manual authenticated recovery, live OIDC and release/merge review are STILL BLOCKED.
+
+CI-local fsync is NOT off-host durability, third-party receipt or a safe retry key.
+[M1h review](M1H_PRECOMMIT_SIGNED_INTENT_CI.ru.md).
