@@ -1522,3 +1522,21 @@ therefore a cooperating PG session revoker must still serialize the exact
 session and reject an in-flight stale write before COMMIT. The CI fixture
 proves this race, not real backchannel logout or production key pinning.
 [M1l boundaries](M1L_SYNTHETIC_OIDC_JWKS_ROTATION_SESSION_PG16_CI.ru.md).
+
+
+## M1m — one-time PKCE callback cannot be a production OAuth grant
+
+M1l proved mock OIDC issuer discovery/JWKS and key retirement, but its
+bearer tokens were manufactured directly in the CI harness. M1m adds an
+explicitly disabled simulated browser authorization redirect and actual
+loopback code exchange. Server-side random state and PKCE verifier are
+never put into the callback URL; both state and issuer authorization code
+are consumed before network request/token issue (including errors).
+Only after pinned JWT validation and trusted issuer/subject actor mapping
+does a disposable privileged fixture provision a PG16 session UUID/epoch.
+The signed DB gate still rejects an already accepted token if its own
+session was revoked before COMMIT; a second session stays active.
+This is NOT production authorization code+PKCE, does NOT implement secure
+cookies/session lifecycle, refresh/OIDC ID token, real redirect handlers,
+external durable issuer pin or independent ACK settlement.
+[M1m notes](M1M_SYNTHETIC_PKCE_AUTH_CODE_SESSION_PG16_CI.ru.md).
