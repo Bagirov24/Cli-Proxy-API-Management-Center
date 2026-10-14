@@ -142,7 +142,11 @@ export function createM1nPinnedHttpsTransport({
         const decode=()=>{
           const buffer=Buffer.concat(chunks);
           const headerEnd=buffer.indexOf('\r\n\r\n');
-          if(headerEnd<0||headerEnd>4096)throw Error('M1n invalid HTTP header frame');
+          if(headerEnd<0){
+            if(buffer.length>4096)throw Error('M1n invalid HTTP header frame');
+            return null; // More header bytes may be arriving on TLS.
+          }
+          if(headerEnd>4096)throw Error('M1n invalid HTTP header frame');
           const raw=buffer.subarray(0,headerEnd).toString('latin1');
           const lines=raw.split('\r\n');
           if(!/^HTTP\/1\.[01] [1-5][0-9]{2}(?: |$)/.test(lines[0]))
@@ -168,7 +172,8 @@ export function createM1nPinnedHttpsTransport({
              Number(declared)>MAX_RESPONSE)
             throw Error('M1n response must have exact bounded length');
           const body=buffer.subarray(headerEnd+4);
-          if(body.length!==Number(declared))
+          if(body.length<Number(declared))return null;
+          if(body.length>Number(declared))
             throw Error('M1n response length mismatch');
           if(status===302){
             const loc=responseHeaders.get('location');
@@ -197,12 +202,22 @@ export function createM1nPinnedHttpsTransport({
             return;
           }
           chunks.push(data);
+          // Do not wait for the peer to close TLS after a POST. The
+          // response is complete at the exact, validated Content-Length;
+          // reject any additional bytes in the same response frame.
+          try {
+            const frame=decode();
+            if(frame)finish(null,frame);
+          }catch(e){finish(e);}
         });
         socket.on('error',err=>finish(err));
         socket.on('end',()=>{
           if(completed)return;
-          try{finish(null,decode());}
-          catch(e){finish(e);}
+          try{
+            const frame=decode();
+            if(!frame)throw Error('M1n truncated HTTPS response');
+            finish(null,frame);
+          }catch(e){finish(e);}
         });
         socket.on('close',()=>{
           if(!completed)finish(new Error('M1n premature TLS close'));
