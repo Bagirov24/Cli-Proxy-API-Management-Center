@@ -31,7 +31,7 @@ function realPgFixture(assert, statement) {
   return utf8(result.stdout);
 }
 
-async function startWitness(assert, file) {
+export async function startWitness(assert, file) {
   const child = spawn('node', [WORKER, 'writer', file], {
     env: witnessEnv, stdio: ['pipe', 'pipe', 'ignore'],
   });
@@ -100,7 +100,7 @@ async function startWitness(assert, file) {
     },
   });
 }
-function runOffline(assert, path, key, count) {
+export function runOffline(assert, path, key, count) {
   const command = ['node', WORKER, 'verify', path, key, String(count)];
   const result = Bun.spawnSync(command, {
     env: witnessEnv, stdout: 'pipe', stderr: 'pipe',
