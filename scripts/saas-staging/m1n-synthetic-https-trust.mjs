@@ -6,8 +6,8 @@
  * Never disable Node TLS verification, follow redirects, reuse a connection,
  * accept browser cookies, allow DNS/SSRF or send sensitive data to HTTP.
  */
-import https from 'node:https';
-import { checkServerIdentity } from 'node:tls';
+import http from 'node:http';
+import { connect, checkServerIdentity } from 'node:tls';
 import { createHash, X509Certificate } from 'node:crypto';
 import { m1nCiEnabled } from './m1n-ephemeral-tls-fixture.mjs';
 import { createPinnedAccessTokenVerifier } from
@@ -103,18 +103,48 @@ export function createM1nPinnedHttpsTransport({
         ...(payload!==null?{'Content-Type':'application/x-www-form-urlencoded',
           'Content-Length':Buffer.byteLength(payload)}:{}),
       };
+      // Critical ordering: never let an HTTP client buffer/send OAuth
+      // verifier/code before CA+SAN+SPKI have ALL been checked. Node's
+      // HTTPS automatic HTTP writes can precede an extra SPKI rejection.
+      // Complete a standalone TLS handshake and pin the live peer first,
+      // then bind a one-use HTTP/1.1 Agent to that SAME encrypted socket.
+      const socket=await new Promise((resolve,reject)=>{
+        const peerSocket=connect({
+          host:'127.0.0.1',port:Number(target.port),
+          servername:'localhost',ca:caPem,rejectUnauthorized:true,
+          minVersion:'TLSv1.2',
+        });
+        const deny=()=>{
+          peerSocket.destroy();
+          reject(new Error('M1n verified HTTPS request denied'));
+        };
+        peerSocket.setTimeout(4000,deny);
+        peerSocket.once('error',deny);
+        peerSocket.once('secureConnect',()=>{
+          peerSocket.off('error',deny);
+          if(!peerSocket.authorized ||
+             checkPeer('localhost',peerSocket.getPeerCertificate(true))){
+            deny();return;
+          }
+          peerSocket.setTimeout(0);
+          resolve(peerSocket);
+        });
+      });
       return await new Promise((resolve,reject)=>{
+        const agent=new http.Agent({keepAlive:false});
+        agent.createConnection=()=>socket;
         let completed=false;
         const finish=(error,response)=>{
           if(completed)return;
           completed=true;
+          agent.destroy();
           if(error)reject(new Error('M1n verified HTTPS request denied'));
           else resolve(response);
         };
-        const req=https.request(target,{
-          method,headers,agent:false,servername:'localhost',
-          ca:caPem,rejectUnauthorized:true,
-          minVersion:'TLSv1.2',checkServerIdentity:checkPeer,
+        const req=http.request({
+          method,headers:{...headers,Host:target.host},
+          hostname:'127.0.0.1',port:Number(target.port),
+          path:target.pathname+target.search,agent,
         },res=>{
           const status=res.statusCode;
           const loc=res.headers.location;
