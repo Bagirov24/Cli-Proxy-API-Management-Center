@@ -44,6 +44,7 @@
 | [M1K_SESSION_EPOCH_REVOCATION_PG16_CI.ru.md](M1K_SESSION_EPOCH_REVOCATION_PG16_CI.ru.md) | M1k Draft: server-managed synthetic token-fingerprint session UUID and revision, signed PG16 FOR SHARE per-session revoke vs COMMIT races; CI-only |
 | [M1L_SYNTHETIC_OIDC_JWKS_ROTATION_SESSION_PG16_CI.ru.md](M1L_SYNTHETIC_OIDC_JWKS_ROTATION_SESSION_PG16_CI.ru.md) | M1l Draft: fixed loopback synthetic OIDC discovery/JWKS A→A+B→B, revoked old signing key + PG16 session race, CI-only no real SSO |
 | [M1M_SYNTHETIC_PKCE_AUTH_CODE_SESSION_PG16_CI.ru.md](M1M_SYNTHETIC_PKCE_AUTH_CODE_SESSION_PG16_CI.ru.md) | M1m Draft: synthetic one-shot authorization code + PKCE S256/state → pinned JWKS + private PG16 session UUID and real signed project/audit COMMIT, no live OAuth |
+| [M1N_PINNED_HTTPS_IDP_PKCE_SESSION_PG16_CI.ru.md](M1N_PINNED_HTTPS_IDP_PKCE_SESSION_PG16_CI.ru.md) | M1n Draft: ephemeral HTTPS CA+SAN+leaf SPKI pin for mock PKCE IdP, real TLS negative tests → signed PG16 session/audit, CI-only |
 
 ## Что добавлено в код
 
@@ -1342,3 +1343,14 @@ revocation after a successful login, and M1h journal before COMMIT; none
 of this mounts public OAuth login, external HTTPS IdP, PKCE cookies,
 refresh tokens, independent WORM or production recovery.
 [M1m limits](M1M_SYNTHETIC_PKCE_AUTH_CODE_SESSION_PG16_CI.ru.md).
+
+
+## M1n — pinned HTTPS trust for mock PKCE issuer (CI-only)
+
+An eighth, isolated disposable PostgreSQL16 CI path now uses real HTTPS
+to a mock OAuth issuer with a temporary runner-generated CA, verified
+DNS:localhost SAN and pinned leaf SPKI. Rogue CA, unapproved leaf rotation,
+wrong SAN and redirect downgrade fail before code/token exchange; one-time
+PKCE continues into M1k signed PG16 session and mandatory project audit.
+This is NOT real staging IdP TLS trust, cookie login, refresh-token flow,
+external WORM or a release authorization. [M1n acceptance](M1N_PINNED_HTTPS_IDP_PKCE_SESSION_PG16_CI.ru.md).
