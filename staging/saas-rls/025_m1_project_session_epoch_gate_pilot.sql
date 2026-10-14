@@ -178,6 +178,7 @@ BEGIN
        OR saas_rls.scope_membership_matches(
        target_tenant,target_actor,'tenant-admin'))
   THEN
+    RAISE LOG 'M1k CI gate denied at signed scope/role/isolation check';
     RETURN FALSE;
   END IF;
 
@@ -188,6 +189,8 @@ BEGIN
     FOR SHARE;
   IF stored_status IS DISTINCT FROM 'active'
      OR stored_revision IS DISTINCT FROM expected_revision THEN
+    RAISE LOG 'M1k CI gate denied at session row active/epoch check; found %, active %, epoch match %',
+      stored_status IS NOT NULL,stored_status='active',stored_revision=expected_revision;
     RETURN FALSE;
   END IF;
 
@@ -198,11 +201,118 @@ BEGIN
       target_tenant,target_actor,'tenant-admin','projects')
   );
   IF locked_tenant_revision IS NULL
-    OR locked_tenant_revision !~ '^[1-9][0-9]{0,18}$'
+    OR locked_tenant_revision !~ '^[1-9][0-9]{0,18}
+
+  INSERT INTO saas_m1_private.project_session_proofs
+    (pg_txid,session_id,actor_id,tenant_id,session_revision)
+  VALUES(txid_current()::TEXT,target_session,target_actor,
+         target_tenant,expected_revision);
+  RETURN TRUE;
+END
+$fn$;
+ALTER FUNCTION
+  saas_m1_api.lock_project_session_epoch(UUID,BIGINT,TEXT,TEXT)
+  OWNER TO saas_m1_session_owner;
+REVOKE ALL ON FUNCTION
+  saas_m1_api.lock_project_session_epoch(UUID,BIGINT,TEXT,TEXT)
+  FROM PUBLIC,saas_ci_runner,saas_rls_reader,
+       saas_m1_project_owner,saas_m1_audit_owner,saas_m1_review_operator;
+GRANT EXECUTE ON FUNCTION
+  saas_m1_api.lock_project_session_epoch(UUID,BIGINT,TEXT,TEXT)
+  TO saas_m1_project_executor;
+
+-- A second trigger runs AFTER M1d mandatory audit and M1g UUID binding,
+-- and refuses ALL unguarded legacy project writes in this CI-only schema.
+-- The proof table is written solely by SECURITY DEFINER gate, never from
+-- a client-set custom GUC. Errors rollback project, audit and UUID together.
+CREATE OR REPLACE FUNCTION saas_m1_private.require_project_session_proof()
+RETURNS TRIGGER LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path=pg_catalog,pg_temp
+AS $fn$
+DECLARE
+  signed_actor TEXT := current_setting('saas.scope_actor',true);
+  proof_count BIGINT;
+BEGIN
+  IF signed_actor IS NULL OR signed_actor !~ '^[A-Za-z0-9_-]{1,128}$' THEN
+    RAISE EXCEPTION 'M1k signed actor missing';
+  END IF;
+  SELECT COUNT(*) INTO proof_count
+    FROM saas_m1_private.project_session_proofs p
+    JOIN saas_m1_private.project_session_epochs s
+      ON s.session_id=p.session_id
+    WHERE p.pg_txid=txid_current()::TEXT
+      AND p.actor_id=signed_actor
+      AND p.tenant_id=NEW.tenant_id
+      AND s.actor_id=p.actor_id AND s.tenant_id=p.tenant_id
+      AND s.status='active' AND s.revision=p.session_revision;
+  IF proof_count<>1 THEN
+    RAISE EXCEPTION 'M1k signed project transaction lacks current locked session';
+  END IF;
+  RETURN NULL;
+END
+$fn$;
+ALTER FUNCTION saas_m1_private.require_project_session_proof()
+  OWNER TO saas_m1_session_owner;
+REVOKE ALL ON FUNCTION saas_m1_private.require_project_session_proof()
+  FROM PUBLIC,saas_ci_runner,saas_rls_reader,saas_m1_project_executor;
+DROP TRIGGER IF EXISTS m1_project_session_epoch_gate
+  ON saas_m1_private.projects;
+CREATE TRIGGER m1_project_session_epoch_gate
+  AFTER INSERT OR UPDATE ON saas_m1_private.projects
+  FOR EACH ROW EXECUTE FUNCTION saas_m1_private.require_project_session_proof();
+
+DO $assert$
+BEGIN
+  IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='saas_m1_session_owner'
+      AND NOT rolcanlogin AND NOT rolsuper AND NOT rolbypassrls AND NOT rolinherit)
+     OR NOT ('m1_project_attempt_binding' < 'm1_project_session_epoch_gate')
+     OR NOT EXISTS(SELECT 1 FROM pg_trigger
+       WHERE tgrelid='saas_m1_private.projects'::regclass
+         AND tgname='m1_project_atomic_audit'
+         AND tgfoid='saas_m1_private.append_project_write_audit_fenced()'::regprocedure
+         AND NOT tgisinternal)
+     OR NOT EXISTS(SELECT 1 FROM pg_trigger
+       WHERE tgrelid='saas_m1_private.projects'::regclass
+         AND tgname='m1_project_attempt_binding'
+         AND tgfoid='saas_m1_private.bind_project_attempt_to_audit()'::regprocedure
+         AND NOT tgisinternal)
+     OR NOT EXISTS(SELECT 1 FROM pg_trigger
+       WHERE tgrelid='saas_m1_private.projects'::regclass
+         AND tgname='m1_project_session_epoch_gate'
+         AND tgfoid='saas_m1_private.require_project_session_proof()'::regprocedure
+         AND NOT tgisinternal)
+     OR NOT (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class
+              WHERE oid='saas_m1_private.project_session_epochs'::regclass)
+     OR NOT (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class
+              WHERE oid='saas_m1_private.project_session_proofs'::regclass)
+     OR has_table_privilege('saas_ci_runner',
+         'saas_m1_private.project_session_epochs','SELECT')
+     OR has_table_privilege('saas_m1_project_executor',
+         'saas_m1_private.project_session_epochs','UPDATE')
+     OR has_table_privilege('saas_m1_project_executor',
+         'saas_m1_private.project_session_proofs','INSERT')
+     OR has_table_privilege('saas_m1_review_operator',
+         'saas_m1_private.project_session_proofs','SELECT')
+     OR has_table_privilege('saas_m1_session_owner',
+         'saas_rls_private.scope_signers','SELECT')
+     OR has_schema_privilege('saas_m1_project_executor',
+         'saas_m1_private','USAGE')
+     OR has_function_privilege('saas_ci_runner',
+         'saas_m1_api.lock_project_session_epoch(uuid,bigint,text,text)','EXECUTE')
+     OR NOT has_function_privilege('saas_m1_project_executor',
+         'saas_m1_api.lock_project_session_epoch(uuid,bigint,text,text)','EXECUTE')
+  THEN
+    RAISE EXCEPTION 'M1k least privilege/session lock/M1d audit fencing unsafe';
+  END IF;
+END
+$assert$;
+COMMIT;
+\echo 'PASS M1k: signed PG16 session UUID+epoch FOR SHARE, tenant revision fence and mandatory trigger (CI-only)'
     OR NOT (saas_rls.scope_membership_matches(
       target_tenant,target_actor,'tenant-owner')
       OR saas_rls.scope_membership_matches(
       target_tenant,target_actor,'tenant-admin')) THEN
+    RAISE LOG 'M1k CI gate denied at tenant auth revision/recheck; epoch present %',locked_tenant_revision IS NOT NULL;
     RETURN FALSE;
   END IF;
 
