@@ -143,7 +143,7 @@ export async function verifyTenantProjectWriteHttpPg({
     "INSERT INTO saas_m1_private.project_session_epochs "+
     "(session_id,actor_id,tenant_id,revision,status) VALUES ('"+
     sessionId+"'::uuid,'actor-north','demo-north',1,'active') "+
-    "RETURNING status"),/^active\\nINSERT 0 1$/);
+    "RETURNING status"),'active'+String.fromCharCode(10)+'INSERT 0 1');
   const viewer=await signToken('orbit');
   const auditor=await signToken('auditor');
   async function send(method,route,bearer,body,headers={}){
