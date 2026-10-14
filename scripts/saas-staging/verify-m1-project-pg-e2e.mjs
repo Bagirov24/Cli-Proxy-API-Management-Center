@@ -346,6 +346,13 @@ const m1gOnly = process.env.SAAS_EPHEMERAL_M1G_ATTEMPT_CI === 'true';
 const m1jOnly = process.env.SAAS_EPHEMERAL_M1J_HTTP_PG_CI === 'true';
 const m1kOnly = process.env.SAAS_EPHEMERAL_M1K_SESSION_CI === 'true';
 const m1lOnly = process.env.SAAS_EPHEMERAL_M1L_OIDC_CI === 'true';
+const m1mOnly = process.env.SAAS_EPHEMERAL_M1M_PKCE_CI === 'true';
+if(m1mOnly&&(!m1gOnly||m1jOnly||m1kOnly||m1lOnly||
+   process.env.SAAS_EPHEMERAL_M1_HTTP_CI!=='true'||
+   process.env.SAAS_EPHEMERAL_M1H_INTENT_CI==='true'||
+   process.env.SAAS_EPHEMERAL_M1E_DISCONNECT_CI==='true')){
+  throw new Error('M1m PKCE-to-PG proof must run after all M1a-M1l isolated fixtures');
+}
 if (m1lOnly && (!m1gOnly || m1jOnly || m1kOnly ||
     process.env.SAAS_EPHEMERAL_M1H_INTENT_CI === 'true' ||
     process.env.SAAS_EPHEMERAL_M1E_DISCONNECT_CI === 'true' ||
@@ -594,7 +601,7 @@ if (m1gOnly) {
   const northToken = await signToken('north');
   // M1h is run in a separate CI process AFTER the entire M1g SQL
   // acceptance; it must not mutate the M1g four-row regression fixture.
-  if (process.env.SAAS_EPHEMERAL_M1H_INTENT_CI !== 'true' && !m1jOnly && !m1kOnly && !m1lOnly) {
+  if (process.env.SAAS_EPHEMERAL_M1H_INTENT_CI !== 'true' && !m1jOnly && !m1kOnly && !m1lOnly && !m1mOnly) {
     console.info('STEP M1g: server-issued UUIDv4 on signed native project writes');
     const issued = [];
   function withServerAttempts(native) {
@@ -733,5 +740,12 @@ if (m1gOnly) {
     // Never mount in runtime or trust JWT session/role client claims.
     const { verifyM1l } = await import('./verify-m1l-oidc-pg-ci.mjs');
     await verifyM1l({ assert, makeDriver, actors });
+  }
+  if (m1mOnly) {
+    // Seventh disposable CI invocation: one-time PKCE state/code exchanged
+    // at mock issuer, server-issued session UUID/revision in real signed PG.
+    // No live IdP, authorization route, callback or real token provisioning.
+    const { verifyM1m } = await import('./verify-m1m-pkce-pg-ci.mjs');
+    await verifyM1m({ assert, makeDriver, actors });
   }
 }
