@@ -7,6 +7,8 @@ import assert from 'node:assert/strict';
 import { SQL } from 'bun';
 import { createPinnedAccessTokenVerifier } from
   '../../src/features/saasBlueprint/controlApi/server/trustedAccessToken.ts';
+import { createTenantProjectsReadHttpHandler } from
+  '../../src/features/saasBlueprint/controlApi/server/tenantProjectsReadHttpHandler.ts';
 import { createTrustedIssuerSessionProvisioner } from
   '../../src/features/saasBlueprint/controlApi/server/issuerSessionProvisioning.ts';
 import { createTrustedSqlReadBoundary, createTrustedSqlPublishedBoundary } from
@@ -1543,6 +1545,63 @@ try {
     assert.equal(attemptedDowngrade.status,404);
     assert.equal('rows' in attemptedDowngrade,false);
 
+    if (process.env.SAAS_PROJECT_READ_HTTP_CI === 'true') {
+      // Actual HTTP socket + Bun.SQL to NON-superuser PostgreSQL16.
+      // This is intentionally NOT mounted in Gateway/Core/Vite.
+      let readHttp;
+      const readServer=Bun.serve({
+        hostname:'127.0.0.1',port:0,
+        fetch:req=>readHttp
+          ?readHttp(req):new Response('',{status:503}),
+      });
+      try {
+        const origin='http://127.0.0.1:'+readServer.port;
+        readHttp=createTenantProjectsReadHttpHandler({
+          ...createTrustedDependencies(driver,audit,
+            createSignedPgAuthorizationRevisionSource(driver,signer)),
+          expectedOrigin:origin,
+        });
+        const endpoint=origin+
+          '/control-api/v1/tenants/demo-north/projects?limit=1';
+        const request=(url,bearer,extra={})=>fetch(url,{
+          ...extra,
+          headers:{
+            ...(bearer?{Authorization:'Bearer '+bearer}:{}),
+            ...(extra.headers||{}),
+          },
+        });
+        const allowed=await request(endpoint,boundA);
+        assert.equal(allowed.status,200);
+        assert.equal(allowed.headers.get('access-control-allow-origin'),null);
+        assert.match(allowed.headers.get('cache-control')||'',/no-store/);
+        assert.deepEqual((await allowed.json()).data,[
+          {id:'north-project',name:'North Project',status:'active'},
+        ]);
+        const crossTenant=await request(origin+
+          '/control-api/v1/tenants/demo-orbit/projects',boundA);
+        assert.equal(crossTenant.status,404);
+        assert.equal(JSON.stringify(await crossTenant.json()).includes('demo-orbit'),false);
+        assert.equal((await request(endpoint,null)).status,401);
+        assert.equal((await request(endpoint,boundA,{
+          headers:{'X-Role':'tenant-owner'},
+        })).status,403);
+        assert.equal((await request(endpoint,boundA,{
+          headers:{Cookie:'forged=session'},
+        })).status,403);
+        assert.equal((await request(endpoint,boundA,{
+          method:'POST',
+        })).status,405);
+        assert.equal((await request(endpoint+'&limit=50',boundA)).status,404);
+        const stillActiveB=await request(endpoint,boundB);
+        assert.equal(stillActiveB.status,200);
+        await stillActiveB.arrayBuffer();
+        console.info(
+          'PASS: real HTTP GET tenant projects -> token-bound signed PG16/RLS; '+
+          'IDOR 404, forged actor headers 403, missing bearer 401, no raw SQL leaks'
+        );
+      } finally { readServer.stop(true); }
+    }
+
     // One committed token-specific revoke advances the SAME private tenant
     // epoch, while the other token, membership, and actor stay active.
     tokenFixtureSql(`UPDATE saas_rls_private.actor_token_sessions
@@ -1564,6 +1623,37 @@ try {
     assert.deepEqual(handoffs,Array(3).fill('north-project'));
     assert.equal(readPrivateOutboxCount(),boundOutboxBefore+3);
     assert.equal(driver.stats().poisoned,false);
+    if (process.env.SAAS_PROJECT_READ_HTTP_CI === 'true') {
+      // Reopen a new disposable loopback listener AFTER actual PG revoke:
+      // no JWT signature-expiry or actor-only fallback may resurrect A.
+      let handler;
+      const server=Bun.serve({
+        hostname:'127.0.0.1',port:0,
+        fetch:req=>handler?handler(req):new Response('',{status:503}),
+      });
+      try {
+        const origin='http://127.0.0.1:'+server.port;
+        handler=createTenantProjectsReadHttpHandler({
+          ...createTrustedDependencies(driver,audit,
+            createSignedPgAuthorizationRevisionSource(driver,signer)),
+          expectedOrigin:origin,
+        });
+        const target=origin+'/control-api/v1/tenants/demo-north/projects';
+        const readHttp=async bearer=>fetch(target,{
+          headers:{Authorization:'Bearer '+bearer},
+        });
+        const deniedA=await readHttp(boundA);
+        assert.equal(deniedA.status,404);
+        assert.equal(JSON.stringify(await deniedA.json()).includes('north-project'),false);
+        const allowedB=await readHttp(boundB);
+        assert.equal(allowedB.status,200);
+        assert.deepEqual((await allowedB.json()).data.map(x=>x.id),['north-project']);
+        console.info(
+          'PASS: real signed PG16 project GET after token revoke A=404; '+
+          'independent B=200; no stale actor-only session fallback'
+        );
+      } finally { server.stop(true); }
+    }
   } finally {
     if (boundRegistered) {
       // Full fixture cleanup (a fresh ephemeral test database anyway).
