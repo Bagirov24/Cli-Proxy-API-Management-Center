@@ -1484,8 +1484,20 @@ No merge/Ready/deploy/SQL019, Railway signer/journal/volume change or automatic 
 - [x] Guarded SQL025: no-login FORCE-RLS server session UUID/revision and transaction-bound proof, current session SELECT FOR SHARE before M1d tenant epoch fence, mandatory post-audit write trigger, no legacy bypass.
 - [x] Server-side pinned RS256 token SHA256 fingerprint bound to UUID/epoch in separate CI process context; multiple sessions one actor, token/session revocation, rotate stale epoch and signed HTTP write-first/revoke-first PostgreSQL lock races.
 - [x] Independent SQL025 acceptance: no ghost project/audit, least privileges, distinct session revision in M1c/M1g audit transaction, denied resurrect/delete, idempotent SQL025 replay.
-- [ ] Require all four GitHub Actions SUCCESS on exact final M1k HEAD with explicit Bun E2E and SQL `PASS M1k` log lines.
+- [x] Verified exact M1k HEAD `288792c5` all 4 GitHub Actions SUCCESS with separate HTTP/Bun.SQL + independent SQL `PASS M1k` acceptance.
 - [ ] Production OIDC, true token/session binding, multi-replica revocation, off-host WORM/high-water, network partitions DURING COMMIT, production pool and migration remain BLOCKED.
 
 No live public endpoint, Ready/merge/deploy, SQL019, Railway mutation or retry/GC.
 [M1k contract](M1K_SESSION_EPOCH_REVOCATION_PG16_CI.ru.md).
+
+
+## M1l — synthetic OIDC discovery/JWKS key rotation → signed PG16 session (STACKED DRAFT / CI-only)
+
+- [x] Parent M1k Draft PR №14 HEAD `288792c5` verified 4/4 SUCCESS with adversarial PostgreSQL16 revocation lock ordering.
+- [x] Bounded loopback mock OIDC metadata/JWKS parser: pinned HTTPS issuer string, exact metadata/JWKS URI, RSA 2048/4096 RS256 public keys only; monotonic A→A+B→B, retired kid rollback and invalid-refresh quarantine.
+- [x] Add a separate opt-in M1l GitHub unit step and post-M1k disposable PG16 invocation: real HTTP JWT → trusted token fingerprint/session UUID → M1h fsync → M1k session lock and mandatory signed M1c/M1d/M1g audit.
+- [x] Add race of already-verified HTTP A token vs issuer A retirement and committed DB session A revoke BEFORE PG reservation: 404 and 0/0/0; B remains usable; independent SQL acceptance checks 5 successful PG COMMITs + 1 rolled-back attempt.
+- [ ] Verify 4/4 GitHub Actions on exact final M1l HEAD, both JS and SQL log markers `PASS M1l`, and no weakening of older M1a–M1k tests.
+- [ ] Real OIDC/SSO, refresh-token/session revocation lifecycle, key trust on TLS, distributed IAM, external WORM, production pooling, network partition DURING COMMIT, CPA/tenant onboarding, review/merge/deploy are NOT implemented.
+
+CI mock is not a production login provider or a general JWKS client. [M1l review](M1L_SYNTHETIC_OIDC_JWKS_ROTATION_SESSION_PG16_CI.ru.md).
