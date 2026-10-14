@@ -9,6 +9,7 @@
 import {createTenantProjectsWriteHttpHandler} from
   '../../src/features/saasBlueprint/controlApi/server/tenantProjectsWriteHttpHandler.ts';
 import {startWitness,runOffline} from './verify-m1h-precommit-intent.mjs';
+import {createHash} from 'node:crypto';
 
 const V4=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 function fixtureSql(assert,statement){
@@ -38,6 +39,16 @@ function bound(assert,projectId,attemptId){
     "JOIN saas_m1_private.project_write_audit_outbox a ON a.event_id=b.event_id "+
     "WHERE a.tenant_id='demo-north' AND a.project_id='"+projectId+"' "+
     "AND b.attempt_id='"+attemptId+"'::uuid"
+  );
+}
+function projectSessionProofs(assert,projectId,sessionId){
+  assert.match(projectId,V4);assert.match(sessionId,V4);
+  return fixtureSql(assert,
+    "SELECT COUNT(*) FROM saas_m1_private.project_session_proofs p "+
+    "JOIN saas_m1_private.project_write_audit_outbox a "+
+    "ON a.pg_txid=p.pg_txid "+
+    "WHERE a.tenant_id='demo-north' AND a.project_id='"+projectId+"' "+
+    "AND p.session_id='"+sessionId+"'::uuid"
   );
 }
 function setMembership(assert,state){
@@ -75,7 +86,10 @@ export async function verifyTenantProjectWriteHttpPg({
   const witness=await startWitness(assert,path);
   const issued=[];
   const drivers=[];
-  let driver=makeDriver({attemptTagging:true});
+  let driver=makeDriver({attemptTagging:true,sessionGuard:true});
+  const sessionId=crypto.randomUUID();
+  assert.match(sessionId,V4);
+  let trustedFingerprint=null;
   drivers.push(driver);
   const registry={
     async prepare(entry){
@@ -91,6 +105,8 @@ export async function verifyTenantProjectWriteHttpPg({
   const writer={
     async execute(input){
       assert.ok(V4.test(input.attemptId));
+      assert.equal(input.sessionId,sessionId);
+      assert.equal(input.sessionRevision,1);
       assert.ok(['create','rename'].includes(input.operation));
       return driver.execute(input);
     },
@@ -104,6 +120,14 @@ export async function verifyTenantProjectWriteHttpPg({
   handler=createTenantProjectsWriteHttpHandler({
     expectedOrigin:origin,tokens:verifier,directory,actors,
     journal:registry,writer,
+    sessions:{
+      async resolve(input,signal){
+        if(signal.aborted||input.actorId!=='actor-north'||
+            input.tenantId!=='demo-north'||
+            !trustedFingerprint||input.tokenFingerprint!==trustedFingerprint) return null;
+        return {sessionId,sessionRevision:1};
+      },
+    },
     newCorrelationId:()=> 'backend02-server-generated',
   });
   const root='/control-api/v1/tenants/demo-north/projects';
@@ -111,6 +135,13 @@ export async function verifyTenantProjectWriteHttpPg({
     actorId:'actor-orbit',tenantId:'demo-orbit',role:'tenant-owner',
     attemptId:'FORGED_HTTP_ATTEMPT',
   });
+  trustedFingerprint=createHash('sha256').update(north).digest('hex');
+  assert.match(trustedFingerprint,/^[0-9a-f]{64}$/);
+  assert.equal(fixtureSql(assert,
+    "INSERT INTO saas_m1_private.project_session_epochs "+
+    "(session_id,actor_id,tenant_id,revision,status) VALUES ('"+
+    sessionId+"'::uuid,'actor-north','demo-north',1,'active') "+
+    "RETURNING status"),'active');
   const viewer=await signToken('orbit');
   const auditor=await signToken('auditor');
   async function send(method,route,bearer,body,headers={}){
@@ -133,7 +164,7 @@ export async function verifyTenantProjectWriteHttpPg({
     return {status:response.status,data:payload};
   }
   function replaceDriver(options){
-    driver=makeDriver(options);
+    driver=makeDriver({...options,sessionGuard:true});
     drivers.push(driver);
     return driver;
   }
@@ -158,6 +189,7 @@ export async function verifyTenantProjectWriteHttpPg({
     assert.match(project,V4);
     assert.equal(counts(assert,project),'1:1:1');
     assert.equal(bound(assert,project,issued[0].attemptId),'1');
+    assert.equal(projectSessionProofs(assert,project,sessionId),'1');
     assert.equal(issued[0].projectId,project);
     assert.equal(issued[0].expectedVersion,null);
     const initial=await driver.read(northScope,project);
@@ -171,12 +203,14 @@ export async function verifyTenantProjectWriteHttpPg({
     assert.equal(renamed.status,200);
     assert.equal(counts(assert,project),'1:2:2');
     assert.equal(bound(assert,project,issued[1].attemptId),'1');
+    assert.equal(projectSessionProofs(assert,project,sessionId),'2');
     const stale=await send('PATCH',root+'/'+project,north,{
       name:'Stale Version Must Deny',expectedVersion:1,
     });
     assert.equal(stale.status,404);
     assert.equal(counts(assert,project),'1:2:2');
     assert.equal(bound(assert,project,issued[2].attemptId),'0');
+    assert.equal(projectSessionProofs(assert,project,sessionId),'2');
     const after=await driver.read(northScope,project);
     assert.equal(after[0].version,'2');
     assert.equal(after[0].name,'Backend Two Renamed');
@@ -205,6 +239,7 @@ export async function verifyTenantProjectWriteHttpPg({
     assert.equal(issued.length,5);
     assert.equal(counts(assert,issued[4].projectId),'1:1:1');
     assert.equal(bound(assert,issued[4].projectId,issued[4].attemptId),'1');
+    assert.equal(projectSessionProofs(assert,issued[4].projectId,sessionId),'1');
 
     // Real physical PG backend terminated BEFORE COMMIT; same client 503
     // but zero project/audit/attempt binding persisted, no automatic retry.
@@ -228,6 +263,7 @@ export async function verifyTenantProjectWriteHttpPg({
     assert.ok(backendPid>0);
     assert.equal(counts(assert,issued[5].projectId),'0:0:0');
     assert.equal(bound(assert,issued[5].projectId,issued[5].attemptId),'0');
+    assert.equal(projectSessionProofs(assert,issued[5].projectId,sessionId),'0');
 
     // Independent local witness contains six unique, ordered fsync seals.
     // It is NOT off-host WORM or a production settlement authority.
@@ -244,7 +280,8 @@ export async function verifyTenantProjectWriteHttpPg({
     assert.equal(issued.length,6);
     console.info(
       'PASS backend-02: REAL HTTP POST/PATCH -> server IDs+fsynced one-use '+
-      'UUID -> signed non-superuser PG16 CAS+mandatory audit; stale CAS 404, '+
+      'UUID -> locked PG25 token-mapped session epoch, signed non-superuser '+
+      'PG16 CAS+mandatory audit/proof; stale CAS 404, '+
       'revoked DB 404, unknown COMMIT 503 1:1:1, killed preCOMMIT 503 0:0:0, '+
       'dead witness 0 reservations, no retry'
     );
