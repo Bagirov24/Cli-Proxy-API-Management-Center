@@ -137,11 +137,13 @@ export async function verifyTenantProjectWriteHttpPg({
   });
   trustedFingerprint=createHash('sha256').update(north).digest('hex');
   assert.match(trustedFingerprint,/^[0-9a-f]{64}$/);
-  assert.equal(fixtureSql(assert,
+  // psql -t/-A still prints the DML command tag after RETURNING on PG16.
+  // Match the specific returned row *and* the successful insert tag.
+  assert.match(fixtureSql(assert,
     "INSERT INTO saas_m1_private.project_session_epochs "+
     "(session_id,actor_id,tenant_id,revision,status) VALUES ('"+
     sessionId+"'::uuid,'actor-north','demo-north',1,'active') "+
-    "RETURNING status"),'active');
+    "RETURNING status"),/^active\\nINSERT 0 1$/);
   const viewer=await signToken('orbit');
   const auditor=await signToken('auditor');
   async function send(method,route,bearer,body,headers={}){
