@@ -50,5 +50,6 @@ jobs:
       # CSRF state, no real IdP/OAuth callback/production credentials.
       - name: Verify M1m opt-in synthetic PKCE code/state and issuer one-time exchange
         env:
+          SAAS_EPHEMERAL_M1L_OIDC_CI: 'true'
           SAAS_EPHEMERAL_M1M_PKCE_CI: 'true'
         run: bun test tests/saasM1mSyntheticPkceCode.test.mjs
