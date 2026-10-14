@@ -550,6 +550,7 @@ jobs:
             SAAS_EPHEMERAL_M1_PG_CI=true \
             SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
             SAAS_EPHEMERAL_M1_HTTP_CI=true \
+            SAAS_EPHEMERAL_M1L_OIDC_CI=true \
             SAAS_EPHEMERAL_M1M_PKCE_CI=true \
             SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
             SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
