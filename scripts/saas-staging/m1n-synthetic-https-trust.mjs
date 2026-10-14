@@ -6,7 +6,6 @@
  * Never disable Node TLS verification, follow redirects, reuse a connection,
  * accept browser cookies, allow DNS/SSRF or send sensitive data to HTTP.
  */
-import http from 'node:http';
 import { connect, checkServerIdentity } from 'node:tls';
 import { createHash, X509Certificate } from 'node:crypto';
 import { m1nCiEnabled } from './m1n-ephemeral-tls-fixture.mjs';
@@ -131,80 +130,99 @@ export function createM1nPinnedHttpsTransport({
         });
       });
       return await new Promise((resolve,reject)=>{
-        const agent=new http.Agent({keepAlive:false});
-        agent.createConnection=()=>socket;
-        let completed=false;
+        let completed=false,size=0;
+        const chunks=[];
         const finish=(error,response)=>{
           if(completed)return;
           completed=true;
-          agent.destroy();
+          socket.destroy();
           if(error)reject(new Error('M1n verified HTTPS request denied'));
           else resolve(response);
         };
-        const req=http.request({
-          method,headers:{...headers,Host:target.host},
-          hostname:'127.0.0.1',port:Number(target.port),
-          path:target.pathname+target.search,agent,
-        },res=>{
-          const status=res.statusCode;
-          const loc=res.headers.location;
-          // Authorization-code redirect is a LOCATION *value* only.
-          // NEVER follow it, nor let it escape the pinned callback host.
-          if(status===302) {
-            let okay=false;
-            try {
-              const x=new URL(loc);
-              okay=target.pathname==='/authorize'&&
-                x.origin===callback.origin&&
-                x.pathname===callback.pathname&&
-                !x.hash&&!x.username&&!x.password&&
-                [...x.searchParams.keys()].sort().join(',')==='code,state';
-            }catch{}
-            if(!okay){
-              res.destroy();
-              finish(new Error('M1n rejected redirect target'));return;
-            }
-          } else if(status>=300&&status<400){
-            res.destroy();
-            finish(new Error('M1n HTTP downgrade or redirect denied'));return;
+        const decode=()=>{
+          const buffer=Buffer.concat(chunks);
+          const headerEnd=buffer.indexOf('\r\n\r\n');
+          if(headerEnd<0||headerEnd>4096)throw Error('M1n invalid HTTP header frame');
+          const raw=buffer.subarray(0,headerEnd).toString('latin1');
+          const lines=raw.split('\r\n');
+          if(!/^HTTP\/1\.[01] [1-5][0-9]{2}(?: |$)/.test(lines[0]))
+            throw Error('M1n invalid HTTP status line');
+          const status=Number(lines[0].slice(9,12));
+          const responseHeaders=new Map();
+          for(const line of lines.slice(1)){
+            const colon=line.indexOf(':');
+            if(colon<1||!/^[A-Za-z0-9-]+$/.test(line.slice(0,colon)))
+              throw Error('M1n malformed HTTP response header');
+            const k=line.slice(0,colon).toLowerCase();
+            const v=line.slice(colon+1).trim();
+            if(responseHeaders.has(k)||v.length>1024||/[\x00-\x1f\x7f]/.test(v))
+              throw Error('M1n duplicate/unsafe HTTP header');
+            responseHeaders.set(k,v);
           }
-          if(res.headers['set-cookie']){
-            res.destroy();finish(new Error('M1n IdP cookie denied'));return;
+          if(responseHeaders.has('transfer-encoding')||
+             responseHeaders.has('set-cookie'))
+            throw Error('M1n chunked or cookie response forbidden');
+          const declared=responseHeaders.get('content-length');
+          if(declared===undefined||
+             !/^(0|[1-9][0-9]{0,5})$/.test(declared)||
+             Number(declared)>MAX_RESPONSE)
+            throw Error('M1n response must have exact bounded length');
+          const body=buffer.subarray(headerEnd+4);
+          if(body.length!==Number(declared))
+            throw Error('M1n response length mismatch');
+          if(status===302){
+            const loc=responseHeaders.get('location');
+            const targetCallback=new URL(loc);
+            if(target.pathname!=='/authorize'||
+               targetCallback.origin!==callback.origin||
+               targetCallback.pathname!==callback.pathname||
+               targetCallback.username||targetCallback.password||
+               targetCallback.hash||
+               [...targetCallback.searchParams.keys()].sort().join(',')!=='code,state')
+              throw Error('M1n redirect target denied');
+          }else if(status>=300&&status<400)
+            throw Error('M1n redirect and HTTP downgrade forbidden');
+          const resultHeaders=new Headers();
+          for(const k of ['content-type','cache-control','location']){
+            if(responseHeaders.has(k))resultHeaders.set(k,responseHeaders.get(k));
           }
-          const declared=res.headers['content-length'];
-          if(declared&&(!/^(0|[1-9][0-9]{0,5})$/.test(declared)||
-             Number(declared)>MAX_RESPONSE)){
-            res.destroy();finish(new Error('M1n oversized body'));return;
+          const bodyValue=status===302||status===204?null:new Uint8Array(body);
+          return new Response(bodyValue,{status,headers:resultHeaders});
+        };
+        socket.setTimeout(4000,()=>finish(new Error('M1n TLS response timed out')));
+        socket.on('data',data=>{
+          size+=data.length;
+          if(size>MAX_RESPONSE+8192){
+            finish(new Error('M1n response beyond total budget'));
+            return;
           }
-          let size=0;
-          const chunks=[];
-          res.on('data',chunk=>{
-            size+=chunk.length;
-            if(size>MAX_RESPONSE) {
-              res.destroy();finish(new Error('M1n HTTPS body overflow'));
-            } else chunks.push(chunk);
-          });
-          res.on('error',err=>finish(err));
-          res.on('end',()=>{
-            if(completed)return;
-            const responseHeaders=new Headers();
-            for(const name of ['content-type','cache-control','location']){
-              if(typeof res.headers[name]==='string')
-                responseHeaders.set(name,res.headers[name]);
-            }
-            // 302 and 204 cannot carry a Web Response body.
-            const body=status===302||status===204?null:Buffer.concat(chunks);
-            try {
-              finish(null,new Response(body,{
-                status,headers:responseHeaders,
-              }));
-            }catch(e){finish(e);}
-          });
+          chunks.push(data);
         });
-        req.setTimeout(4000,()=>req.destroy(new Error('M1n HTTPS timeout')));
-        req.on('error',e=>finish(e));
-        if(payload!==null)req.write(payload);
-        req.end();
+        socket.on('error',err=>finish(err));
+        socket.on('end',()=>{
+          if(completed)return;
+          try{finish(null,decode());}
+          catch(e){finish(e);}
+        });
+        socket.on('close',()=>{
+          if(!completed)finish(new Error('M1n premature TLS close'));
+        });
+        // HTTP is sent only AFTER secureConnect, CA+SAN validation and
+        // mandatory leaf SPKI verification on the SAME encrypted socket.
+        // We request Connection: close and require one exact-length frame.
+        const requestLines=[
+          method+' '+target.pathname+target.search+' HTTP/1.1',
+          'Host: '+target.host,
+          'Accept: '+headers.Accept,
+          'Connection: close',
+          ...(payload===null?[]:[
+            'Content-Type: application/x-www-form-urlencoded',
+            'Content-Length: '+Buffer.byteLength(payload),
+          ]),
+          '', '',
+        ];
+        socket.write(Buffer.from(requestLines.join('\r\n')+(payload??''),'utf8'));
+
       });
     },
   });
