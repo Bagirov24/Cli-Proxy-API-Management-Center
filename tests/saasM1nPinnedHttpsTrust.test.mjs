@@ -58,9 +58,16 @@ async function fixture(leaf='primary',override) {
         body:req.method==='POST'?Buffer.concat(chunks):undefined,
       });
       const reply=(await override?.(input))??await issuer.handle(input);
-      const responseHeaders=Object.fromEntries(reply.headers);
+      // Strict M1n HTTP/1.1 test protocol always emits ONE exact-size
+      // Content-Length frame. Never use implicit chunked encoding.
+      const result=Buffer.from(await reply.arrayBuffer());
+      const responseHeaders={
+        ...Object.fromEntries(reply.headers),
+        'Content-Length':String(result.byteLength),
+        Connection:'close',
+      };
       res.writeHead(reply.status,responseHeaders);
-      res.end(Buffer.from(await reply.arrayBuffer()));
+      res.end(result);
     }catch{
       res.writeHead(503,{'Content-Type':'application/json'});
       res.end('{"error":"CI-only mock transport denied"}');
