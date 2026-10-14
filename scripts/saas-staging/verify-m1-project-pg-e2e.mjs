@@ -349,6 +349,7 @@ const m1mOnly = process.env.SAAS_EPHEMERAL_M1M_PKCE_CI === 'true';
 // M1m requires the M1l JWKS guard but MUST NOT re-run M1l's fixture.
 const m1lOnly = process.env.SAAS_EPHEMERAL_M1L_OIDC_CI === 'true' && !m1mOnly;
 if(m1mOnly&&(!m1gOnly||m1jOnly||m1kOnly||m1lOnly||
+   process.env.SAAS_EPHEMERAL_M1L_OIDC_CI!=='true'||
    process.env.SAAS_EPHEMERAL_M1_HTTP_CI!=='true'||
    process.env.SAAS_EPHEMERAL_M1H_INTENT_CI==='true'||
    process.env.SAAS_EPHEMERAL_M1E_DISCONNECT_CI==='true')){
