@@ -1540,3 +1540,18 @@ This is NOT production authorization code+PKCE, does NOT implement secure
 cookies/session lifecycle, refresh/OIDC ID token, real redirect handlers,
 external durable issuer pin or independent ACK settlement.
 [M1m notes](M1M_SYNTHETIC_PKCE_AUTH_CODE_SESSION_PG16_CI.ru.md).
+
+
+## M1n — distinguish ephemeral HTTPS handshake trust from a production OIDC provider
+
+M1m proved synthetic one-time OAuth code+PKCE but used plaintext loopback
+transport between the mock issuer and CI client. M1n creates an ephemeral
+OpenSSL CA and leaf in GitHub CI only and verifies a real HTTPS handshake:
+CA chain validation, SAN DNS:localhost plus SHA256 of the leaf SPKI. The
+client forbids dynamic URLs, external DNS, HTTP downgrade, redirect following
+and implicit leaf-pin rollover, then checks strictly pinned discovery/JWKS.
+A successful pinned TLS exchange may create only a synthetic server-owned PG
+session; M1k still checks its current revocation epoch before real COMMIT.
+M1n does NOT establish trust in a real IdP, durable CA rotation, revocation
+lists, mTLS or production cert policy. No Railway TLS changes.
+[M1n security scope](M1N_PINNED_HTTPS_IDP_PKCE_SESSION_PG16_CI.ru.md).
