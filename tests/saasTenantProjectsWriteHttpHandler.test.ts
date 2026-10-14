@@ -14,13 +14,15 @@ const V4=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 type State='active'|'revoked';
 function fixture() {
   const attempts:TenantProjectWriteAttempt[]=[];
-  const writes:Array<M1ProjectMutation & {attemptId:string}>=[];
+  const writes:Array<Readonly<M1ProjectMutation & {attemptId:string;sessionId:string;sessionRevision:number}>>=[];
+  const sessionChecks:Array<{actorId:string;tenantId:string;tokenFingerprint:string}>=[];
   const actor={id:'actor-north',memberships:[{
     tenantId:'demo-north',role:'tenant-admin' as const,
     status:'active' as State,
   }]};
   let writerMode:'ok'|'deny'|'throw'|'abort'='ok';
   let journalMode:'ok'|'throw'|'wrong'|'invalid'='ok';
+  let sessionMode:'active'|'missing'|'invalid'='active';
   let actorRotated=false;
   let tokenRotated=false;
   let writeAbort:AbortController|null=null;
@@ -40,6 +42,17 @@ function fixture() {
     },
     actors:{
       async lookup(id){return id===actor.id?actor:null;},
+    },
+    sessions:{
+      async resolve(input){
+        sessionChecks.push(input);
+        if (sessionMode==='missing') return null;
+        if (sessionMode==='invalid') return {sessionId:'forged',sessionRevision:0};
+        return input.actorId==='actor-north'&&input.tenantId==='demo-north' &&
+          /^[0-9a-f]{64}$/.test(input.tokenFingerprint)
+          ? {sessionId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',sessionRevision:1}
+          : null;
+      },
     },
     journal:{
       async prepare(entry){
@@ -73,9 +86,10 @@ function fixture() {
       body:extras.raw??JSON.stringify(payload),
     }));
   }
-  return {attempts,writes,actor,deps,handler,send,
+  return {attempts,writes,sessionChecks,actor,deps,handler,send,
     setWriter(value:typeof writerMode){writerMode=value;},
     setJournal(value:typeof journalMode){journalMode=value;},
+    setSession(value:typeof sessionMode){sessionMode=value;},
     rotateActor(){actorRotated=true;},
     revokeToken(){tokenRotated=true;},
     setAbort(ctrl:AbortController){writeAbort=ctrl;},
@@ -108,6 +122,14 @@ describe('SaaS backend tenant projects mutation POST/PATCH (unmounted)',()=>{
       role:'tenant-admin',correlationId:'backend-server-correlation',
     });
     expect(f.writes[0].name).toBe('Project');
+    expect(f.writes[0].sessionId).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+    expect(f.writes[0].sessionRevision).toBe(1);
+    expect(f.sessionChecks).toHaveLength(1);
+    expect(f.sessionChecks[0]).toMatchObject({actorId:'actor-north',tenantId:'demo-north'});
+    const bytes=new Uint8Array(await crypto.subtle.digest('SHA-256',
+      new TextEncoder().encode(TOKEN)));
+    expect(f.sessionChecks[0].tokenFingerprint).toBe(Array.from(bytes,b=>
+      b.toString(16).padStart(2,'0')).join(''));
     const text=JSON.stringify(body);
     for(const forbidden of ['valid.signed.token','actor-north','attemptId',
       'JOURNAL_SIGNER_KEY_SECRET','PG_CONNECTION_PRIVATE_DETAIL'])
@@ -232,6 +254,18 @@ describe('SaaS backend tenant projects mutation POST/PATCH (unmounted)',()=>{
     expect(f.writes).toHaveLength(0);
   });
 
+  test('missing/invalid trusted verified-bearer PG session refuses before journal and writer',async()=>{
+    for(const mode of ['missing','invalid'] as const){
+      const f=fixture();
+      f.setSession(mode);
+      const response=await f.send('POST');
+      expect(response.status).toBe(503);
+      expect(f.sessionChecks).toHaveLength(1);
+      expect(f.attempts).toHaveLength(0);
+      expect(f.writes).toHaveLength(0);
+    }
+  });
+
   test('missing or corrupt durable intent never reserves a database writer',async()=>{
     for(const mode of ['throw','wrong','invalid'] as const){
       const f=fixture();
@@ -288,6 +322,9 @@ describe('SaaS backend tenant projects mutation POST/PATCH (unmounted)',()=>{
     })).toThrow();
     expect(()=>createTenantProjectsWriteHttpHandler({
       ...f.deps,writer:undefined as never,
+    })).toThrow();
+    expect(()=>createTenantProjectsWriteHttpHandler({
+      ...f.deps,sessions:undefined as never,
     })).toThrow();
   });
 });
