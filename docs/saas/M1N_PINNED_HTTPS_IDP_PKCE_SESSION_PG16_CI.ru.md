@@ -27,8 +27,12 @@ OpenSSL ephemeral root CA, leaf для `DNS:localhost/IP:127.0.0.1`,
 `rejectUnauthorized=true`, передачей ожидаемой CA,
 `servername=localhost`, системной валидацией SAN и
 **обязательной SHA-256 привязкой leaf SPKI** на каждом
-новом TLS соединении. `agent:false` исключает скрытый
-reuse socket. Строгий allowlist путей
+новом TLS соединении. Клиент **сначала** завершает TLS handshake,
+проверяет CA+SAN+SPKI на живом сокете и **только затем** отправляет
+HTTP/1.1-байты через **тот же** TLS-сокет. Ответ принимается только
+как единственная ограниченная HTTP/1.1 frame с точным Content-Length;
+HTTP Agent/reuse socket и chunked parsing не используются.
+Строгий allowlist путей
 `/.well-known/openid-configuration`, `/jwks`, `/authorize`,
 `/token`. Нет DNS, внешнего host, HTTP downgrade,
 подхвата JWT `jku/x5u`, общесистемного изменения trust
