@@ -196,12 +196,12 @@ export function createTenantProjectsReadHttpHandler(
       // whitelist, abort check and all signed SQL/session checks. Nothing
       // is published until the durable caller-supplied synchronous audit
       // recorder succeeds. Its failure returns only a 503.
-      let staged: SecurityAuditDecision | null = null;
+      const staged: {current: SecurityAuditDecision | null} = {current:null};
       const read = createTrustedSqlReadBoundary({
         ...pinned, newCorrelationId:()=>correlationId,
         audit:{record(decision){
-          if (staged) throw new Error('Multiple read audit events');
-          staged=decision;
+          if (staged.current) throw new Error('Multiple read audit events');
+          staged.current=decision;
         }},
       });
       const result = await read({
@@ -209,12 +209,13 @@ export function createTenantProjectsReadHttpHandler(
         limit,signal:request.signal,
       });
       if (request.signal.aborted) return deny(503,'request-cancelled','projects');
-      if (!staged || staged.correlationId !== correlationId) {
+      const decision = staged.current;
+      if (!decision || decision.correlationId !== correlationId) {
         return deny(503,'source-unavailable','projects');
       }
       if (!result.ok) {
         // Never copy driver/SQL/identity failures through to the client.
-        try { deps.audit.record(staged); } catch {
+        try { deps.audit.record(decision); } catch {
           return response(503,correlationId);
         }
         if (![401,403,404,503].includes(result.status)) {
@@ -223,10 +224,10 @@ export function createTenantProjectsReadHttpHandler(
         return response(result.status,correlationId);
       }
       const projects = projectRows(result.rows,match[1],limit);
-      if (!projects || staged.result !== 'allow') {
+      if (!projects || decision.result !== 'allow') {
         return deny(503,'source-unavailable','projects');
       }
-      try { deps.audit.record(staged); } catch {
+      try { deps.audit.record(decision); } catch {
         return response(503,correlationId);
       }
       return response(200,correlationId,projects);
