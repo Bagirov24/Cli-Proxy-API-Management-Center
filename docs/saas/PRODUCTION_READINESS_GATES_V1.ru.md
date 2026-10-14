@@ -761,3 +761,17 @@ connection pool quarantine/partition proof, external WORM/high-water,
 CPA integration or operator UNKNOWN COMMIT signoff. Code merge requires
 an explicit separate security/code-owner approval; release gate stays
 BLOCKED. [M1i security scope](M1I_UNMOUNTED_PROJECT_WRITE_HTTP_CI.ru.md).
+
+
+## M1j — signed real HTTP→PG16 end-to-end (gate НЕ пройден)
+
+Disposable localhost HTTP uses the M1i default-off adapter and a real
+signed PostgreSQL16 transaction with M1d row-level authorization fence,
+M1c audit, M1g UUID, plus a separate *same-runner* M1h fsynced witness.
+Physical pre-COMMIT loss is tested, COMMIT ACK loss is simulated,
+no automatic retry. But no independent off-host immutable trust root,
+production OIDC/session control, multi-replica revocation, deployed
+private backend, network interruption DURING COMMIT, durable recovery
+intent reconciliation, real Core/CPA/egress and production migrations.
+Separate codeowner/security/operational approval remains mandatory.
+[M1j status](M1J_REAL_HTTP_SIGNED_PG16_INTEGRATION_CI.ru.md).
