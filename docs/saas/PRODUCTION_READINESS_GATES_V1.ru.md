@@ -735,3 +735,16 @@ sources share one DBA/trust domain. No external WORM, human sign-off,
 OIDC session revocation, network COMMIT partition proof or production
 pool physical discard. Any automatic retry/reissue/merge/deploy stays
 forbidden. [M1g review](M1G_ATTEMPT_UUID_BOUND_PROJECT_AUDIT_PG16.ru.md).
+
+
+## M1h — signed local pre-COMMIT attempt (production gate НЕ пройден)
+
+A disposable CI-only separate signer process writes Ed25519 fsynced
+precommit intent BEFORE M1g signed SQL write and offline verifier checks
+chain, transient high-water, tampering and key substitution. Still the
+same ephemeral CI host and operator trust, NOT off-host independent WORM,
+not a durable globally pinned signing root. Precommit intent without
+matching PG COMMIT means UNKNOWN/STOP, NEVER automatic retry. No live
+OIDC, API RBAC, physical production discard, request-level proof, WORM,
+full recovery/DR or operator/security approval. No Ready/merge/deploy.
+[M1h gates](M1H_PRECOMMIT_SIGNED_INTENT_CI.ru.md).
