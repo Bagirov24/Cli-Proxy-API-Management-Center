@@ -1539,7 +1539,17 @@ No merge, Ready, deploy, SQL019, Railway signer/volume/cert rotation, live CPA k
 - [x] Each opt-in PKCE login has a separate server-held context and M1m one-use state map; cross-context callback cannot swap authorization codes, spend either peer's state or provision PG.
 - [x] Cancellation after verified pinned HTTPS code/token but before synchronous PG16 registration is checked immediately prior to session enrollment, with code consumed and **no retry**.
 - [x] Separate adversarial unit tests, tenth disposable PG16 proof and independent SQL `m1p-` audit/session/SQL025 replay assertions.
-- [ ] Require Main/PG16/Demo/Chromium success and two `PASS M1p` on exact final SHA before CI acceptance.
+- [x] Verified M1p Main/PG16/Demo/Chromium 4/4 SUCCESS, two independent `PASS M1p`, exact HEAD `f2a33fed96b4312feb296be3babafd9e18951aff` (Draft PR #19).
 - [ ] Production browser cookie/CSRF+OIDC nonce, durable distributed session/logout fences, independent WORM/HSM and UNKNOWN COMMIT recovery remain BLOCKED.
 
 No public login/cookie route, Ready/merge/deploy, Railway TLS modifications or production credentials. [M1p scope](M1P_BOUND_PKCE_LOGIN_CONTEXT_PG16_CI.ru.md).
+
+## M1q — distinct RS256 ID token with per-context one-shot nonce (CI-only)
+
+- [x] M1p opaque context starts one-use PKCE with CSPRNG nonce; mock HTTPS IdP signs a separate OIDC ID token with exact client audience, issuer, subject and nonce.
+- [x] Load verification-only RSA JWK over pinned CA/SAN/SPKI HTTPS; strict signed ID-token checks precede actor resolution and any native PG16 session registration.
+- [x] Adversarial nonce, cross-context ID-token replay, signed wrong claims/header and invalid signature; eleventh disposable signed PG16 E2E with wrong nonce/0 new session + independent SQL acceptance.
+- [ ] Require 4/4 final HEAD CI and two independent PASS M1q before marking CI accepted.
+- [ ] Browser cookie/CSRF/OIDC conformance, multi-instance signer and session enrollment, off-host WORM/HSM, unknown-COMMIT settlement and production review remain BLOCKED.
+
+No Ready/merge/deploy/SQL019/Railway changes, no live IdP/CPA credentials, no automatic reissue or retry. [M1q scope](M1Q_SIGNED_NONCE_ID_TOKEN_SESSION_PG16_CI.ru.md).
