@@ -156,7 +156,10 @@ DECLARE denied BOOLEAN:=FALSE;
 BEGIN
   BEGIN
     PERFORM * FROM saas_m1_review.inspect_project_attempt(
-      'demo-north','m1g-first',(:'earlier_attempt')::UUID,
+      'demo-north','m1g-first',(SELECT b.attempt_id FROM saas_m1_private.project_attempt_bindings b
+      JOIN saas_m1_private.project_write_audit_outbox a ON a.event_id=b.event_id
+      WHERE a.tenant_id='demo-north' AND a.project_id='m1g-first'
+        AND a.project_version=1),
       'create',1,'actor-north');
   EXCEPTION WHEN raise_exception THEN
     denied:=SQLERRM='M1g inspection requires READ COMMITTED READ ONLY';
@@ -171,7 +174,10 @@ DECLARE denied BOOLEAN:=FALSE;
 BEGIN
   BEGIN
     PERFORM * FROM saas_m1_review.inspect_project_attempt(
-      'demo-north','m1g-first',(:'earlier_attempt')::UUID,
+      'demo-north','m1g-first',(SELECT b.attempt_id FROM saas_m1_private.project_attempt_bindings b
+      JOIN saas_m1_private.project_write_audit_outbox a ON a.event_id=b.event_id
+      WHERE a.tenant_id='demo-north' AND a.project_id='m1g-first'
+        AND a.project_version=1),
       'create',1,'actor-north');
   EXCEPTION WHEN raise_exception THEN
     denied:=SQLERRM='M1g inspection requires READ COMMITTED READ ONLY';
@@ -188,11 +194,17 @@ BEGIN
   BEGIN
     UPDATE saas_m1_private.project_attempt_bindings
       SET attempt_id='00000000-0000-4000-8000-000000000004'::UUID
-    WHERE attempt_id=(:'committed_attempt')::UUID;
+    WHERE attempt_id=(SELECT b.attempt_id FROM saas_m1_private.project_attempt_bindings b
+      JOIN saas_m1_private.project_write_audit_outbox a ON a.event_id=b.event_id
+      WHERE a.tenant_id='demo-north' AND a.project_id='m1g-lost-ack'
+        AND a.project_version=1);
   EXCEPTION WHEN raise_exception THEN update_denied:=TRUE; END;
   BEGIN
     DELETE FROM saas_m1_private.project_attempt_bindings
-    WHERE attempt_id=(:'committed_attempt')::UUID;
+    WHERE attempt_id=(SELECT b.attempt_id FROM saas_m1_private.project_attempt_bindings b
+      JOIN saas_m1_private.project_write_audit_outbox a ON a.event_id=b.event_id
+      WHERE a.tenant_id='demo-north' AND a.project_id='m1g-lost-ack'
+        AND a.project_version=1);
   EXCEPTION WHEN raise_exception THEN delete_denied:=TRUE; END;
   IF NOT update_denied OR NOT delete_denied THEN
     RAISE EXCEPTION 'M1g binding accepted forbidden UPDATE/DELETE';
