@@ -1,5 +1,21 @@
-name: Build custom Management Center (no APIKEY.FUN)
+# Merge-safety: verification is allowed on source pushes; release publication
+# is deliberately NOT allowed here. The published management.html remains
+# unchanged until a separately reviewed, explicit release mechanism exists.
+# workflow_dispatch below is VERIFY-ONLY; it does not publish an artifact.
+name: Verify custom Management Center (no automatic release)
+
 on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'assets/**'
+      - 'index.html'
+      - 'logo.jpg'
+      - 'package.json'
+      - 'bun.lock'
+      - 'vite.config.ts'
+      - '.github/workflows/custom-management-panel.yml'
   push:
     branches:
       - custom-no-apikey-fun
@@ -14,38 +30,36 @@ on:
       - 'vite.config.ts'
       - '.github/workflows/custom-management-panel.yml'
   workflow_dispatch:
+
 concurrency:
-  group: custom-management-panel-release
+  group: custom-management-panel-verify
   cancel-in-progress: false
+
 permissions:
-  contents: write
+  contents: read
+
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.3.14'
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: bun install --frozen-lockfile
-      - name: Test and build panel
-        run: bun run verify
-      - name: Publish independent release without deleting the stable tag
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Verify and build without publishing
+        shell: bash
         run: |
           set -euo pipefail
-          mv dist/index.html dist/management.html
-          test -s dist/management.html
-          TAG="v8-custom-no-apikey-fun"
-          DIGEST="$(sha256sum dist/management.html | cut -d' ' -f1)"
-          NOTES="Custom Management Center build (APIKEY.FUN navigation hidden). Source commit: ${GITHUB_SHA}. management.html SHA256: ${DIGEST}. Backend API and OAuth behavior are unchanged by this UI artifact."
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/management.html --clobber
-            gh release edit "$TAG" --title "Custom Management Center" --notes "$NOTES" --latest
-          else
-            gh release create "$TAG" dist/management.html --target "$GITHUB_SHA" --title "Custom Management Center" --notes "$NOTES" --latest
+          bun run verify
+          test -s dist/index.html
+          if grep -q 'saas-demo-tenant' dist/index.html; then
+            echo 'DENIED: synthetic SaaS fixture reached default Management Center build' >&2
+            exit 1
           fi
-          gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq management.html
-          echo "Published ${GITHUB_SHA} (${DIGEST})"
+
+# NO GitHub Release write permission, upload, --clobber, --latest,
+# auto-deploy or downstream workflow dispatch. A future release requires
+# independent human approval and a separate release process.
