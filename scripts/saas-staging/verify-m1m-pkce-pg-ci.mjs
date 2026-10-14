@@ -126,8 +126,15 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false}){
             body:req.method==='POST'?Buffer.concat(chunks):undefined,
           });
           const reply=await mockIssuer.handle(input);
-          res.writeHead(reply.status,Object.fromEntries(reply.headers));
-          res.end(Buffer.from(await reply.arrayBuffer()));
+          // Explicit bound for the preverified M1n TLS socket's strict
+          // one-response HTTP/1.1 parser; no Transfer-Encoding ambiguity.
+          const data=Buffer.from(await reply.arrayBuffer());
+          res.writeHead(reply.status,{
+            ...Object.fromEntries(reply.headers),
+            'Content-Length':String(data.byteLength),
+            Connection:'close',
+          });
+          res.end(data);
         }catch{
           res.writeHead(503,{'Content-Type':'application/json'});
           res.end('{"error":"CI HTTPS IdP unavailable"}');
