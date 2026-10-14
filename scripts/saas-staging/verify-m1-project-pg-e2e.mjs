@@ -175,6 +175,11 @@ function makeDriver({ dropAckAfterCommit = false, beforeCommit, attemptTagging =
             typeof checked[0]?.allowed !== 'boolean') {
           throw new Error('M1k malformed session gate result');
         }
+        if (process.env.SAAS_EPHEMERAL_M1K_SESSION_CI === 'true') {
+          // CI-only boolean boundary tracing, no actor/session ID, key,
+          // signed context, SQL diagnostics or request body is emitted.
+          console.info('M1k signed session gate accepted: ' + checked[0].allowed);
+        }
         if (!checked[0].allowed) {
           await query(SQL_TEXT.rollback);
           return false;
@@ -198,6 +203,9 @@ function makeDriver({ dropAckAfterCommit = false, beforeCommit, attemptTagging =
       if (!Array.isArray(rows) || rows.length !== 1 ||
           typeof rows[0]?.applied !== 'boolean') {
         throw new Error('M1b malformed mutation acknowledgement');
+      }
+      if (process.env.SAAS_EPHEMERAL_M1K_SESSION_CI === 'true') {
+        console.info('M1k signed mutation applied: ' + rows[0].applied);
       }
       if (!rows[0].applied) {
         // DENY is not a partially successful write: confirm ROLLBACK.
