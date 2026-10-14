@@ -426,6 +426,7 @@ jobs:
           timeout --signal=TERM --kill-after=5s 90s env \
             SAAS_EPHEMERAL_M1_PG_CI=true \
             SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
+            SAAS_EPHEMERAL_M1H_INTENT_CI=true \
             SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
             SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
             bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
