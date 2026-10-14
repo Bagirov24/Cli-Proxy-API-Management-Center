@@ -47,6 +47,7 @@ const SQL_TEXT = Object.freeze({
   txid: 'SELECT txid_current()::text AS transaction_id',
   backend: 'SELECT pg_backend_pid()::int AS backend_pid',
   attempt: "SELECT set_config('saas.m1_attempt_id',$1::text,true) AS attempt_stamped",
+  session: 'SELECT saas_m1_api.lock_project_session_epoch($1::uuid,$2::bigint,$3::text,$4::text) AS allowed',
   claim: 'SELECT set_config($1::text, $2::text, true)',
   role: 'SET LOCAL ROLE saas_m1_project_executor',
   create: 'SELECT saas_m1_api.create_project($1::text,$2::text,$3::text) AS applied',
@@ -61,7 +62,7 @@ const CLAIMS = new Set([
 const FIXED_COUNTS = new Map([
   [SQL_TEXT.begin, 0], [SQL_TEXT.commit, 0], [SQL_TEXT.rollback, 0],
   [SQL_TEXT.txid, 0], [SQL_TEXT.backend, 0], [SQL_TEXT.role, 0],
-  [SQL_TEXT.attempt, 1],
+  [SQL_TEXT.attempt, 1], [SQL_TEXT.session, 4],
   [SQL_TEXT.create, 3], [SQL_TEXT.rename, 4],
   [SQL_TEXT.disable, 3], [SQL_TEXT.read, 2],
 ]);
@@ -88,13 +89,13 @@ function makeNativeDb() {
     connectionTimeout: 5, idleTimeout: 5, prepare: false, tls: false,
   });
 }
-function makeDriver({ dropAckAfterCommit = false, beforeCommit, attemptTagging = false } = {}) {
+function makeDriver({ dropAckAfterCommit = false, beforeCommit, attemptTagging = false, sessionGuard = false } = {}) {
   const db = makeNativeDb();
   let poisoned = false;
   let reservations = 0;
   let commitAcks = 0;
   let ackFault = dropAckAfterCommit;
-  async function transaction(scope, operation, projectId, name, version, signal, attemptId) {
+  async function transaction(scope, operation, projectId, name, version, signal, attemptId, sessionId, sessionRevision) {
     if (poisoned || signal.aborted || !validateScope(scope) ||
         !SAFE_ID.test(projectId) ||
         !['create', 'rename', 'disable', 'read'].includes(operation)) {
@@ -163,6 +164,22 @@ function makeDriver({ dropAckAfterCommit = false, beforeCommit, attemptTagging =
         await query(SQL_TEXT.attempt, [attemptId]);
       }
       await query(SQL_TEXT.role);
+      if (sessionGuard && operation !== 'read') {
+        if (typeof sessionId !== 'string' || !SAFE_UUID_V4.test(sessionId) ||
+            !Number.isSafeInteger(sessionRevision) || sessionRevision < 1) {
+          throw new Error('M1k missing server-bound session UUID/epoch');
+        }
+        const checked = await query(SQL_TEXT.session,
+          [sessionId,sessionRevision,scope.tenantId,scope.actorId]);
+        if (!Array.isArray(checked) || checked.length !== 1 ||
+            typeof checked[0]?.allowed !== 'boolean') {
+          throw new Error('M1k malformed session gate result');
+        }
+        if (!checked[0].allowed) {
+          await query(SQL_TEXT.rollback);
+          return false;
+        }
+      }
       if (signal.aborted) throw new Error('M1b cancelled before operation');
       let params;
       if (operation === 'read') params = [scope.tenantId, projectId];
@@ -231,8 +248,10 @@ function makeDriver({ dropAckAfterCommit = false, beforeCommit, attemptTagging =
   }
   return Object.freeze({
     async execute(input) {
-      const { scope, operation, projectId, name, expectedVersion, signal, attemptId } = input;
-      return transaction(scope, operation, projectId, name, expectedVersion, signal, attemptId);
+      const { scope, operation, projectId, name, expectedVersion, signal, attemptId,
+        sessionId, sessionRevision } = input;
+      return transaction(scope, operation, projectId, name, expectedVersion,
+        signal, attemptId, sessionId, sessionRevision);
     },
     read(scope, projectId, signal = AbortSignal.timeout(12000)) {
       return transaction(scope, 'read', projectId, undefined, undefined, signal);
@@ -317,6 +336,12 @@ const northScope = Object.freeze({
 
 const m1gOnly = process.env.SAAS_EPHEMERAL_M1G_ATTEMPT_CI === 'true';
 const m1jOnly = process.env.SAAS_EPHEMERAL_M1J_HTTP_PG_CI === 'true';
+const m1kOnly = process.env.SAAS_EPHEMERAL_M1K_SESSION_CI === 'true';
+if (m1kOnly && (!m1gOnly || m1jOnly ||
+    process.env.SAAS_EPHEMERAL_M1H_INTENT_CI === 'true' ||
+    process.env.SAAS_EPHEMERAL_M1E_DISCONNECT_CI === 'true')) {
+  throw new Error('M1k session proof must run after all M1a-M1j CI fixtures');
+}
 if (m1jOnly && (!m1gOnly ||
     process.env.SAAS_EPHEMERAL_M1H_INTENT_CI === 'true' ||
     process.env.SAAS_EPHEMERAL_M1E_DISCONNECT_CI === 'true')) {
@@ -554,7 +579,7 @@ if (m1gOnly) {
   const northToken = await signToken('north');
   // M1h is run in a separate CI process AFTER the entire M1g SQL
   // acceptance; it must not mutate the M1g four-row regression fixture.
-  if (process.env.SAAS_EPHEMERAL_M1H_INTENT_CI !== 'true' && !m1jOnly) {
+  if (process.env.SAAS_EPHEMERAL_M1H_INTENT_CI !== 'true' && !m1jOnly && !m1kOnly) {
     console.info('STEP M1g: server-issued UUIDv4 on signed native project writes');
     const issued = [];
   function withServerAttempts(native) {
@@ -676,6 +701,14 @@ if (m1gOnly) {
     // but exercises an actual temporary loopback HTTP handler.
     const { verifyM1j } = await import('./verify-m1j-http-signed-pg.mjs');
     await verifyM1j({
+      assert, makeDriver, verifier, directory, actors, signToken, northScope,
+    });
+  }
+  if (m1kOnly) {
+    // M1k is separate opt-in disposable CI AFTER SQL025 install.
+    // No runtime/module import when default-off or in earlier test modes.
+    const { verifyM1k } = await import('./verify-m1k-session-epoch-ci.mjs');
+    await verifyM1k({
       assert, makeDriver, verifier, directory, actors, signToken, northScope,
     });
   }
