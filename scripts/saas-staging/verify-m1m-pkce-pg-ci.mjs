@@ -65,7 +65,7 @@ export async function verifyM1m({assert,makeDriver,actors}){
      process.env.SAAS_EPHEMERAL_M1_HTTP_CI!=='true'||
      process.env.SAAS_EPHEMERAL_M1M_PKCE_CI!=='true'||
      process.env.SAAS_EPHEMERAL_M1K_SESSION_CI==='true'||
-     process.env.SAAS_EPHEMERAL_M1L_OIDC_CI==='true'||
+     process.env.SAAS_EPHEMERAL_M1L_OIDC_CI!=='true'||
      process.env.SAAS_EPHEMERAL_M1J_HTTP_PG_CI==='true'||
      process.env.SAAS_EPHEMERAL_M1H_INTENT_CI==='true'||
      process.env.PGHOST!=='127.0.0.1'||
