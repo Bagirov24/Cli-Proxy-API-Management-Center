@@ -126,18 +126,21 @@ export function createSyntheticPkceClient({
         const callback=new URL(callbackUri);
         if(callback.origin!==new URL(redirect).origin||
            callback.pathname!=='/oauth/callback'||
-           callback.username||callback.password||callback.hash||
-           !exactParams(callback.searchParams,'code,state'))throw genericDeny();
+           callback.username||callback.password||callback.hash)throw genericDeny();
+        const isError=exactParams(callback.searchParams,'error,state');
+        if(!isError&&!exactParams(callback.searchParams,'code,state'))
+          throw genericDeny();
         const state=callback.searchParams.get('state');
-        const code=callback.searchParams.get('code');
-        if(!STATE.test(state??'')||!CODE.test(code??''))throw genericDeny();
+        if(!STATE.test(state??''))throw genericDeny();
         const index=digest(state);
         const item=pending.get(index);
         if(!item)throw genericDeny();
-        // Even an invalid code, network failure or IdP error MUST consume
-        // the state. Callback cannot be replayed or silently retried.
+        // Consume even an IdP error response, invalid code, network error
+        // or expired state. A browser callback can NEVER trigger retry.
         pending.delete(index);
-        if(item.expiresAt<=nowSeconds())throw genericDeny();
+        if(isError||item.expiresAt<=nowSeconds())throw genericDeny();
+        const code=callback.searchParams.get('code');
+        if(!CODE.test(code??''))throw genericDeny();
         const response=await fetch(tokenEndpoint,{
           method:'POST',redirect:'error',cache:'no-store',
           credentials:'omit',signal:AbortSignal.timeout(4000),
