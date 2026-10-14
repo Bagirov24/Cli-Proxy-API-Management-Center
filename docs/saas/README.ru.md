@@ -37,6 +37,7 @@
 | [M1D_PROJECT_AUTHORIZATION_FENCE_PG16.ru.md](M1D_PROJECT_AUTHORIZATION_FENCE_PG16.ru.md) | M1d Draft: reuse signed tenant revision FOR SHARE to serialize project COMMIT vs membership/tenant revoke, PostgreSQL16 CI-only |
 | [M1E_PG_PHYSICAL_DISCONNECT_CI.ru.md](M1E_PG_PHYSICAL_DISCONNECT_CI.ru.md) | M1e Draft: actual Bun.SQL PostgreSQL16 backend loss and cancellation before COMMIT, quarantined CI pool, no ghost audit or automatic retry |
 | [M1F_UNKNOWN_COMMIT_OPERATOR_LOCAL_EVIDENCE.ru.md](M1F_UNKNOWN_COMMIT_OPERATOR_LOCAL_EVIDENCE.ru.md) | M1f Draft: NOLOGIN operator + READ ONLY local project/audit evidence for UNKNOWN COMMIT, no resolution/retry or external WORM |
+| [M1G_ATTEMPT_UUID_BOUND_PROJECT_AUDIT_PG16.ru.md](M1G_ATTEMPT_UUID_BOUND_PROJECT_AUDIT_PG16.ru.md) | M1g Draft: CI-server-issued UUIDv4 linked to exactly one project audit event in same PG16 transaction; read-only attempt evidence, no retry/WORM |
 
 ## Что добавлено в код
 
@@ -1251,3 +1252,17 @@ an explicit READ COMMITTED READ ONLY transaction. Outcomes are
 No outcome proves the *specific original request* committed, authorizes
 retry or supplies an independent WORM. M1a–M1e signed PG16 acceptance
 remains mandatory. [M1f limits](M1F_UNKNOWN_COMMIT_OPERATOR_LOCAL_EVIDENCE.ru.md).
+
+
+## M1g — signed project COMMIT bound to CI-server UUIDv4 (CI-only)
+
+SQL024 adds an immutable, UNIQUE UUID→audit-event binding, written by
+a second AFTER ROW trigger after the existing M1d signed audit trigger,
+in the *same* PostgreSQL transaction. The pinned synthetic RS256
+Bun.SQL command wrapper mints UUIDv4 server-side before writer.execute,
+never from JWT or client parameters. A missing stamp and a committed UUID
+reused against another project fail closed, with 0 ghost audit rows.
+Supervised NOLOGIN reviewer can check only sanitized LOCAL attempt evidence
+in a READ COMMITTED READ ONLY transaction. No independent pre-COMMIT
+intent, token-bound signature, external WORM or exactly-once recovery.
+[M1g scope and blockers](M1G_ATTEMPT_UUID_BOUND_PROJECT_AUDIT_PG16.ru.md).
