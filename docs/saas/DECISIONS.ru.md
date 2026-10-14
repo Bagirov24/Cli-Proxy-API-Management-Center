@@ -1555,3 +1555,7 @@ session; M1k still checks its current revocation epoch before real COMMIT.
 M1n does NOT establish trust in a real IdP, durable CA rotation, revocation
 lists, mTLS or production cert policy. No Railway TLS changes.
 [M1n security scope](M1N_PINNED_HTTPS_IDP_PKCE_SESSION_PG16_CI.ru.md).
+
+## M1o — local TLS trust epochs cannot silently roll back
+
+**Decision, synthetic CI-only / production NOT approved.** Mock IdP accepts exactly one explicit trusted CA/leaf-SPKI pair per monotonic revision; updates require CAS expectedRevision and +1, deny retired pair reuse and in-flight rotation. A previous transport handle is unusable before any HTTP bytes. CA+SAN+SPKI are still verified by M1n for every TLS connection. Process restart loses trust history; future governed durable key registry, independent operator approval and real IdP PKI lifecycle remain SPEC. Separate Railway TLS deadline 2026-10-15 13:33 UTC requires operator action and independent TCP 8443 evidence. See [M1o scope](M1O_EXPLICIT_HTTPS_TRUST_EPOCH_PG16_CI.ru.md).
