@@ -373,19 +373,74 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
 
     // Forged callback state and an OAuth error must not provision any
     // session, touch PG or trigger a second code exchange.
-    const thirdParty=await authorize();
+    const thirdPartyContext=loginContextMode?client.openContext():null;
+    const thirdParty=await authorize(thirdPartyContext);
     const wrong=new URL(thirdParty);
     wrong.searchParams.set('state','A'.repeat(43));
-    await assert.rejects(()=>client.complete(wrong.href),
-      /M1m synthetic OAuth authorization denied/);
+    await assert.rejects(()=>loginContextMode
+      ?client.complete(thirdPartyContext,wrong.href)
+      :client.complete(wrong.href),loginContextMode
+      ?/M1p synthetic bound login context denied/
+      :/M1m synthetic OAuth authorization denied/);
     const failure=new URL(redirectUri);
     failure.searchParams.set('state',new URL(thirdParty).searchParams.get('state'));
     failure.searchParams.set('error','access_denied');
-    await assert.rejects(()=>client.complete(failure.href),
-      /M1m synthetic OAuth authorization denied/);
-    await assert.rejects(()=>client.complete(thirdParty),
-      /M1m synthetic OAuth authorization denied/);
+    await assert.rejects(()=>loginContextMode
+      ?client.complete(thirdPartyContext,failure.href)
+      :client.complete(failure.href),loginContextMode
+      ?/M1p synthetic bound login context denied/
+      :/M1m synthetic OAuth authorization denied/);
+    await assert.rejects(()=>loginContextMode
+      ?client.complete(thirdPartyContext,thirdParty)
+      :client.complete(thirdParty),loginContextMode
+      ?/M1p synthetic bound login context denied/
+      :/M1m synthetic OAuth authorization denied/);
     assert.equal(registry.size,3);
+
+    if(loginContextMode){
+      // Valid HTTPS+PKCE callbacks from D/E must never be accepted
+      // in the opposite server-held opaque login context.
+      const contextD=client.openContext(),contextE=client.openContext();
+      const callbackD=await authorize(contextD);
+      const callbackE=await authorize(contextE);
+      const beforeSwap=mockIssuer.stats().redeemedCodes;
+      await assert.rejects(()=>client.complete(contextD,callbackE),
+        /M1p synthetic bound login context denied/);
+      await assert.rejects(()=>client.complete(contextE,callbackD),
+        /M1p synthetic bound login context denied/);
+      assert.equal(mockIssuer.stats().redeemedCodes,beforeSwap);
+      assert.equal(registry.size,3);
+      client.cancelContext(contextE);
+      await assert.rejects(()=>client.complete(contextE,callbackE),
+        /M1p synthetic bound login context denied/);
+      const beforeEnrollment=pg(assert,
+        "SELECT COUNT(*) FROM saas_m1_private.project_session_epochs "+
+        "WHERE actor_id='actor-north' AND tenant_id='demo-north'");
+      let entered,release;
+      const reached=new Promise(resolve=>{entered=resolve;});
+      const resumed=new Promise(resolve=>{release=resolve;});
+      loginHold={enter:entered,resume:resumed};
+      const inflight=client.complete(contextD,callbackD);
+      try{
+        await Promise.race([reached,new Promise((_,reject)=>setTimeout(
+          ()=>reject(new Error('M1p token verifier pause not reached')),8000))]);
+        assert.equal(registry.size,3);
+        client.cancelContext(contextD);
+      }finally{
+        release();
+        loginHold=null;
+      }
+      await assert.rejects(inflight,/M1p synthetic bound login context denied/);
+      assert.equal(pg(assert,
+        "SELECT COUNT(*) FROM saas_m1_private.project_session_epochs "+
+        "WHERE actor_id='actor-north' AND tenant_id='demo-north'"),
+        beforeEnrollment,'cancelled callback cannot register PG session');
+      assert.equal(registry.size,3,'cancelled callback cannot bind bearer');
+      assert.equal(mockIssuer.stats().redeemedCodes,4,
+        'one code spent at issuer without PG session or retry');
+      await assert.rejects(()=>client.complete(contextD,callbackD),
+        /M1p synthetic bound login context denied/);
+    }
 
     // Critical race: an actual C-session bearer was verified twice by
     // M1a, passed HTTP authorization and fsynced a separate PRE-COMMIT
@@ -433,8 +488,14 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
     assert.equal((await post(b,project('signer-dead'))),503);
     assert.equal(driver.stats().reservations,held);
     assert.equal(evidence(assert,project('signer-dead')),'0:0:0');
-    assert.equal(mockIssuer.stats().redeemedCodes,3);
-    if(trustEpochMode) console.info(
+    assert.equal(mockIssuer.stats().redeemedCodes,loginContextMode?4:3);
+    if(loginContextMode) console.info(
+      'PASS M1p: real pinned HTTPS PKCE callbacks bound to opaque per-login contexts; '+
+      'cross-context swap 0 bearer/0 PG, cancelled verified token BEFORE '+
+      'PG enrollment 0 session; signed PG16 3/3/3 project/audit/UUID, '+
+      'C/A revoked 0 ghosts, B active, signer 503/0 reservations; no retry'
+    );
+    else if(trustEpochMode) console.info(
       'PASS M1o: explicit HTTPS CA/SPKI revision CAS and retired-pin deny BEFORE OAuth; '+
       'rotated HTTPS PKCE -> pinned JWT -> PG16 3/3/3 project/audit/UUID; '+
       'revoked C/A no ghosts, B active, signer 503, no retry/Railway changes'
