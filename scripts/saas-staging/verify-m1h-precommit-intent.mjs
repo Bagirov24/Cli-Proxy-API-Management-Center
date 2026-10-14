@@ -190,7 +190,8 @@ export async function verifyM1h({
       assert.ok(Number.isSafeInteger(backendPid) && backendPid>0);
       lostPid = backendPid;
       assert.equal(realPgFixture(assert,
-        "SELECT pg_terminate_backend(" + backendPid + ")::TEXT"), 't');
+        "SELECT CASE WHEN pg_terminate_backend(" + backendPid + ") " +
+        "THEN 'terminated' ELSE 'missing' END"), 'terminated');
     },
   });
   try {
