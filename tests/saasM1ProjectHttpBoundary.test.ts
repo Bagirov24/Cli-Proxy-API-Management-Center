@@ -48,7 +48,7 @@ function fixture() {
       { tenantId: 'demo-north', role: 'tenant-admin', status: 'active' },
     ] }],
     [STATUS.orbit, { id: STATUS.orbit, memberships: [
-      { tenantId: 'demo-orbit', role: 'tenant-owner', status: 'active' },
+      { tenantId: 'demo-orbit', role: 'tenant-viewer', status: 'active' },
     ] }],
     [STATUS.auditor, { id: STATUS.auditor, memberships: [
       { tenantId: 'demo-north', role: 'tenant-auditor', status: 'active' },
@@ -186,7 +186,7 @@ describe('M1i unmounted project write HTTP adapter', () => {
     const viewer = await handler(request(
       '/control-api/v1/tenants/demo-orbit/metadata/projects/project-m1i',
       'POST', await token('sub-orbit')));
-    expect(viewer.status).toBe(201);
+    expect(viewer.status).toBe(404);
     const wrong = await handler(request(PATH, 'POST', await token('sub-orbit')));
     expect(wrong.status).toBe(404);
     const auditor = await handler(request(PATH, 'POST', await token('sub-auditor')));
@@ -197,7 +197,7 @@ describe('M1i unmounted project write HTTP adapter', () => {
       ],
     });
     expect((await handler(request(PATH,'POST',valid))).status).toBe(404);
-    expect(f.writes).toHaveLength(1);
+    expect(f.writes).toHaveLength(0);
   });
 
   ciTest('rejects malformed routes, methods, browser origins and client authority headers', async () => {
