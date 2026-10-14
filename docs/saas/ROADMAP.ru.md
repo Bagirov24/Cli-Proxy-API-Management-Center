@@ -1497,7 +1497,20 @@ No live public endpoint, Ready/merge/deploy, SQL019, Railway mutation or retry/G
 - [x] Bounded loopback mock OIDC metadata/JWKS parser: pinned HTTPS issuer string, exact metadata/JWKS URI, RSA 2048/4096 RS256 public keys only; monotonic A→A+B→B, retired kid rollback and invalid-refresh quarantine.
 - [x] Add a separate opt-in M1l GitHub unit step and post-M1k disposable PG16 invocation: real HTTP JWT → trusted token fingerprint/session UUID → M1h fsync → M1k session lock and mandatory signed M1c/M1d/M1g audit.
 - [x] Add race of already-verified HTTP A token vs issuer A retirement and committed DB session A revoke BEFORE PG reservation: 404 and 0/0/0; B remains usable; independent SQL acceptance checks 5 successful PG COMMITs + 1 rolled-back attempt.
-- [ ] Verify 4/4 GitHub Actions on exact final M1l HEAD, both JS and SQL log markers `PASS M1l`, and no weakening of older M1a–M1k tests.
+- [x] Verified exact M1l HEAD `c141b3a8`, 4/4 SUCCESS with opt-in JWKS tests and dual real PG16 `PASS M1l` plus M1a–M1k regressions.
 - [ ] Real OIDC/SSO, refresh-token/session revocation lifecycle, key trust on TLS, distributed IAM, external WORM, production pooling, network partition DURING COMMIT, CPA/tenant onboarding, review/merge/deploy are NOT implemented.
 
 CI mock is not a production login provider or a general JWKS client. [M1l review](M1L_SYNTHETIC_OIDC_JWKS_ROTATION_SESSION_PG16_CI.ru.md).
+
+
+## M1m — synthetic one-shot OAuth code+PKCE S256 → signed PG16 sessions (STACKED DRAFT / CI-only)
+
+- [x] Parent M1l PR №15 HEAD `c141b3a8` verified 4/4 SUCCESS with real mock OIDC/JWKS and signed PG16 session revocation.
+- [x] Explicit CI-only synthetic OAuth client and local issuer: state + S256 PKCE, fixed client ID/redirect/issuer, one-time authorization code, bounded token response; callback/error always consume private state before token exchange.
+- [x] Real pinned JWKS RS256 access token issuer+subject → trusted actor → private server-issued PG16 UUID/epoch after successful mock code exchange; no JWT role/sid impersonation.
+- [x] Separate post-M1l PG16 acceptance: 3 independently authorized mock logins A/B/C, real HTTP→M1h fsync→M1k session fence/M1c audit/M1g UUID; revoke C in-flight before PG and A afterward, B unaffected; independent SQL checks 3/3/3 and no ghost rows.
+- [ ] Verify 4/4 GitHub Actions on exact final M1m HEAD, including separate opt-in PKCE tests and dual PG16 PASS M1m markers.
+- [ ] Real IdP HTTPS/PKCE browser callback, token/session refresh/rotation, distributed state, off-host WORM, production pool/DB, network partition DURING COMMIT, CPA/onboarding and codeowner/security approval still BLOCKED.
+
+No public login, merge/Ready/deploy, SQL019, Railway mutation or automated retry/reissue/GC.
+[M1m review](M1M_SYNTHETIC_PKCE_AUTH_CODE_SESSION_PG16_CI.ru.md).
