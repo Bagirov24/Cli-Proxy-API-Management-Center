@@ -819,3 +819,17 @@ production migrations, physical discard, external WORM/high-water or
 operator UNKNOWN COMMIT settlement. All merge/production gates remain
 BLOCKED pending independent reviews and explicit approval.
 [M1m scope](M1M_SYNTHETIC_PKCE_AUTH_CODE_SESSION_PG16_CI.ru.md).
+
+
+## M1n — pinned ephemeral HTTPS IdP trust (production gate НЕ пройден)
+
+Mock OAuth issuer traffic is no longer plaintext in the dedicated CI-only
+M1n scenario: real TLS chain validation, SAN hostname and explicit SPKI pin
+are required on each ephemeral local connection. Adversarial wrong CA,
+wrong SAN, changed leaf key, downgrade and untrusted JWKS checks fail closed.
+Successful one-time PKCE token still maps to current signed PG16 UUID/session
+and mandatory audit; revoked sessions cannot write before COMMIT.
+This is NOT a trusted staging or production IdP, PKI lifecycle, deployed
+HTTPS callback/login, refresh/revoke cookies, external immutable trust root,
+network interruption DURING COMMIT, CPA onboarding or release approval.
+[Acceptance and blocked gates](M1N_PINNED_HTTPS_IDP_PKCE_SESSION_PG16_CI.ru.md).
