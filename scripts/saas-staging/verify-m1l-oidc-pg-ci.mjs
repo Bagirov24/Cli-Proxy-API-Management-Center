@@ -157,7 +157,14 @@ export async function verifyM1l({assert,makeDriver,actors}) {
         if(!identity)return null;
         const privateSession=sessions.get(sha256(token));
         const ctx=context.getStore();
-        if(!privateSession||!ctx||ctx.session)return null;
+        // The existing M1a boundary deliberately re-verifies the same
+        // bearer after actor lookup. Permit that exact immutable session
+        // only; a request cannot change UUID/epoch between both checks.
+        if(!privateSession||!ctx ||
+           (ctx.session && (ctx.session.id!==privateSession.id ||
+             ctx.session.revision!==privateSession.revision ||
+             ctx.session.actorId!==privateSession.actorId ||
+             ctx.session.tenantId!==privateSession.tenantId))) return null;
         ctx.session=privateSession;
         return identity;
       },
