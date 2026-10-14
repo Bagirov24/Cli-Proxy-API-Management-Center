@@ -292,10 +292,12 @@ export function createSyntheticPkceIssuer({
            url.searchParams.get('code_challenge_method')!=='S256'||
            !STATE.test(url.searchParams.get('state')??'')||
            !STATE.test(url.searchParams.get('code_challenge')??'')||
+           (nonceMode&&!STATE.test(url.searchParams.get('nonce')??''))||
            codes.size>=16) return fail();
         const code=random();
         codes.set(digest(code),{
           challenge:url.searchParams.get('code_challenge'),
+          ...(nonceMode?{nonce:url.searchParams.get('nonce')}:{}),
           expiresAt:nowSeconds()+90,
         });
         minted++;
@@ -341,9 +343,28 @@ export function createSyntheticPkceIssuer({
           const input=head+'.'+claims;
           const signature=await crypto.subtle.sign(
             'RSASSA-PKCS1-v1_5',privateKey,bytes(input));
+          let idToken;
+          if(nonceMode){
+            // Distinct signed CI-only ID token. OAuth client audience,
+            // original authorization nonce and access token subject
+            // are verified separately before mock PG enrollment.
+            const idHeader=Buffer.from(JSON.stringify({
+              alg:'RS256',kid,typ:'JWT',
+            })).toString('base64url');
+            const idClaims=Buffer.from(JSON.stringify({
+              iss:issuer,aud:clientId,sub:subject,nonce:entry.nonce,
+              iat:nowSeconds()-10,exp:nowSeconds()+120,
+            })).toString('base64url');
+            const idSigningInput=idHeader+'.'+idClaims;
+            const idSignature=await crypto.subtle.sign(
+              'RSASSA-PKCS1-v1_5',privateKey,bytes(idSigningInput));
+            idToken=idSigningInput+'.'+
+              Buffer.from(idSignature).toString('base64url');
+          }
           spent++;
           return Response.json({
             access_token:input+'.'+Buffer.from(signature).toString('base64url'),
+            ...(nonceMode?{id_token:idToken}:{}),
             token_type:'Bearer',expires_in:120,
           },{headers:{'Cache-Control':'no-store'}});
         }catch{return fail();}
