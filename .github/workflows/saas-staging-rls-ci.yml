@@ -14,6 +14,7 @@ on:
       - 'tests/sql/saas_m1_physical_disconnect.test.sql'
       - 'tests/sql/saas_m1_unknown_commit_readonly_review.test.sql'
       - 'tests/sql/saas_m1_attempt_bound_audit.test.sql'
+      - 'tests/sql/saas_m1_http_signed_pg_e2e.test.sql'
       - 'tests/sql/saas_m1_project_authorization_fence.test.sql'
       - 'tests/sql/saas_e2e_grants_fixture.test.sql'
       - 'tests/sql/saas_authorization_coverage.test.sql'
@@ -448,6 +449,32 @@ jobs:
             SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
             SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
             bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
+          # M1j (stacked Draft): a NEW, SEPARATE ephemeral invocation,
+          # after all M1a–M1h acceptance. Actual 127.0.0.1 HTTP request
+          # -> M1i pinned synthetic RS256/tenant RBAC -> M1h fsynced
+          # Ed25519 precommit intent -> signed M1d PG16 transaction,
+          # mandatory M1c audit and M1g UUID binding. No public listener,
+          # production creds or network partition DURING COMMIT.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          timeout --signal=TERM --kill-after=5s 90s env \
+            SAAS_EPHEMERAL_M1_PG_CI=true \
+            SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
+            SAAS_EPHEMERAL_M1_HTTP_CI=true \
+            SAAS_EPHEMERAL_M1J_HTTP_PG_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1_http_signed_pg_e2e.test.sql \
+            > /tmp/saas-m1j-real-http-pg-acceptance.log 2>&1 || {
+              tail -n 110 /tmp/saas-m1j-real-http-pg-acceptance.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-m1j-real-http-pg-acceptance.log
           unset runner_password scope_key
 
       - name: Verify staging authorization epochs and concurrent revocation
