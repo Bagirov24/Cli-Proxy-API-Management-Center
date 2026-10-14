@@ -1423,8 +1423,20 @@ Railway sandbox old mTLS service was independently observed redeployed on an ine
 - [x] Verified parent M1e Draft PR №8 `738e0e19` has 4/4 GitHub Actions SUCCESS; no parent merge or source mutation.
 - [x] New guarded SQL023 (NOLOGIN owner/operator, FORCE RLS SELECT) with READ COMMITTED READ ONLY local project+audit version-chain review.
 - [x] Negative SQL acceptance added: missing/in-flight evidence is inconclusive, mismatched actor/operation/version forces STOP; regular M1 roles cannot SELECT or EXECUTE.
-- [ ] Verify 4/4 GitHub Actions SUCCESS on M1f exact final HEAD, especially real disposable PG16 acceptance and SQL023 replay.
+- [x] Confirmed 4/4 GitHub Actions SUCCESS on M1f HEAD `ad0cc9f4`, including real PG16 SQL023 acceptance and replay.
 - [ ] Immutable per-request operation ID, independent WORM, manual human signoff, real network partition during COMMIT and production-grade physical pool discard remain BLOCKED.
 
 No HTTP/SaaS server integration or OAuth/CPA/keys, no automatic retry,
 production/Railway/SQL019 or delivery/GC. [M1f evidence and limits](M1F_UNKNOWN_COMMIT_OPERATOR_LOCAL_EVIDENCE.ru.md).
+
+
+## Stage M1g — attempt UUID → same-COMMIT signed audit (STACKED DRAFT / disposable PG16)
+
+- [x] Base exact M1f Draft PR №9 `ad0cc9f4` has 4/4 GitHub Actions SUCCESS; no parent merge or deploy.
+- [x] New guarded staging SQL024 (NOLOGIN attempt owner, FORCE RLS, immutable UUIDv4 PK → unique M1c/M1d audit event FK); keeps existing M1d signed trigger untouched.
+- [x] CI-only Bun wrapper mints per-write UUIDv4 before signed write; tests committed UUID reuse, legacy missing stamp, CAS/disable, lost ACK after real PG COMMIT and NOLOGIN read-only attempt review.
+- [ ] Verify new M1g exact final HEAD 4/4 GitHub Actions, in particular real disposable PostgreSQL16 SQL024 and adversarial acceptance.
+- [ ] Future: independent pre-COMMIT operation intent, cryptographic attempt provenance bound to actor/tenant/version, durable external WORM/human adjudication, network partition during COMMIT — BLOCKED.
+
+No real HTTP/API, Railway change, production PostgreSQL/SQL019, automatic retry/reissue/delivery/GC.
+[M1g contract](M1G_ATTEMPT_UUID_BOUND_PROJECT_AUDIT_PG16.ru.md).
