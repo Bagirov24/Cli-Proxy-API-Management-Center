@@ -52,6 +52,15 @@ Root PR #3 индивидуально содержит **173 файла, 41 426 
 
 На независимом `integration/saas-ci-only-base-20261014` такой `push` по имени ветки **не совпадает** с указанным trigger, поэтому эта review base позволяет выполнять review и будущий одобренный integration-only merge без существующего автоматического publish step. Однако отсутствие иных внешних branch watchers здесь не доказано.
 
+## 3b. ВТОРОЙ hard blocker: Railway production Core отслеживает custom-no-apikey-fun
+
+Read-only проверка Railway подтверждает:
+- Project `cliproxyapi-personal` / environment **production** / service **`cliproxyapi-core`**: `config.source.repo=Bagirov24/Cli-Proxy-API-Management-Center`, `config.source.branch=custom-no-apikey-fun`; latest deployment status SUCCESS (2026-10-10). Source commit, записанный в Railway, исторический; это не подтверждение свежего тестирования предлагаемой ветки.
+- Service `api-gateway` в том же project production отслеживает **другую** ветку `api-gateway`, latest deployment SUCCESS.
+- Доступное read-only представление `describe_service` **не подтверждает, включён ли automatic redeploy** на push в tracked branch, и не позволяет считать branch push безопасным.
+
+Пока оператор не проверил и не согласовал freeze/disable auto deploy и release workflow, **любой прямой merge/push в `custom-no-apikey-fun` запрещён**: это может привести не только к автоматическому изменению GitHub Release, но и к незапланированному Railway production Core redeploy. Текущая изолированная `integration/saas-ci-only-base-20261014` НЕ является source branch этих Railway production services. Никаких Railway production reads of secrets, changes, deploys или рестартов не выполнялось.
+
 ## 4. Критичные security-review поверхности
 
 1. **CI and runtime separation:** `.github/workflows/*`, `vite.config.ts`, `src/App.tsx`, `src/router/MainRoutes.tsx`, `MainLayout.tsx`. Проверить production HTML неизменность, все default-off guards, отдельный synthetic browser path, отсутствие credentials в сборке.
@@ -87,7 +96,7 @@ Read-only Railway `cpa-gateway-sandbox / sandbox / saas-highwater-staging-only`:
 | **Открыть Draft aggregate integration PR в isolated base** | **YES** | Только refs+документ, без merge или deploy |
 | **Считать source 4/4 CI доказательством CI-only behaviour** | **YES, narrowly** | На зафиксированном M1q source SHA; это не review approval |
 | **Сделать первый code merge в isolated integration branch** | **NO YET** | New 4/4 success на aggregate HEAD, независимое codeowner/security approval, allowlist/default-off review, отсутствие запретных сторонних actions |
-| **Merge прямо в `custom-no-apikey-fun`** | **BLOCKED** | Разрешить auto-release workflow side effect сначала; одобрить отдельным решением release policy |
+| **Merge прямо в `custom-no-apikey-fun`** | **BLOCKED** | Разрешить auto-release workflow side effect И отдельно проверить/заморозить возможный Railway production Core autodeploy source branch; одобрить отдельными решениями release и deployment policy |
 | **Merge в `main`** | **BLOCKED** | Сначала согласовать расхождения веток, отдельный fresh CI/security review против `main` |
 | **Production deploy, real OAuth/CPA/keys/PG** | **BLOCKED** | Полноценная backend/identity/network/security/ops готовность, external audit/commit proof, Railway PKI, explicit approval |
 
@@ -97,4 +106,4 @@ Read-only Railway `cpa-gateway-sandbox / sandbox / saas-highwater-staging-only`:
 
 Начать в новых, небольших vertical slice PR **на изолированной интеграционной базе**, не продолжая бесконечную последовательность M1r/M1s PoC: (1) server-only multi-tenant actor/session authority с trusted IdP в staging, (2) least-privilege PostgreSQL migration + real connection lifecycle/commit uncertainty, (3) protected tenant/project management HTTP endpoints с object-level RBAC и mandatory audit, (4) CPA/Gateway Vault-backed network/egress integrations с fail-closed, (5) frontend и эксплуатационные SLO/recovery и billing. Каждый этап проходит реальные integration tests с нулём случайных production secrets/traffic.
 
-**Текущие запреты:** no Ready, no merge, no `custom-no-apikey-fun` push, no GitHub Release update, no SQL019/production PG, no Railway service/cert/signer/journal/volume writes, no live keys, no automatic UNKNOWN COMMIT retry/reissue/archive/GC. `authorizationGranted=false`, `gcPermitted=false`.
+**Текущие запреты:** no Ready, no merge, no `custom-no-apikey-fun` push, no GitHub Release update, no Railway production Core redeploy, no SQL019/production PG, no Railway service/cert/signer/journal/volume writes, no live keys, no automatic UNKNOWN COMMIT retry/reissue/archive/GC. `authorizationGranted=false`, `gcPermitted=false`.
