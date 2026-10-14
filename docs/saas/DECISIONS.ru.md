@@ -1459,3 +1459,19 @@ so its presence NEVER means PG committed and never authorizes retry.
 Without off-host trust roots, durable public-key pin and independent WORM,
 this is neither recovery authority nor production idempotency.
 [M1h limitations](M1H_PRECOMMIT_SIGNED_INTENT_CI.ru.md).
+
+
+## M1i — distinguish unmounted validated HTTP parsing from SaaS API release
+
+The M1a command boundary can reject untrusted bearer/actor/membership, but
+it had no Fetch Request transport. M1i adds one default-off function that
+maps bounded project POST/PATCH/DELETE requests to that existing boundary,
+refusing cross-site origin, cookie/session fallback, client-issued attempt
+IDs, extra DTO fields and unknown transaction outcomes. Only GitHub
+synthetic pinned RS256 + an in-memory writer are used in the new HTTP test.
+
+The module is NOT wired into the running UI, proxy, Railway, live OIDC
+or a PostgreSQL production pool; no public route is created by its merge.
+A real HTTP→signed transaction→independent intent integration still
+requires separate code/security approval and production DB safety proof.
+[M1i decision](M1I_UNMOUNTED_PROJECT_WRITE_HTTP_CI.ru.md).
