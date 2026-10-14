@@ -1445,3 +1445,17 @@ independent WORM or safe idempotent reissue. A compromised SQL session
 can set custom GUCs; a prior aborted attempt has no persisted UUID.
 Only READ ONLY operator inspection and STOP outcomes are allowed.
 [M1g limits](M1G_ATTEMPT_UUID_BOUND_PROJECT_AUDIT_PG16.ru.md).
+
+
+## M1h — sign/fsync local intent BEFORE PG, but never auto-retry (PROPOSED)
+
+M1g UUID→audit is persisted only at PG COMMIT. M1h introduces a separate
+CI-only signer process which signs and fsyncs a local, hashed Ed25519
+precommit intent containing the server UUID and actor/tenant/project/op.
+An ACK after fsync is mandatory before signed Bun.SQL write. Offline
+validation uses only an ephemeral transient public-key pin and expected
+count, both on the same runner. A signed intent may survive a PG rollback,
+so its presence NEVER means PG committed and never authorizes retry.
+Without off-host trust roots, durable public-key pin and independent WORM,
+this is neither recovery authority nor production idempotency.
+[M1h limitations](M1H_PRECOMMIT_SIGNED_INTENT_CI.ru.md).
