@@ -1471,8 +1471,21 @@ Merge only by explicit code-owner/security/operator approval; no production, SQL
 - [x] Parent M1i Draft PR №12 HEAD `7b1d668f` has Main/PG16/Demo/Chromium 4/4 SUCCESS.
 - [x] Reuse unmounted M1i fixed Request/Response handler, pinned synthetic RS256 trusted directory, M1a actor/tenant checks, signed M1d PostgreSQL16, M1c audit, M1g UUID binding and M1h fsynced precommit Ed25519 signer on one ephemeral runner.
 - [x] Real HTTP + PG16 adversarial tests: create/CAS rename/disable, forged bearer/actor/headers denied, revoked current PG membership, COMMIT lost ACK 503 with 1/1/1, physical pre-COMMIT disconnect 503 with 0/0/0, dead witness with 0 reservations; independent SQL acceptance.
-- [ ] Require 4/4 SUCCESS on **exact final M1j HEAD** including explicit `PASS M1j` Bun.SQL and PG16 SQL log lines; no parent success substitution.
+- [x] Verified 4/4 SUCCESS on M1j exact HEAD `90d0c72c`, including explicit Bun E2E and independent PG16 SQL `PASS M1j` logs.
 - [ ] Off-host independent WORM/high-water, real OIDC/session issuer, production signed PG pool and network partition DURING COMMIT, real deployed API/CPA/tenant provisioning and release review still BLOCKED.
 
 No merge/Ready/deploy/SQL019, Railway signer/journal/volume change or automatic retry.
 [M1j verification and limits](M1J_REAL_HTTP_SIGNED_PG16_INTEGRATION_CI.ru.md).
+
+
+## M1k — synthetic per-session epoch + signed PG16 revoke/COMMIT ordering (STACKED DRAFT / CI-only)
+
+- [x] Verified parent M1j Draft PR №13 HEAD `90d0c72c` has 4/4 GitHub Actions SUCCESS, remains unmerged.
+- [x] Guarded SQL025: no-login FORCE-RLS server session UUID/revision and transaction-bound proof, current session SELECT FOR SHARE before M1d tenant epoch fence, mandatory post-audit write trigger, no legacy bypass.
+- [x] Server-side pinned RS256 token SHA256 fingerprint bound to UUID/epoch in separate CI process context; multiple sessions one actor, token/session revocation, rotate stale epoch and signed HTTP write-first/revoke-first PostgreSQL lock races.
+- [x] Independent SQL025 acceptance: no ghost project/audit, least privileges, distinct session revision in M1c/M1g audit transaction, denied resurrect/delete, idempotent SQL025 replay.
+- [ ] Require all four GitHub Actions SUCCESS on exact final M1k HEAD with explicit Bun E2E and SQL `PASS M1k` log lines.
+- [ ] Production OIDC, true token/session binding, multi-replica revocation, off-host WORM/high-water, network partitions DURING COMMIT, production pool and migration remain BLOCKED.
+
+No live public endpoint, Ready/merge/deploy, SQL019, Railway mutation or retry/GC.
+[M1k contract](M1K_SESSION_EPOCH_REVOCATION_PG16_CI.ru.md).
