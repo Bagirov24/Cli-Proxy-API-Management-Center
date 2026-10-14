@@ -43,6 +43,7 @@
 | [M1J_REAL_HTTP_SIGNED_PG16_INTEGRATION_CI.ru.md](M1J_REAL_HTTP_SIGNED_PG16_INTEGRATION_CI.ru.md) | M1j Draft: full CI-only localhost HTTP → pinned RS256 → Ed25519 fsynced intent → signed PG16 project/audit/UUID same COMMIT, fail closed |
 | [M1K_SESSION_EPOCH_REVOCATION_PG16_CI.ru.md](M1K_SESSION_EPOCH_REVOCATION_PG16_CI.ru.md) | M1k Draft: server-managed synthetic token-fingerprint session UUID and revision, signed PG16 FOR SHARE per-session revoke vs COMMIT races; CI-only |
 | [M1L_SYNTHETIC_OIDC_JWKS_ROTATION_SESSION_PG16_CI.ru.md](M1L_SYNTHETIC_OIDC_JWKS_ROTATION_SESSION_PG16_CI.ru.md) | M1l Draft: fixed loopback synthetic OIDC discovery/JWKS A→A+B→B, revoked old signing key + PG16 session race, CI-only no real SSO |
+| [M1M_SYNTHETIC_PKCE_AUTH_CODE_SESSION_PG16_CI.ru.md](M1M_SYNTHETIC_PKCE_AUTH_CODE_SESSION_PG16_CI.ru.md) | M1m Draft: synthetic one-shot authorization code + PKCE S256/state → pinned JWKS + private PG16 session UUID and real signed project/audit COMMIT, no live OAuth |
 
 ## Что добавлено в код
 
@@ -1328,3 +1329,16 @@ passed bearer authentication but is delayed before PG reserves a signed
 session is rejected when the mock issuer retires A and PostgreSQL revokes
 that session. No real IdP, refresh/login, distributed trust, external
 WORM or production listener. [M1l limits](M1L_SYNTHETIC_OIDC_JWKS_ROTATION_SESSION_PG16_CI.ru.md).
+
+
+## M1m — synthetic OAuth authorization-code PKCE + signed PG16 session (CI-only)
+
+A separate disposable mock OAuth issuer accepts one-time authorization
+code + S256 verifier and pinned client/redirect; a server-side callback
+consumes state even on error before issuing any session. Pinned M1l RS256
+validation and a server-only issuer/subject directory create private PG16
+session UUID/revision. Real signed project HTTP proves session-specific
+revocation after a successful login, and M1h journal before COMMIT; none
+of this mounts public OAuth login, external HTTPS IdP, PKCE cookies,
+refresh tokens, independent WORM or production recovery.
+[M1m limits](M1M_SYNTHETIC_PKCE_AUTH_CODE_SESSION_PG16_CI.ru.md).
