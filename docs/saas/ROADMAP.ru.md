@@ -1526,3 +1526,10 @@ No public login, merge/Ready/deploy, SQL019, Railway mutation or automated retry
 - [ ] External trusted HTTPS IdP/real consent+callback/PKCE cookie, token refresh/logout, distributed durable session store, independent off-host WORM, during-COMMIT network partitions, release approval, CPA/onboarding remain BLOCKED.
 
 No merge, Ready, deploy, SQL019, Railway signer/volume/cert rotation, live CPA keys or auto retries. [M1n gates](M1N_PINNED_HTTPS_IDP_PKCE_SESSION_PG16_CI.ru.md).
+
+## M1o — explicit, no-fallback HTTPS IdP CA/SPKI trust epochs (CI-only)
+
+- [x] Single active CA/SPKI, monotonic CAS revision, stale handles and retired-pair replay fail closed before network.
+- [x] Opt-in real HTTPS adversarial tests and ninth disposable PG16 E2E with independent SQL acceptance under m1o- project IDs.
+- [ ] Verified 4/4 GitHub Actions and independent PASS M1o markers on final SHA (see Draft PR #18; never borrow previous SHA).
+- [ ] Production operator-governed PKI trust lifecycle, persistent anti-rollback and independent CA/cert revocation remain OPEN. No Railway TLS changes.
