@@ -426,7 +426,6 @@ jobs:
           timeout --signal=TERM --kill-after=5s 90s env \
             SAAS_EPHEMERAL_M1_PG_CI=true \
             SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
-            SAAS_EPHEMERAL_M1H_INTENT_CI=true \
             SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
             SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
             bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
@@ -437,6 +436,18 @@ jobs:
               exit 1
             }
           tail -n 6 /tmp/saas-m1g-attempt-acceptance.log
+          # M1h runs only AFTER exact-count M1g SQL acceptance. The driver
+          # now selects a distinct third CI-only fault mode, preserving the
+          # original M1g test fixture and its mandatory four UUID bindings.
+          # This exercises a separate local NO-PG-credentials Ed25519 signer
+          # which fsyncs BEFORE signed PG writes. NOT off-host WORM.
+          timeout --signal=TERM --kill-after=5s 90s env \
+            SAAS_EPHEMERAL_M1_PG_CI=true \
+            SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
+            SAAS_EPHEMERAL_M1H_INTENT_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
           unset runner_password scope_key
 
       - name: Verify staging authorization epochs and concurrent revocation
