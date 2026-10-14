@@ -41,6 +41,7 @@
 | [M1H_PRECOMMIT_SIGNED_INTENT_CI.ru.md](M1H_PRECOMMIT_SIGNED_INTENT_CI.ru.md) | M1h Draft: separate no-PG-credential Ed25519 local fsync intent before signed PG COMMIT; offline tamper/rollback denial, NOT off-host/WORM |
 | [M1I_UNMOUNTED_PROJECT_WRITE_HTTP_CI.ru.md](M1I_UNMOUNTED_PROJECT_WRITE_HTTP_CI.ru.md) | M1i Draft: default-off unmounted POST/PATCH/DELETE project HTTP adapter, pinned RS256 + trusted writer boundary, CI-only loopback |
 | [M1J_REAL_HTTP_SIGNED_PG16_INTEGRATION_CI.ru.md](M1J_REAL_HTTP_SIGNED_PG16_INTEGRATION_CI.ru.md) | M1j Draft: full CI-only localhost HTTP → pinned RS256 → Ed25519 fsynced intent → signed PG16 project/audit/UUID same COMMIT, fail closed |
+| [M1K_SESSION_EPOCH_REVOCATION_PG16_CI.ru.md](M1K_SESSION_EPOCH_REVOCATION_PG16_CI.ru.md) | M1k Draft: server-managed synthetic token-fingerprint session UUID and revision, signed PG16 FOR SHARE per-session revoke vs COMMIT races; CI-only |
 
 ## Что добавлено в код
 
@@ -1303,3 +1304,15 @@ post-COMMIT lost ACK 503 with project/audit/attempt 1/1/1, pre-COMMIT
 backend loss 503 with 0/0/0 and dead signer 503 with 0 PG reservations.
 No public API, independent WORM, real OIDC or safe retry.
 [M1j contract](M1J_REAL_HTTP_SIGNED_PG16_INTEGRATION_CI.ru.md).
+
+
+## M1k — server-bound per-session epoch and signed PostgreSQL16 revocation fence (CI-only)
+
+Two signed synthetic RS256 tokens of the same actor map to distinct
+server-held UUID/epoch records. A separate guarded SQL025 locks the
+specific PostgreSQL16 session FOR SHARE in the signed write transaction,
+then the existing tenant revision; a mandatory last trigger rejects
+legacy writes that skip it. A session revoke/epoch bump blocks stale HTTP
+writes without revoking a different session. Real revoker-before and
+write-before COMMIT lock orders are tested; no real OIDC, external session
+root, WORM or automatic retry. [M1k gates](M1K_SESSION_EPOCH_REVOCATION_PG16_CI.ru.md).
