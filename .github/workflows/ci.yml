@@ -30,3 +30,11 @@ jobs:
 
       - name: Verify
         run: bun run verify
+
+      # Deliberately separate opt-in fixture. The unmounted project write
+      # HTTP adapter may be constructed ONLY on a GitHub CI runner with this
+      # explicit flag; no deploy, SQL019 or real tenant secrets.
+      - name: Verify M1i synthetic pinned RS256 project HTTP loopback
+        env:
+          SAAS_EPHEMERAL_M1_HTTP_CI: 'true'
+        run: bun test tests/saasM1ProjectHttpBoundary.test.ts
