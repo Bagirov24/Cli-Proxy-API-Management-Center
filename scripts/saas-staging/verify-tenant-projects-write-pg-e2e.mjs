@@ -139,7 +139,7 @@ export async function verifyTenantProjectWriteHttpPg({
   assert.match(trustedFingerprint,/^[0-9a-f]{64}$/);
   // psql -t/-A still prints the DML command tag after RETURNING on PG16.
   // Match the specific returned row *and* the successful insert tag.
-  assert.match(fixtureSql(assert,
+  assert.equal(fixtureSql(assert,
     "INSERT INTO saas_m1_private.project_session_epochs "+
     "(session_id,actor_id,tenant_id,revision,status) VALUES ('"+
     sessionId+"'::uuid,'actor-north','demo-north',1,'active') "+
