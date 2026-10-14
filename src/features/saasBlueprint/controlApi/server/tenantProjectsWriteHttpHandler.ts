@@ -7,8 +7,9 @@
  *
  * 1. Verify bearer issuer/subject and current server-owned actor + tenant RBAC.
  * 2. Mint one server-only UUIDv4 attempt for each authorized write.
- * 3. Obtain a durable fsynced pre-COMMIT intent receipt BEFORE invoking PG.
- * 4. Delegate signed transaction scope, DB membership, project CAS, mandatory
+ * 3. Resolve server-held per-bearer session UUID+epoch (PG25 required).
+ * 4. Obtain durable fsynced pre-COMMIT intent receipt BEFORE invoking PG.
+ * 5. Delegate signed transaction scope, DB membership, project CAS, mandatory
  *    audit and attempt binding to the injected restricted PG writer.
  * 5. Never retry after an uncertain COMMIT. A 503 is NOT proof of rollback.
  *
@@ -45,13 +46,31 @@ export interface TenantProjectSignedWriter {
    */
   execute(input: Readonly<M1ProjectMutation & {
     readonly attemptId: string;
+    /** PG25 requires this EXACT locked session in the same signed tx. */
+    readonly sessionId: string;
+    readonly sessionRevision: number;
   }>): Promise<boolean>;
+}
+
+/** Private per-bearer registry: never receives a raw JWT or untrusted ID. */
+export interface TenantProjectWriteSessionAuthority {
+  resolve(input: Readonly<{
+    readonly actorId: string;
+    readonly tenantId: string;
+    /** SHA-256 of the verified access JWT, not caller-supplied jti. */
+    readonly tokenFingerprint: string;
+  }>, signal: AbortSignal): Promise<{
+    readonly sessionId: string;
+    readonly sessionRevision: number;
+  } | null>;
 }
 export interface TenantProjectsWriteHttpDependencies
   extends Omit<M1ProjectDependencies, 'writer'> {
   /** Server configured, never selected from Host/X-Forwarded-* request. */
   readonly expectedOrigin: string;
   readonly journal: TenantProjectPrecommitJournal;
+  /** Mandatory after SQL025: signed PG session proof must exist per mutation. */
+  readonly sessions: TenantProjectWriteSessionAuthority;
   readonly writer: TenantProjectSignedWriter;
 }
 
@@ -175,6 +194,7 @@ export function createTenantProjectsWriteHttpHandler(
       typeof deps.directory?.resolveActorId !== 'function' ||
       typeof deps.actors?.lookup !== 'function' ||
       typeof deps.journal?.prepare !== 'function' ||
+      typeof deps.sessions?.resolve !== 'function' ||
       typeof deps.writer?.execute !== 'function' ||
       (deps.newCorrelationId !== undefined &&
        typeof deps.newCorrelationId !== 'function')) {
@@ -229,11 +249,32 @@ export function createTenantProjectsWriteHttpHandler(
         writer:{
           async execute(input) {
             if (request.signal.aborted) throw new Error('Request cancelled');
-            const attemptId = crypto.randomUUID();
-            if (!UUIDV4.test(attemptId) ||
-                (input.operation !== 'create' && input.operation !== 'rename')) {
+            if (input.operation !== 'create' && input.operation !== 'rename')
               throw new Error('Unsupported backend operation');
+            // The bearer was independently verified twice by the M1 actor
+            // boundary BEFORE this private writer can run. The token's own
+            // fingerprint, NOT its jti nor any request header, indexes the
+            // server-owned session registry. SQL025 rechecks status/epoch
+            // under FOR SHARE in the SAME signed PG16 write transaction.
+            const bytes = new Uint8Array(await crypto.subtle.digest(
+              'SHA-256', new TextEncoder().encode(bearer[1])
+            ));
+            const tokenFingerprint = Array.from(bytes,b=>
+              b.toString(16).padStart(2,'0')).join('');
+            if (request.signal.aborted) throw new Error('Request cancelled');
+            const session = await deps.sessions.resolve(Object.freeze({
+              actorId:input.scope.actorId,tenantId:input.scope.tenantId,
+              tokenFingerprint,
+            }),request.signal);
+            if (request.signal.aborted || !session ||
+                !UUIDV4.test(session.sessionId) ||
+                !Number.isSafeInteger(session.sessionRevision) ||
+                session.sessionRevision < 1 ||
+                session.sessionRevision >= Number.MAX_SAFE_INTEGER) {
+              throw new Error('Trusted project session missing or stale');
             }
+            const attemptId = crypto.randomUUID();
+            if (!UUIDV4.test(attemptId)) throw new Error('Invalid server attempt');
             const entry=Object.freeze({
               attemptId,actorId:input.scope.actorId,
               tenantId:input.scope.tenantId,
@@ -251,7 +292,10 @@ export function createTenantProjectsWriteHttpHandler(
             }
             // Exact issued UUID passed to PG M1g audit binding; failures,
             // including UNKNOWN after COMMIT, MUST NOT be retried here.
-            return deps.writer.execute(Object.freeze({...input,attemptId}));
+            return deps.writer.execute(Object.freeze({
+              ...input,attemptId,
+              sessionId:session.sessionId,sessionRevision:session.sessionRevision,
+            }));
           },
         },
       });
