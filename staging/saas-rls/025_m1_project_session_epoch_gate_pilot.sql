@@ -59,6 +59,16 @@ DROP POLICY IF EXISTS m1k_session_owner_select
 CREATE POLICY m1k_session_owner_select
   ON saas_m1_private.project_session_epochs
   FOR SELECT TO saas_m1_session_owner USING (true);
+-- PostgreSQL16 treats SELECT ... FOR SHARE as an UPDATE-policy action.
+-- FORCE RLS therefore needs explicit UPDATE USING for row visibility;
+-- WITH CHECK(false) prevents the NOLOGIN lock owner from changing rows.
+-- Privileged ephemeral fixture revocations remain authorized separately.
+DROP POLICY IF EXISTS m1k_session_owner_share_lock
+  ON saas_m1_private.project_session_epochs;
+CREATE POLICY m1k_session_owner_share_lock
+  ON saas_m1_private.project_session_epochs
+  FOR UPDATE TO saas_m1_session_owner
+  USING (true) WITH CHECK (false);
 
 -- Exactly one authorized server session per transaction. Only a privileged
 -- SECURITY DEFINER gate, not SQL executor/client/GUC, can create this row.
@@ -178,7 +188,6 @@ BEGIN
        OR saas_rls.scope_membership_matches(
        target_tenant,target_actor,'tenant-admin'))
   THEN
-    RAISE LOG 'M1k CI gate denied at signed scope/role/isolation check';
     RETURN FALSE;
   END IF;
 
@@ -189,8 +198,6 @@ BEGIN
     FOR SHARE;
   IF stored_status IS DISTINCT FROM 'active'
      OR stored_revision IS DISTINCT FROM expected_revision THEN
-    RAISE LOG 'M1k CI gate denied at session row active/epoch check; found %, active %, epoch match %',
-      stored_status IS NOT NULL,stored_status='active',stored_revision=expected_revision;
     RETURN FALSE;
   END IF;
 
@@ -206,7 +213,6 @@ BEGIN
       target_tenant,target_actor,'tenant-owner')
       OR saas_rls.scope_membership_matches(
       target_tenant,target_actor,'tenant-admin')) THEN
-    RAISE LOG 'M1k CI gate denied at tenant auth revision/recheck; epoch present %',locked_tenant_revision IS NOT NULL;
     RETURN FALSE;
   END IF;
 
@@ -288,6 +294,11 @@ BEGIN
          AND tgname='m1_project_session_epoch_gate'
          AND tgfoid='saas_m1_private.require_project_session_proof()'::regprocedure
          AND NOT tgisinternal)
+     OR NOT EXISTS(SELECT 1 FROM pg_policies
+          WHERE schemaname='saas_m1_private'
+            AND tablename='project_session_epochs'
+            AND policyname='m1k_session_owner_share_lock'
+            AND cmd='UPDATE' AND qual='true' AND with_check='false')
      OR NOT (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class
               WHERE oid='saas_m1_private.project_session_epochs'::regclass)
      OR NOT (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class
