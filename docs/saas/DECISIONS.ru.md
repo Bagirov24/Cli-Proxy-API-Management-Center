@@ -1489,3 +1489,21 @@ A client-visible 503 is compatible with both 1/1/1 committed evidence
 and 0/0/0 precommit disconnect: never auto retry based on HTTP status.
 No public listener, external WORM, OIDC/session provisioning, CPA or
 permission to merge/release is created. [M1j gates](M1J_REAL_HTTP_SIGNED_PG16_INTEGRATION_CI.ru.md).
+
+
+## M1k — actor-wide revoke is not per-session revoke
+
+SQL008 already has an actor-wide session kill switch; that does not
+invalidate only one signed JWT session when a separate session of the
+same actor is active. M1k extends ONLY disposable CI with server-held
+SHA256 token-fingerprint → UUID+epoch mapping and a guarded SQL025.
+Its SECURITY DEFINER function validates HMAC-signed actor/tenant,
+locks the exact session UUID/revision FOR SHARE, then obtains the M1d
+tenant authorization epoch lock. A final mandatory project trigger
+rejects writes lacking the same-transaction session proof. Opposite
+physical revoke/write lock orders must yield distinct 201 vs 404.
+
+This is not live OIDC or portable cryptographic token binding: the
+scope MAC does NOT include session ID, and CI server memory / PostgreSQL
+share the same trust operator. No automatic retry after uncertain COMMIT.
+[M1k limits](M1K_SESSION_EPOCH_REVOCATION_PG16_CI.ru.md).
