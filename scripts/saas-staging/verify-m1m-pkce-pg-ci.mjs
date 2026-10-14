@@ -257,7 +257,8 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
         /M1n verified HTTPS request denied/);
       const wrongPin=createM1nPinnedHttpsTransport({
         baseUrl:issuerBase,caPem:tlsFixture.trustedCaPem,
-        spkiSha256:tlsFixture.rotated.spkiSha256,callbackUri:redirectUri,
+        spkiSha256:(trustEpochMode?tlsFixture.primary:tlsFixture.rotated).spkiSha256,
+        callbackUri:redirectUri,
       });
       await assert.rejects(()=>wrongPin.fetch(issuerBase+'/jwks'),
         /M1n verified HTTPS request denied/);
