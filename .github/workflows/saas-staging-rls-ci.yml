@@ -15,6 +15,7 @@ on:
       - 'tests/sql/saas_m1_unknown_commit_readonly_review.test.sql'
       - 'tests/sql/saas_m1_attempt_bound_audit.test.sql'
       - 'tests/sql/saas_m1_http_signed_pg_e2e.test.sql'
+      - 'tests/sql/saas_m1_project_session_epoch.test.sql'
       - 'tests/sql/saas_m1_project_authorization_fence.test.sql'
       - 'tests/sql/saas_e2e_grants_fixture.test.sql'
       - 'tests/sql/saas_authorization_coverage.test.sql'
@@ -475,6 +476,37 @@ jobs:
               exit 1
             }
           tail -n 5 /tmp/saas-m1j-real-http-pg-acceptance.log
+          # M1k STACKED DRAFT: install SQL025 ONLY AFTER all prior signed
+          # PG16 and HTTP regressions, so old M1b–M1j fixture counts stay
+          # unchanged. FORCE RLS NOLOGIN session owner, signed session UUID
+          # and expected epoch locked FOR SHARE before project transaction.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/025_m1_project_session_epoch_gate_pilot.sql \
+            > /tmp/saas-m1k-session-install.log 2>&1 || {
+              tail -n 110 /tmp/saas-m1k-session-install.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-m1k-session-install.log
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          timeout --signal=TERM --kill-after=5s 110s env \
+            SAAS_EPHEMERAL_M1_PG_CI=true \
+            SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
+            SAAS_EPHEMERAL_M1_HTTP_CI=true \
+            SAAS_EPHEMERAL_M1K_SESSION_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1_project_session_epoch.test.sql \
+            > /tmp/saas-m1k-session-acceptance.log 2>&1 || {
+              tail -n 160 /tmp/saas-m1k-session-acceptance.log
+              exit 1
+            }
+          tail -n 6 /tmp/saas-m1k-session-acceptance.log
           unset runner_password scope_key
 
       - name: Verify staging authorization epochs and concurrent revocation
