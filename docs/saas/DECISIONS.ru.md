@@ -1412,3 +1412,18 @@ for the existing postcommit lost-ACK case. This is NOT a production proof
 of physical pool discard, network partitions, session-bound identity,
 exactly-once, or independent recovery store. Any auto retry remains forbidden.
 [M1e evidence](M1E_PG_PHYSICAL_DISCONNECT_CI.ru.md).
+
+
+## M1f — LOCAL project evidence is NOT UNKNOWN COMMIT resolution (PROPOSED)
+
+Do not map 503 to success/failure or retry. Existing `012` reconciles
+signed publication audit, not M1c project writes; mixing those domains
+would produce invalid evidence. Instead separate CI-only SQL023 exposes
+one sanitized read-only inspection function to a NOLOGIN reviewer, with
+FORCE RLS-backed SELECT inside a READ COMMITTED READ ONLY transaction.
+`LOCAL_PAIR_OBSERVED` means a complete local versioned chain was visible;
+without a durable per-attempt ID it cannot prove the original request
+caused that state. `NO_LOCAL_EVIDENCE` and `INCONSISTENT_STOP` both mean
+STOP, never safe retry. No manual status mutation/lease/ACK is added.
+This is a single PostgreSQL trust domain, not independent WORM.
+[M1f decision contract](M1F_UNKNOWN_COMMIT_OPERATOR_LOCAL_EVIDENCE.ru.md).
