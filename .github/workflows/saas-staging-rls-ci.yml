@@ -21,6 +21,7 @@ on:
       - 'tests/sql/saas_m1n_pinned_https_idp_pg_e2e.test.sql'
       - 'tests/sql/saas_m1o_explicit_https_trust_epoch_pg_e2e.test.sql'
       - 'tests/sql/saas_m1p_bound_login_context_pg_e2e.test.sql'
+      - 'tests/sql/saas_m1q_nonce_id_token_pg_e2e.test.sql'
       - 'tests/sql/saas_m1_project_authorization_fence.test.sql'
       - 'tests/sql/saas_e2e_grants_fixture.test.sql'
       - 'tests/sql/saas_authorization_coverage.test.sql'
@@ -633,6 +634,30 @@ jobs:
               exit 1
             }
           tail -n 6 /tmp/saas-m1p-bound-context-pg-acceptance.log
+          # M1q: eleventh strictly opt-in signed PG16 proof after all M1p.
+          # CA/SAN/SPKI-pinned HTTPS mock issuer signs a distinct RS256
+          # ID token; exact one-use per-login nonce/client audience/subject
+          # must be verified BEFORE trusted PG session registration.
+          timeout --signal=TERM --kill-after=5s 120s env \
+            SAAS_EPHEMERAL_M1_PG_CI=true \
+            SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
+            SAAS_EPHEMERAL_M1_HTTP_CI=true \
+            SAAS_EPHEMERAL_M1L_OIDC_CI=true \
+            SAAS_EPHEMERAL_M1M_PKCE_CI=true \
+            SAAS_EPHEMERAL_M1N_TLS_CI=true \
+            SAAS_EPHEMERAL_M1O_TRUST_CI=true \
+            SAAS_EPHEMERAL_M1P_CONTEXT_CI=true \
+            SAAS_EPHEMERAL_M1Q_ID_TOKEN_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1q_nonce_id_token_pg_e2e.test.sql \
+            > /tmp/saas-m1q-nonce-id-token-pg-acceptance.log 2>&1 || {
+              tail -n 160 /tmp/saas-m1q-nonce-id-token-pg-acceptance.log
+              exit 1
+            }
+          tail -n 6 /tmp/saas-m1q-nonce-id-token-pg-acceptance.log
           unset runner_password scope_key
 
       - name: Verify staging authorization epochs and concurrent revocation
