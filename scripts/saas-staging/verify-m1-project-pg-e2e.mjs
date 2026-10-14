@@ -545,9 +545,12 @@ if (m1gOnly) {
   // Real synthetic RS256 -> trusted issuer/subject -> M1a RBAC -> signed
   // PostgreSQL transaction; UUIDv4 is minted by this CI server wrapper
   // BEFORE its writer.execute call, never read from JWT or HTTP payload.
-  console.info('STEP M1g: server-issued UUIDv4 on signed native project writes');
   const northToken = await signToken('north');
-  const issued = [];
+  // M1h is run in a separate CI process AFTER the entire M1g SQL
+  // acceptance; it must not mutate the M1g four-row regression fixture.
+  if (process.env.SAAS_EPHEMERAL_M1H_INTENT_CI !== 'true') {
+    console.info('STEP M1g: server-issued UUIDv4 on signed native project writes');
+    const issued = [];
   function withServerAttempts(native) {
     return boundary(Object.freeze({
       async execute(input) {
@@ -651,6 +654,7 @@ if (m1gOnly) {
     'committed duplicate attempt and missing stamp deny; lost ACK=503 with durable ' +
     'local UUID evidence, NO automatic retry, NO production'
   );
+  }
   // M1h remains opt-in on an independent CI invocation AFTER M1g SQL024.
   // Its signer is a separate local no-PG-credentials Node process and
   // is NEVER imported by the app/runtime or production gateway.
