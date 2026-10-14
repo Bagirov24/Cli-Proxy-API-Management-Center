@@ -748,3 +748,16 @@ matching PG COMMIT means UNKNOWN/STOP, NEVER automatic retry. No live
 OIDC, API RBAC, physical production discard, request-level proof, WORM,
 full recovery/DR or operator/security approval. No Ready/merge/deploy.
 [M1h gates](M1H_PRECOMMIT_SIGNED_INTENT_CI.ru.md).
+
+
+## M1i — default-off HTTP project write contract (gate НЕ пройден)
+
+The unmounted Fetch HTTP write adapter validates bearer, origin, method,
+strict bounded JSON, tenant URL and version CAS, invoking the existing
+server-held actor directory and tenant authorization boundary. Its
+synthetic CI mock writer is NOT a signed production PG writer or end-to-end
+M1h independent receipt. No real OIDC sessions, production deployment,
+connection pool quarantine/partition proof, external WORM/high-water,
+CPA integration or operator UNKNOWN COMMIT signoff. Code merge requires
+an explicit separate security/code-owner approval; release gate stays
+BLOCKED. [M1i security scope](M1I_UNMOUNTED_PROJECT_WRITE_HTTP_CI.ru.md).
