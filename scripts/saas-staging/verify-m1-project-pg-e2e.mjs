@@ -651,4 +651,13 @@ if (m1gOnly) {
     'committed duplicate attempt and missing stamp deny; lost ACK=503 with durable ' +
     'local UUID evidence, NO automatic retry, NO production'
   );
+  // M1h remains opt-in on an independent CI invocation AFTER M1g SQL024.
+  // Its signer is a separate local no-PG-credentials Node process and
+  // is NEVER imported by the app/runtime or production gateway.
+  if (process.env.SAAS_EPHEMERAL_M1H_INTENT_CI === 'true') {
+    const { verifyM1h } = await import('./verify-m1h-precommit-intent.mjs');
+    await verifyM1h({
+      assert, makeDriver, boundary, command, northToken, northScope,
+    });
+  }
 }
