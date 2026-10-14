@@ -305,9 +305,9 @@ export async function verifyM1k({
     // Extra trusted per-session data is NEVER returned in HTTP and the
     // offline witness remains on this same runner, not an external WORM.
     await witness.stop();
-    assert.equal(attempts.length,8);
-    const checked=runOffline(assert,intentPath,witness.publicKey,8);
-    assert.ok(checked && checked.count===8);
+    assert.equal(attempts.length,9);
+    const checked=runOffline(assert,intentPath,witness.publicKey,9);
+    assert.ok(checked && checked.count===9);
     assert.deepEqual(checked.attempts,
       attempts.map(({sessionId,sessionRevision,...record})=>record));
     const noSigner=setDriver({});
