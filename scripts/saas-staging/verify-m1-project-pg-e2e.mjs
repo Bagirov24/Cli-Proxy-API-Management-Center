@@ -345,6 +345,13 @@ const northScope = Object.freeze({
 const m1gOnly = process.env.SAAS_EPHEMERAL_M1G_ATTEMPT_CI === 'true';
 const m1jOnly = process.env.SAAS_EPHEMERAL_M1J_HTTP_PG_CI === 'true';
 const m1kOnly = process.env.SAAS_EPHEMERAL_M1K_SESSION_CI === 'true';
+const m1lOnly = process.env.SAAS_EPHEMERAL_M1L_OIDC_CI === 'true';
+if (m1lOnly && (!m1gOnly || m1jOnly || m1kOnly ||
+    process.env.SAAS_EPHEMERAL_M1H_INTENT_CI === 'true' ||
+    process.env.SAAS_EPHEMERAL_M1E_DISCONNECT_CI === 'true' ||
+    process.env.SAAS_EPHEMERAL_M1_HTTP_CI !== 'true')) {
+  throw new Error('M1l synthetic OIDC rotation must be distinct post-M1k signed PG16 CI');
+}
 if (m1kOnly && (!m1gOnly || m1jOnly ||
     process.env.SAAS_EPHEMERAL_M1H_INTENT_CI === 'true' ||
     process.env.SAAS_EPHEMERAL_M1E_DISCONNECT_CI === 'true')) {
@@ -587,7 +594,7 @@ if (m1gOnly) {
   const northToken = await signToken('north');
   // M1h is run in a separate CI process AFTER the entire M1g SQL
   // acceptance; it must not mutate the M1g four-row regression fixture.
-  if (process.env.SAAS_EPHEMERAL_M1H_INTENT_CI !== 'true' && !m1jOnly && !m1kOnly) {
+  if (process.env.SAAS_EPHEMERAL_M1H_INTENT_CI !== 'true' && !m1jOnly && !m1kOnly && !m1lOnly) {
     console.info('STEP M1g: server-issued UUIDv4 on signed native project writes');
     const issued = [];
   function withServerAttempts(native) {
@@ -719,5 +726,12 @@ if (m1gOnly) {
     await verifyM1k({
       assert, makeDriver, verifier, directory, actors, signToken, northScope,
     });
+  }
+  if (m1lOnly) {
+    // The 6th separate GitHub CI invocation follows full SQL025 + M1k
+    // acceptance; the mock OIDC issuer is an additional loopback service.
+    // Never mount in runtime or trust JWT session/role client claims.
+    const { verifyM1l } = await import('./verify-m1l-oidc-pg-ci.mjs');
+    await verifyM1l({ assert, makeDriver, actors });
   }
 }
