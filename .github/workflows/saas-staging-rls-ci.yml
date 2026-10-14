@@ -40,6 +40,8 @@ on:
       - 'scripts/saas-staging/**'
       - 'src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts'
       - 'src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts'
+      - 'src/features/saasBlueprint/controlApi/server/tenantProjectsReadHttpHandler.ts'
+      - 'tests/saasTenantProjectsReadHttpHandler.test.ts'
       - 'src/features/saasBlueprint/controlApi/server/syntheticCommittedIntent.ts'
       - 'src/features/saasBlueprint/controlApi/server/authorizationRevision.ts'
       - 'src/features/saasBlueprint/controlApi/server/signedPgAuthorizationRevision.ts'
@@ -416,7 +418,9 @@ jobs:
           # Synthetic RS256 keys are generated only in this Bun process.
           # Real wire SQL uses only saas_ci_runner, never the postgres login.
           timeout --signal=TERM --kill-after=5s 90s env \
-            SAAS_EPHEMERAL_E2E_CI=true SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_E2E_CI=true \
+            SAAS_PROJECT_READ_HTTP_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
             SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
             bun scripts/saas-staging/verify-trusted-pg-e2e.mjs
           # M1g STACKED DRAFT: install LAST among M1 project pilots, after
