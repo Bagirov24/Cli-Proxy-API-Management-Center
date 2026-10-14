@@ -97,7 +97,7 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
   const journal='/tmp/saas-m1h-intent-'+stamp+'.jsonl';
   const witness=await startWitness(assert,journal);
   let mockIssuer=null, issuerServer=null, projectServer=null,hold=null;
-  let tlsFixture=null,secureTransport=null;
+  let tlsFixture=null,secureTransport=null,tlsHandler=null;
   const registry=new Map();
   const context=new AsyncLocalStorage();
   const attempts=[];
@@ -111,10 +111,7 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
     let issuerBase;
     if(httpsMode){
       tlsFixture=createDisposableM1nTlsFixture();
-      issuerServer=createServer({
-        cert:tlsFixture.primary.cert,key:tlsFixture.primary.key,
-        minVersion:'TLSv1.2',
-      },async(req,res)=>{
+      tlsHandler=async(req,res)=>{
         try {
           const chunks=[];
           let size=0;
@@ -143,7 +140,11 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
           res.writeHead(503,{'Content-Type':'application/json'});
           res.end('{"error":"CI HTTPS IdP unavailable"}');
         }
-      });
+      };
+      issuerServer=createServer({
+        cert:tlsFixture.primary.cert,key:tlsFixture.primary.key,
+        minVersion:'TLSv1.2',
+      },tlsHandler);
       await new Promise(resolve=>issuerServer.listen(0,'127.0.0.1',resolve));
       issuerBase='https://127.0.0.1:'+issuerServer.address().port;
     }else{
@@ -241,9 +242,19 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
           revision:3,expectedRevision:2,caPem:tlsFixture.trustedCaPem,
           spkiSha256:tlsFixture.primary.spkiSha256,
         }),/retired/);
-        issuerServer.setSecureContext({
-          cert:tlsFixture.rotated.cert,key:tlsFixture.rotated.key,
+        // Bun v1.3.14 does not expose Node's setSecureContext().
+        // Shut down only the ephemeral mock TLS listener, preserve the
+        // exact local pinned origin and launch a fresh rotated TLS leaf.
+        const samePort=issuerServer.address().port;
+        await new Promise(resolve=>{
+          issuerServer.close(resolve);issuerServer.closeAllConnections?.();
         });
+        issuerServer=createServer({
+          cert:tlsFixture.rotated.cert,key:tlsFixture.rotated.key,
+          minVersion:'TLSv1.2',
+        },tlsHandler);
+        await new Promise(resolve=>
+          issuerServer.listen(samePort,'127.0.0.1',resolve));
       }else secureTransport=createM1nPinnedHttpsTransport({
         baseUrl:issuerBase,caPem:tlsFixture.trustedCaPem,
         spkiSha256:tlsFixture.primary.spkiSha256,callbackUri:redirectUri,
