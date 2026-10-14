@@ -344,6 +344,9 @@ const northScope = Object.freeze({
 
 const m1gOnly = process.env.SAAS_EPHEMERAL_M1G_ATTEMPT_CI === 'true';
 const m1jOnly = process.env.SAAS_EPHEMERAL_M1J_HTTP_PG_CI === 'true';
+if (process.env.SAAS_PROJECT_WRITE_HTTP_CI === 'true' && !m1jOnly) {
+  throw new Error('Backend project writes require dedicated M1j PG16 baseline flags');
+}
 const m1kOnly = process.env.SAAS_EPHEMERAL_M1K_SESSION_CI === 'true';
 const m1nOnly = process.env.SAAS_EPHEMERAL_M1N_TLS_CI === 'true';
 const m1mOnly = process.env.SAAS_EPHEMERAL_M1M_PKCE_CI === 'true' && !m1nOnly;
@@ -729,13 +732,23 @@ if (m1gOnly) {
     });
   }
   if (m1jOnly) {
-    // M1j uses the SAME pinned RS256/actor, fixed signed Bun.SQL driver,
-    // append-only M1g UUID binding and exported M1h fsync witness,
-    // but exercises an actual temporary loopback HTTP handler.
-    const { verifyM1j } = await import('./verify-m1j-http-signed-pg.mjs');
-    await verifyM1j({
-      assert, makeDriver, verifier, directory, actors, signToken, northScope,
-    });
+    if (process.env.SAAS_PROJECT_WRITE_HTTP_CI === 'true') {
+      // Backend slice 02 independent post-M1q scenario: existing signed
+      // native PG16 writer, new server-generated project ID and fsynced
+      // UUID intent before fixed SQL/mandatory project audit.
+      const { verifyTenantProjectWriteHttpPg } = await import(
+        './verify-tenant-projects-write-pg-e2e.mjs'
+      );
+      await verifyTenantProjectWriteHttpPg({
+        assert, makeDriver, verifier, directory, actors, signToken, northScope,
+      });
+    } else {
+      // M1j baseline remains entirely unchanged, with a separate signer.
+      const { verifyM1j } = await import('./verify-m1j-http-signed-pg.mjs');
+      await verifyM1j({
+        assert, makeDriver, verifier, directory, actors, signToken, northScope,
+      });
+    }
   }
   if (m1kOnly) {
     // M1k is separate opt-in disposable CI AFTER SQL025 install.
