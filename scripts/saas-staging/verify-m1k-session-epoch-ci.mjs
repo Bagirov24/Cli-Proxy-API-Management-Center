@@ -21,7 +21,9 @@ function pg(assert, sql) {
     { stdout:'pipe',stderr:'pipe' }
   );
   assert.equal(result.exitCode,0,'M1k privileged disposable PG16 fixture failed');
-  return new TextDecoder().decode(result.stdout).trim();
+  // psql -t includes the command tag (e.g. INSERT 0 1) after RETURNING.
+  // Assert exit status above, but compare ONLY the first scalar row.
+  return new TextDecoder().decode(result.stdout).trim().split('\n')[0].trim();
 }
 function state(assert, sessionId) {
   assert.ok(V4.test(sessionId));
