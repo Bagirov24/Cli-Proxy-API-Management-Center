@@ -1509,8 +1509,20 @@ CI mock is not a production login provider or a general JWKS client. [M1l review
 - [x] Explicit CI-only synthetic OAuth client and local issuer: state + S256 PKCE, fixed client ID/redirect/issuer, one-time authorization code, bounded token response; callback/error always consume private state before token exchange.
 - [x] Real pinned JWKS RS256 access token issuer+subject → trusted actor → private server-issued PG16 UUID/epoch after successful mock code exchange; no JWT role/sid impersonation.
 - [x] Separate post-M1l PG16 acceptance: 3 independently authorized mock logins A/B/C, real HTTP→M1h fsync→M1k session fence/M1c audit/M1g UUID; revoke C in-flight before PG and A afterward, B unaffected; independent SQL checks 3/3/3 and no ghost rows.
-- [ ] Verify 4/4 GitHub Actions on exact final M1m HEAD, including separate opt-in PKCE tests and dual PG16 PASS M1m markers.
+- [x] Verified exact M1m HEAD `20637f4b` all 4 GitHub Actions SUCCESS; PKCE 10/10 PASS plus dual independent real PG16 `PASS M1m`.
 - [ ] Real IdP HTTPS/PKCE browser callback, token/session refresh/rotation, distributed state, off-host WORM, production pool/DB, network partition DURING COMMIT, CPA/onboarding and codeowner/security approval still BLOCKED.
 
 No public login, merge/Ready/deploy, SQL019, Railway mutation or automated retry/reissue/GC.
 [M1m review](M1M_SYNTHETIC_PKCE_AUTH_CODE_SESSION_PG16_CI.ru.md).
+
+
+## M1n — opt-in pinned HTTPS mock IdP → signed PG16 session (STACKED DRAFT / CI-only)
+
+- [x] Parent M1m Draft PR №16 HEAD `20637f4b` verified 4/4 SUCCESS; OAuth code/state PKCE session proof 3/3/3 and revocation fail-closed.
+- [x] Generate isolated one-day CA + valid and invalid leaf certificates only in disposable GitHub runner `/tmp`, no permanent/private secret commit or Railway keys.
+- [x] Enforce literal `https://127.0.0.1:<port>`, CA chain, SAN localhost, exact SHA256 SPKI on every HTTPS handshake, reject DNS/SSRF/downgrade/redirect/response oversize/cookie and malicious JWKS metadata.
+- [x] Reuse one-shot M1m PKCE S256/state, but send IdP authorization/code/JWKS over verified HTTPS; dedicated negative TLS tests and eighth post-M1m real PG16 invocation with M1h+M1k+M1c/M1g signed audit.
+- [ ] Verify all 4 GitHub Actions on exact M1n SHA including 100% opt-in HTTPS unit tests, native E2E `PASS M1n` and independent SQL `PASS M1n` without M1a–M1m regressions.
+- [ ] External trusted HTTPS IdP/real consent+callback/PKCE cookie, token refresh/logout, distributed durable session store, independent off-host WORM, during-COMMIT network partitions, release approval, CPA/onboarding remain BLOCKED.
+
+No merge, Ready, deploy, SQL019, Railway signer/volume/cert rotation, live CPA keys or auto retries. [M1n gates](M1N_PINNED_HTTPS_IDP_PKCE_SESSION_PG16_CI.ru.md).
