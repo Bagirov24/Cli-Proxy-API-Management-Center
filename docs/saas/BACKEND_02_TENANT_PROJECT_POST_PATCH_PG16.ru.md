@@ -18,7 +18,8 @@ All other verbs, paths, query strings, client-provided `projectId` on POST, acto
 ## Strict server-owned write boundary
 
 - Reuses the existing tested `createM1ProjectCommandBoundary`: verified pinned access JWT issuer/subject → server private subject-to-actor directory → unambiguous current tenant admin/owner membership (both checked again before write).
-- Only **after** trusted RBAC does the handler mint a fresh CSPRNG UUIDv4 attempt. It obtains a matching `{attemptId,sequence}` receipt from a dedicated pre-COMMIT `TenantProjectPrecommitJournal` before reserving PostgreSQL. A failed/missing/different receipt returns 503 with **zero** SQL writer calls. Caller NEVER supplies the attempt ID, signer, PG identity or project ID on create.
+- Only **after** trusted RBAC does the handler hash the full twice-verified access JWT as lowercase SHA-256 and require a **server-owned per-bearer token fingerprint → session UUID + monotonic epoch** lookup. It never accepts session ID, token jti, fingerprint or role from HTTP. Missing/invalid session denies before journal and DB. The native writer invokes SQL025 `saas_m1_api.lock_project_session_epoch(UUID,BIGINT,TEXT,TEXT)` under the already signed PG transaction and the mandatory project trigger refuses missing/revoked/old session epochs. In this CI the registry is an explicit in-memory fixture and PG session row is created by a separate privileged setup; it is **not** a production-distributed session authority.
+- Only **after** a trusted active session does the handler mint a fresh CSPRNG UUIDv4 attempt. It obtains a matching `{attemptId,sequence}` receipt from a dedicated pre-COMMIT `TenantProjectPrecommitJournal` before reserving PostgreSQL. A failed/missing/different receipt returns 503 with **zero** SQL writer calls. Caller NEVER supplies the attempt ID, signer, PG identity or project ID on create.
 - The `TenantProjectSignedWriter` interface must enforce fixed SQL, signed tenant+actor transaction claims, current PostgreSQL membership, project lifecycle and `expectedVersion` CAS, PLUS **atomic project+mandatory audit+attempt UUID binding**. This slice reuses the existing native M1a/M1c/M1d/M1g disposable PostgreSQL16 writer to verify those conditions against real SQL. TypeScript signatures alone do not make an arbitrary supplied implementation secure.
 - PostgreSQL deny/zero changed rows → 404, confirmed ACK → 201/200. Signer, journal, driver or COMMIT uncertainty → 503. **No retry**, no transparent reissue, and 503 does **not** prove a rollback. The outer handler intentionally cannot perform recovery, polling, operator repair, release, GC or destructive SQL.
 
@@ -27,15 +28,15 @@ All other verbs, paths, query strings, client-provided `projectId` on POST, acto
 `tests/saasTenantProjectsWriteHttpHandler.test.ts` tests issuer/actor-derived authorization, client authority/header impersonation, foreign tenant, revoked role, malicious JSON/IDs, exact CAS and body bounds, signer receipt corruption, writer 404 vs unknown 503, one attempt per authorized request and no unsafe origins.
 
 A dedicated **twelfth** disposable PostgreSQL16 invocation runs after all unchanged M1a–M1q acceptance in the same GitHub runner. Its actual `127.0.0.1` Bun HTTP listener invokes the new handler with existing pinned synthetic RS256 access verifier, signed native non-superuser Bun.SQL transaction driver and **second NO-PG-credentials Node witness process with fsynced signed pre-COMMIT journal**. The fixture must observe:
-- HTTP POST 201, unique server UUID, **1 project / 1 mandatory PG audit / 1 attempt binding**, and signed SQL read version 1.
-- HTTP PATCH 200 on version 1, version 2 persisted, **1/2/2**; stale version 1 PATCH 404 with 0 new audit/bindings.
+- HTTP POST 201, unique server UUID, **1 project / 1 mandatory PG audit / 1 attempt binding / 1 session proof**, and signed SQL read version 1.
+- HTTP PATCH 200 on version 1, version 2 persisted, **1/2/2 + 2 PG session proofs**; stale version 1 PATCH 404 with 0 new audit/bindings/proofs.
 - Current PG membership revoked while server actor cache stays admin → 404, 0 project/audit/attempt.
-- Real PostgreSQL COMMIT succeeds but synthetic ACK is lost → one 503, exactly **1/1/1** remains persisted; transaction adapter poisoned, no retry.
-- Real backend terminated BEFORE COMMIT → 503, **0/0/0** persisted; fsynced prior attempt remains as historical evidence.
+- Real PostgreSQL COMMIT succeeds but synthetic ACK is lost → one 503, exactly **1/1/1 + 1 locked session proof** remains persisted; transaction adapter poisoned, no retry.
+- Real backend terminated BEFORE COMMIT → 503, **0/0/0 + 0 session proofs** persisted; fsynced prior attempt remains as historical evidence.
 - Witness process unavailable → 503 **before any PG reservation**. Off-path unsigned/malformed tokens and reader/auditor roles never even issue a witness attempt.
 - Independently verify the six one-use signed intent entries offline. This is a local runner proof, NOT independent off-host WORM/HSM or production UNKNOWN-COMMIT settlement.
 
-Existing SQL021 mandatory trigger, SQL024 bound-attempt constraints, DB-side M1d authorization fence and all M1a–M1q regression proofs remain in force. `saas_ephemeral_test` and migrations `staging/saas-rls/001–018,020–025` remain disposable staging only. **NO SQL019 or production migrations.**
+Existing SQL021 mandatory trigger, SQL024 bound-attempt constraints, SQL025 session-lock/proof trigger, DB-side M1d authorization fence and all M1a–M1q regression proofs remain in force. `saas_ephemeral_test` and migrations `staging/saas-rls/001–018,020–025` remain disposable staging only. **NO SQL019 or production migrations.**
 
 ## Explicit production gaps and merge discipline
 
