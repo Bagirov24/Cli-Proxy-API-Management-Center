@@ -11,6 +11,40 @@ BEGIN
 END
 $guard$;
 
+-- PostgreSQL16 SELECT FOR SHARE is subject to UPDATE *USING* RLS as
+-- well as SELECT RLS. The NOLOGIN session owner must be able to lock all
+-- four private session records without gaining the ability to mutate them.
+BEGIN ISOLATION LEVEL READ COMMITTED;
+SET LOCAL ROLE saas_m1_session_owner;
+SELECT COUNT(*)::TEXT AS m1k_visible_locked_sessions
+FROM (
+  SELECT session_id FROM saas_m1_private.project_session_epochs
+  WHERE actor_id='actor-north' AND tenant_id='demo-north'
+  FOR SHARE
+) AS locked_sessions \gset
+DO $owner_write_deny$
+DECLARE blocked BOOLEAN:=FALSE;
+BEGIN
+  BEGIN
+    UPDATE saas_m1_private.project_session_epochs
+    SET revision=revision+1
+    WHERE actor_id='actor-north' AND tenant_id='demo-north'
+      AND status='active';
+  EXCEPTION WHEN insufficient_privilege THEN
+    blocked:=TRUE;
+  END;
+  IF NOT blocked THEN
+    RAISE EXCEPTION 'M1k NOLOGIN lock owner can modify session epochs';
+  END IF;
+END
+$owner_write_deny$;
+RESET ROLE;
+ROLLBACK;
+SELECT saas_rls_test.assert_true(
+  :'m1k_visible_locked_sessions'='4',
+  'M1k FORCE RLS allows session FOR SHARE under lock-only policy'
+);
+
 SELECT saas_rls_test.assert_true(
   (SELECT COUNT(*)=4 FROM saas_m1_private.project_session_epochs
        WHERE actor_id='actor-north' AND tenant_id='demo-north')
