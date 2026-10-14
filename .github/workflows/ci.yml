@@ -53,3 +53,12 @@ jobs:
           SAAS_EPHEMERAL_M1L_OIDC_CI: 'true'
           SAAS_EPHEMERAL_M1M_PKCE_CI: 'true'
         run: bun test tests/saasM1mSyntheticPkceCode.test.mjs
+
+      # M1n: OpenSSL ephemeral one-day CA+SAN leaf generated ONLY in
+      # GitHub CI, strict Node TLS chain/hostname/SPKI pin checks.
+      # Real HTTPS loopback PKCE IdP simulation, no Railway/live IdP.
+      - name: Verify M1n pinned ephemeral HTTPS IdP and OAuth PKCE
+        env:
+          SAAS_EPHEMERAL_M1M_PKCE_CI: 'true'
+          SAAS_EPHEMERAL_M1N_TLS_CI: 'true'
+        run: bun test tests/saasM1nPinnedHttpsTrust.test.mjs
