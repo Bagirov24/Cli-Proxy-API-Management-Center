@@ -107,7 +107,7 @@ describe('M1m opt-in synthetic OAuth authorization-code PKCE S256 with pinned JW
     expect(u.searchParams.get('state')).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(u.searchParams.get('code_challenge')).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(u.searchParams.get('code_verifier')).toBeNull();
-    expect(callback).toStartWith(f.redirectUri+'?');
+    expect(callback?.startsWith(f.redirectUri+'?')).toBe(true);
     expect(callback).not.toContain('access_token');
     expect(callback).not.toContain('id_token');
     expect(callback).not.toContain('code_verifier');
