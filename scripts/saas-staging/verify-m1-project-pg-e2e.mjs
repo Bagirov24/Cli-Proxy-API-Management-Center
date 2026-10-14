@@ -764,6 +764,7 @@ if (m1gOnly) {
     // transient HTTPS socket authenticates the issuer's CA+SAN+SPKI
     // before the same server-held PKCE state and signed PG16 session gate.
     const { verifyM1m } = await import('./verify-m1m-pkce-pg-ci.mjs');
-    await verifyM1m({ assert, makeDriver, actors, httpsMode: true });
+    await verifyM1m({ assert, makeDriver, actors, httpsMode: true,
+        trustEpochMode: process.env.SAAS_EPHEMERAL_M1O_TRUST_CI === 'true' });
   }
 }
