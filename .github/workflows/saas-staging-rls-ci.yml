@@ -1351,7 +1351,9 @@ jobs:
               AND NOT has_function_privilege('saas_identity_ci',
                 'saas_m1_api.pin_project_verified_token_session(uuid,text,text,text)',
                 'EXECUTE')
-              AND has_function_privilege('saas_identity_ci',
+              AND pg_has_role('saas_identity_ci',
+                'saas_m1_identity_resolver','SET')
+              AND NOT has_function_privilege('saas_identity_ci',
                 'saas_m1_api.resolve_verified_project_session(text,text,text)',
                 'EXECUTE'), 'private read login grant boundaries')" \
             > /tmp/saas-pg26-role-assert.log 2>&1
