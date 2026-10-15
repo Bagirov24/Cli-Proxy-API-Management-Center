@@ -120,6 +120,22 @@ async function withOperatorRole(role,sql,params=[]){
     return rows[0].applied;
   }finally{c.release();}
 }
+// This non-login operator capability, not postgres/HTTP/project executor,
+// issues the actual PG25 UUID and its SQL026 token link atomically.
+async function provisionSession(expectedActor,expectedTenant,fingerprint){
+  const c=await admin.reserve();
+  try{
+    await c.unsafe('BEGIN').execute();
+    await c.unsafe('SET LOCAL ROLE saas_issuer_provisioner').execute();
+    const rows=await c.unsafe(
+      'SELECT session_id::text AS session_id,session_revision::text AS session_revision '+
+      'FROM saas_m1_api.issue_verified_project_session($1::text,$2::text,$3::text)',
+      [expectedActor,expectedTenant,fingerprint]).execute();
+    assert.ok(Array.isArray(rows)&&rows.length<=1);
+    await c.unsafe('COMMIT').execute();
+    return rows[0]??null;
+  }finally{c.release();}
+}
 const signBytes=Uint8Array.from(Buffer.from(scopeKey,'hex'));
 const key=await crypto.subtle.importKey('raw',signBytes,{
   name:'HMAC',hash:'SHA-256'},false,['sign']);
@@ -130,10 +146,9 @@ const TOKEN_B=await mintToken('access-token-B');
 const fp=createHash('sha256').update(TOKEN).digest('hex');
 const fpB=createHash('sha256').update(TOKEN_B).digest('hex');
 assert.notEqual(fp,fpB);
-const sessionId=crypto.randomUUID();
+let sessionId=null;
 const projectId=crypto.randomUUID();
-const secondSession=crypto.randomUUID();
-assert.match(sessionId,/^[0-9a-f-]{36}$/);
+let secondSession=null;
 const scope=Object.freeze({actorId:ACTOR,tenantId:TENANT,
   role:'tenant-admin',correlationId:'backend04-ci',tokenFingerprint:fp});
 const verified=await verifier.verifyAccessToken(TOKEN);
@@ -203,38 +218,41 @@ try {
   await scoped(
     "INSERT INTO saas_rls_private.actor_session_state(actor_id,status,revision) "+
     "VALUES($1,'active',1) ON CONFLICT DO NOTHING",[ACTOR]);
-  await scoped(
-    "INSERT INTO saas_m1_private.project_session_epochs "+
-    "(session_id,actor_id,tenant_id,revision,status) "+
-    "VALUES($1::uuid,$2,$3,1,'active')",
-    [sessionId,ACTOR,TENANT]);
-  await scoped(
-    "INSERT INTO saas_m1_private.project_session_epochs "+
-    "(session_id,actor_id,tenant_id,revision,status) "+
-    "VALUES($1::uuid,$2,$3,1,'active')",
-    [secondSession,ACTOR,TENANT]);
-
   assert.equal(await withOperatorRole('saas_issuer_directory_admin',
     'SELECT saas_rls_private.pin_verified_subject($1::text,$2::text,$3::text) AS applied',
     [ISSUER,'account-one',ACTOR]),true);
   assert.equal(await withOperatorRole('saas_issuer_provisioner',
     'SELECT saas_rls_private.enroll_verified_token($1::text,$2::text,$3::text,$4::text,$5::timestamptz) AS applied',
     [ISSUER,'account-one',ACTOR,fp,new Date(expiry*1000).toISOString()]),true);
-  assert.equal(await withOperatorRole('saas_issuer_provisioner',
-    'SELECT saas_m1_api.pin_project_verified_token_session($1::uuid,$2::text,$3::text,$4::text) AS applied',
-    [sessionId,ACTOR,TENANT,fp]),true);
-  assert.equal(await withOperatorRole('saas_issuer_provisioner',
-    'SELECT saas_m1_api.pin_project_verified_token_session($1::uuid,$2::text,$3::text,$4::text) AS applied',
-    [sessionId,ACTOR,TENANT,fp]),false,'same UUID/fingerprint cannot reissue');
+  const firstIssue=await provisionSession(ACTOR,TENANT,fp);
+  assert.ok(firstIssue,'Operator-only SQL026 must issue exactly one A session');
+  sessionId=firstIssue.session_id;
+  assert.match(sessionId,V4);
+  assert.equal(firstIssue.session_revision,'1');
+  assert.equal(await provisionSession(ACTOR,TENANT,fp),null,
+    'Previously issued bearer may not get a replacement PG25 UUID');
+  const noOrphan=await scoped(
+    'SELECT count(*)::int AS c FROM saas_m1_private.project_session_epochs '+
+    'WHERE actor_id=$1 AND tenant_id=$2',[ACTOR,TENANT]);
+  assert.equal(noOrphan[0].c,1,'Duplicate issue rolled back the PG25 insert');
   assert.equal(await withOperatorRole('saas_issuer_provisioner',
     'SELECT saas_rls_private.enroll_verified_token($1::text,$2::text,$3::text,$4::text,$5::timestamptz) AS applied',
     [ISSUER,'account-one',ACTOR,fpB,new Date(expiry*1000).toISOString()]),true);
-  assert.equal(await withOperatorRole('saas_issuer_provisioner',
-    'SELECT saas_m1_api.pin_project_verified_token_session($1::uuid,$2::text,$3::text,$4::text) AS applied',
-    [secondSession,ACTOR,TENANT,fpB]),true);
+  const secondIssue=await provisionSession(ACTOR,TENANT,fpB);
+  assert.ok(secondIssue,'Operator-only SQL026 must issue exactly one B session');
+  secondSession=secondIssue.session_id;
+  assert.match(secondSession,V4);
+  assert.notEqual(sessionId,secondSession);
+  assert.equal(secondIssue.session_revision,'1');
   assert.equal(await withOperatorRole('saas_issuer_provisioner',
     'SELECT saas_m1_api.pin_project_verified_token_session($1::uuid,$2::text,$3::text,$4::text) AS applied',
     [sessionId,ACTOR,TENANT,fpB]),false,'B may not borrow A session');
+  assert.equal(await provisionSession(ACTOR,TENANT,fpB),null,
+    'Second independently valid token also cannot reissue its UUID');
+  const durableCount=await scoped(
+    'SELECT count(*)::int AS c FROM saas_m1_private.project_session_epochs '+
+    'WHERE actor_id=$1 AND tenant_id=$2',[ACTOR,TENANT]);
+  assert.equal(durableCount[0].c,2,'Only A and B original UUIDs persist');
 
   // Actual separate non-superuser login with NO direct table access:
   // SET LOCAL ROLE saas_m1_identity_resolver, readonly transaction, SQL
