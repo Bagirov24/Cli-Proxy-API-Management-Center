@@ -16,6 +16,9 @@ import {createPgDurableIdentitySessionAuthority,PG_IDENTITY_SQL} from
   '../../src/features/saasBlueprint/controlApi/server/pgDurableIdentitySessionAuthority.ts';
 import {createPinnedHmacScopeIssuer} from
   '../../src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts';
+import {createTenantProjectsWriteHttpHandler} from
+  '../../src/features/saasBlueprint/controlApi/server/tenantProjectsWriteHttpHandler.ts';
+import {startWitness,runOffline} from './verify-m1h-precommit-intent.mjs';
 
 const env=process.env;
 if(env.GITHUB_ACTIONS!=='true'||env.SAAS_DURABLE_IDENTITY_PG_CI!=='true'||
@@ -139,7 +142,11 @@ assert.equal(verified?.subject,'account-one');
 assert.ok(await verifier.verifyAccessToken(TOKEN_B),
   'B is also an independently valid, signed OAuth access token');
 
-async function signedCreate(project,session,revision,fingerprint,expected=false){
+const V4=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+let witness=null;
+async function signedCreate(project,session,revision,fingerprint,expected=false,
+                            attemptId=crypto.randomUUID(),name='Durable project boundary'){
+ assert.match(attemptId,V4,'Every signed PG attempt requires a server UUIDv4');
  const c=await projectDb.reserve();
  let committed=false;
  try {
@@ -154,7 +161,7 @@ async function signedCreate(project,session,revision,fingerprint,expected=false)
    ['saas.scope_txid',txid],['saas.scope_expiry',String(expires)],
    ['saas.scope_mac',signed],
    ['saas.scope_token_fingerprint',fingerprint],
-   ['saas.m1_attempt_id',crypto.randomUUID()],
+   ['saas.m1_attempt_id',attemptId],
   ])await c.unsafe('SELECT set_config($1::text,$2::text,true)',
       [claim,value]).execute();
   await c.unsafe('SET LOCAL ROLE saas_m1_project_executor').execute();
@@ -165,7 +172,7 @@ async function signedCreate(project,session,revision,fingerprint,expected=false)
   if(permitted[0]?.allowed){
     const rows=await c.unsafe(
       'SELECT saas_m1_api.create_project($1::text,$2::text,$3::text) AS applied',
-      [TENANT,project,'Durable project boundary']).execute();
+      [TENANT,project,name]).execute();
     created=rows[0]?.applied===true;
   }
   if(created&&expected){
@@ -173,6 +180,7 @@ async function signedCreate(project,session,revision,fingerprint,expected=false)
     committed=true;
   }else await c.unsafe('ROLLBACK').execute();
   assert.equal(created,expected,'SQL026 must reject mismatched bearer/session');
+  return created;
  } catch(e) {
   if(!committed){
    try{await c.unsafe('ROLLBACK').execute();}catch{}
@@ -269,6 +277,105 @@ try {
     'WHERE project_id=$1',[projectId]);
   assert.equal(audit[0].c,1);
 
+  // Actual Request/Response factory (not a public listener) now carries the
+  // SHA256 of the TWICE-VERIFIED OAuth bearer from HTTP all the way into
+  // the same signed native PostgreSQL16 transaction and SQL026 mandatory
+  // project/audit/attempt/session binding. The signer is a separate fsync
+  // process without any PostgreSQL credentials, not an in-memory promise.
+  const witnessPath='/tmp/saas-backend04-http-'+crypto.randomUUID()+'.jsonl';
+  witness=await startWitness(assert,witnessPath);
+  const prepared=[];
+  const httpsOrigin='https://control.operator-ci.org';
+  const http=createTenantProjectsWriteHttpHandler({
+    expectedOrigin:httpsOrigin,
+    tokens:verifier,
+    directory:authority.directory,
+    sessions:authority.sessions,
+    actors:{
+      async lookup(actorId,signal){
+        if(signal.aborted||actorId!==ACTOR)return null;
+        // CI fixture only; production needs an independent restricted
+        // current actor-membership reader, NOT a postgres superuser pool.
+        const rows=await scoped(
+          'SELECT tenant_id,role,status FROM saas_rls.memberships WHERE actor_id=$1',
+          [actorId]);
+        return {id:actorId,memberships:rows.map(row=>({
+          tenantId:row.tenant_id,role:row.role,status:row.status,
+        }))};
+      },
+    },
+    journal:{
+      async prepare(entry){
+        assert.match(entry.attemptId,V4);
+        assert.equal(entry.actorId,ACTOR);
+        assert.equal(entry.tenantId,TENANT);
+        const ack=await witness.prepare(entry);
+        assert.equal(ack.attemptId,entry.attemptId);
+        assert.equal(ack.sequence,prepared.length+1);
+        prepared.push(entry);
+        return ack;
+      },
+    },
+    writer:{
+      async execute(input){
+        assert.equal(input.operation,'create');
+        assert.equal(input.scope.actorId,ACTOR);
+        assert.equal(input.scope.tenantId,TENANT);
+        assert.equal(input.scope.role,'tenant-admin');
+        assert.equal(input.sessionRevision,1);
+        assert.equal(input.sessionId,input.tokenFingerprint===fp
+          ? sessionId:input.tokenFingerprint===fpB?secondSession:null);
+        assert.ok(input.name==='Real HTTP verified bearer');
+        return signedCreate(input.projectId,input.sessionId,
+          input.sessionRevision,input.tokenFingerprint,true,
+          input.attemptId,input.name);
+      },
+    },
+  });
+  async function createViaHttp(token){
+    const response=await http(new Request(
+      httpsOrigin+'/control-api/v1/tenants/demo-north/projects',{
+        method:'POST',
+        headers:{'Authorization':'Bearer '+token,
+          'Content-Type':'application/json'},
+        body:JSON.stringify({name:'Real HTTP verified bearer'}),
+      }));
+    assert.equal(response.headers.get('Access-Control-Allow-Origin'),null);
+    assert.equal(response.headers.get('Set-Cookie'),null);
+    assert.match(response.headers.get('Cache-Control')||'',/no-store/);
+    const data=await response.json();
+    const serialized=JSON.stringify(data);
+    assert.equal(serialized.includes('attemptId'),false);
+    assert.equal(serialized.includes(ACTOR),false);
+    assert.equal(serialized.includes(fp),false);
+    assert.equal(serialized.includes(fpB),false);
+    return {status:response.status,data};
+  }
+  async function committedHttpProof(result,position){
+    assert.equal(result.status,201);
+    assert.match(result.data.projectId,V4);
+    const row=await scoped(
+      'SELECT p.name,COUNT(DISTINCT a.event_id)::int AS audits,'+
+      ' COUNT(DISTINCT b.attempt_id)::int AS attempts FROM saas_m1_private.projects p '+
+      'LEFT JOIN saas_m1_private.project_write_audit_outbox a '+
+      'ON a.tenant_id=p.tenant_id AND a.project_id=p.project_id '+
+      'LEFT JOIN saas_m1_private.project_attempt_bindings b '+
+      'ON b.event_id=a.event_id AND b.attempt_id=$2::uuid '+
+      'WHERE p.tenant_id=$3 AND p.project_id=$1 GROUP BY p.name',
+      [result.data.projectId,prepared[position].attemptId,TENANT]);
+    assert.equal(row.length,1);
+    assert.deepEqual({...row[0]},{
+      name:'Real HTTP verified bearer',audits:1,attempts:1,
+    });
+    assert.equal(prepared[position].projectId,result.data.projectId);
+    assert.equal(prepared[position].attemptId.length,36);
+  }
+  const firstHttp=await createViaHttp(TOKEN);
+  await committedHttpProof(firstHttp,0);
+  const secondHttp=await createViaHttp(TOKEN_B);
+  await committedHttpProof(secondHttp,1);
+  assert.equal(prepared.length,2);
+
   // Revoke A (the JWT is STILL cryptographically valid) from a separately
   // governed provisioning capability. PG session and subject lookups now
   // fail even though the session_epoch row itself remains active.
@@ -280,12 +387,19 @@ try {
     actorId:ACTOR,tenantId:TENANT,tokenFingerprint:fp},
     AbortSignal.timeout(9000)),null);
   await signedCreate(crypto.randomUUID(),sessionId,1,fp,false);
+  const beforeRevokedHttp=prepared.length;
+  assert.equal((await createViaHttp(TOKEN)).status,503);
+  assert.equal(prepared.length,beforeRevokedHttp,
+    'Revoked bearer cannot mint a durable intent or reserve PG');
   // Independent B retains current subject+token and its own PG25 UUID.
   assert.deepEqual(await authority.sessions.resolve({
     actorId:ACTOR,tenantId:TENANT,tokenFingerprint:fpB},
     AbortSignal.timeout(9000)),{sessionId:secondSession,sessionRevision:1});
   const survivor=crypto.randomUUID();
   await signedCreate(survivor,secondSession,1,fpB,true);
+  const thirdHttp=await createViaHttp(TOKEN_B);
+  await committedHttpProof(thirdHttp,2);
+  assert.equal(prepared.length,3);
 
   // Issuer-subject terminal revoke independently invalidates directory.
   assert.equal(await withOperatorRole('saas_issuer_directory_admin',
@@ -296,6 +410,13 @@ try {
     actorId:ACTOR,tenantId:TENANT,tokenFingerprint:fpB},
     AbortSignal.timeout(9000)),null);
   await signedCreate(crypto.randomUUID(),secondSession,1,fpB,false);
+  const beforeSubjectDenied=prepared.length;
+  assert.equal((await createViaHttp(TOKEN_B)).status,401);
+  assert.equal(prepared.length,beforeSubjectDenied,
+    'Revoked issuer-subject may not mint a PG write attempt');
+  await witness.stop();
+  assert.deepEqual(runOffline(assert,witnessPath,witness.publicKey,3)?.attempts,
+    prepared,'Only three server-issued HTTP writes have independent fsync intents');
 
   // NOLOGIN runtime role cannot touch raw rows or provision any identity.
   const grants=await scoped(
@@ -307,8 +428,9 @@ try {
     "'saas_m1_api.pin_project_verified_token_session(uuid,text,text,text)',"+
     "'EXECUTE') AS provision");
   assert.deepEqual(grants[0],{bindings:false,sessions:false,provision:false});
-  console.info('PASS backend-04: distinct non-superuser PG16 durable issuer actor and token fingerprint/session lookup; two independently valid bearer sessions, mandatory signed PG25+SQL026 project audit/attempt, crossed A/B token-session DENIED with zero ghost; revoke A keeps B active, subject revoke denies B, no rebind/retry');
+  console.info('PASS backend-04: signed real HTTPS-origin POST->sha256 bearer->PG16 session UUID->separate fsynced intent->SQL026 fixed signed COMMIT: project/audit/attempt 1:1:1; two valid token sessions, crossed A/B denied, A revoke/B survives, subject revoke denies, no ghost/retry');
 } finally {
+  if(witness)await witness.stop();
   await identityDb.close({timeout:0});
   await projectDb.close({timeout:0});
   await admin.close({timeout:0});
