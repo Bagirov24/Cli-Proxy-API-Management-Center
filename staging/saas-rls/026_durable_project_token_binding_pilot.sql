@@ -139,21 +139,21 @@ GRANT EXECUTE ON FUNCTION
 -- Mint one immutable PG25 session UUID per active SQL011 bearer inside one
 -- transaction. Unique collision rolls back the entire function's inserts.
 CREATE FUNCTION saas_m1_api.issue_verified_project_session(
- actor TEXT,tenant TEXT,fingerprint TEXT
+ expected_actor TEXT,expected_tenant TEXT,expected_fingerprint TEXT
 ) RETURNS TABLE(session_id UUID,session_revision BIGINT)
  LANGUAGE plpgsql VOLATILE SECURITY DEFINER
  SET search_path=pg_catalog,pg_temp AS $fn$
 DECLARE minted UUID;
 BEGIN
- IF actor IS NULL OR actor !~ '^[A-Za-z0-9_-]{1,128}$'
-    OR tenant IS NULL OR tenant !~ '^[A-Za-z0-9_-]{1,64}$'
-    OR fingerprint IS NULL OR fingerprint !~ '^[0-9a-f]{64}$'
+ IF expected_actor IS NULL OR expected_actor !~ '^[A-Za-z0-9_-]{1,128}$'
+    OR expected_tenant IS NULL OR expected_tenant !~ '^[A-Za-z0-9_-]{1,64}$'
+    OR expected_fingerprint IS NULL OR expected_fingerprint !~ '^[0-9a-f]{64}$'
     OR NOT EXISTS(
       SELECT 1 FROM saas_rls_private.actor_token_sessions t
       JOIN saas_rls_private.issuer_subject_bindings b
         ON b.issuer=t.issuer AND b.subject=t.subject AND b.actor_id=t.actor_id
       JOIN saas_rls_private.actor_session_state a ON a.actor_id=t.actor_id
-      WHERE t.fingerprint=fingerprint AND t.actor_id=actor
+      WHERE t.fingerprint=expected_fingerprint AND t.actor_id=expected_actor
         AND t.issuer IS NOT NULL AND t.subject IS NOT NULL
         AND t.status='active' AND t.expires_at>statement_timestamp()
         AND b.status='active' AND a.status='active'
@@ -161,10 +161,10 @@ BEGIN
  minted:=gen_random_uuid();
  INSERT INTO saas_m1_private.project_session_epochs
   (session_id,actor_id,tenant_id,revision,status)
- VALUES(minted,actor,tenant,1,'active');
+ VALUES(minted,expected_actor,expected_tenant,1,'active');
  INSERT INTO saas_m1_private.project_session_token_links
   (session_id,token_fingerprint,actor_id,tenant_id)
- VALUES(minted,fingerprint,actor,tenant);
+ VALUES(minted,expected_fingerprint,expected_actor,expected_tenant);
  RETURN QUERY SELECT minted,1::BIGINT;
 EXCEPTION WHEN unique_violation OR check_violation OR foreign_key_violation
  THEN RETURN;
