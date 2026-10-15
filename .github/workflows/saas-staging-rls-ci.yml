@@ -1336,7 +1336,9 @@ jobs:
             > /tmp/saas-pg26-ci-roles.log 2>&1 <<'SQL'
           CREATE ROLE saas_identity_ci LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS
             PASSWORD :'identity_password';
-          GRANT saas_m1_identity_resolver TO saas_identity_ci;
+          -- PostgreSQL16: only explicit SET ROLE, never inherited privileges.
+          GRANT saas_m1_identity_resolver TO saas_identity_ci
+            WITH INHERIT FALSE, SET TRUE;
           GRANT CONNECT ON DATABASE saas_ephemeral_test TO saas_identity_ci;
           ALTER ROLE saas_ci_runner PASSWORD :'runner_password';
           SQL
@@ -1353,6 +1355,8 @@ jobs:
                 'EXECUTE')
               AND pg_has_role('saas_identity_ci',
                 'saas_m1_identity_resolver','SET')
+              AND NOT pg_has_role('saas_identity_ci',
+                'saas_m1_identity_resolver','USAGE')
               AND NOT has_function_privilege('saas_identity_ci',
                 'saas_m1_api.resolve_verified_project_session(text,text,text)',
                 'EXECUTE'), 'private read login grant boundaries')" \
