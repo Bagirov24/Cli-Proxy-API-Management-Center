@@ -335,20 +335,27 @@ try {
         assert.equal(input.sessionRevision,1);
         assert.equal(input.sessionId,input.tokenFingerprint===fp
           ? sessionId:input.tokenFingerprint===fpB?secondSession:null);
-        assert.ok(input.name==='Real HTTP verified bearer');
-        return signedCreate(input.projectId,input.sessionId,
+        assert.ok(['Real HTTP verified bearer','Lost ACK no retry'].includes(input.name));
+        const applied=await signedCreate(input.projectId,input.sessionId,
           input.sessionRevision,input.tokenFingerprint,true,
           input.attemptId,input.name);
+        if(input.name==='Lost ACK no retry'){
+          // PG COMMIT has actually ACKed inside signedCreate. Lose the
+          // acknowledgment between the trusted writer and the HTTP layer.
+          // HTTP must return UNKNOWN 503, with no retry/reissued UUID.
+          throw new Error('CI-ONLY LOST POST-COMMIT ACK');
+        }
+        return applied;
       },
     },
   });
-  async function createViaHttp(token){
+  async function createViaHttp(token,name='Real HTTP verified bearer'){
     const response=await http(new Request(
       httpsOrigin+'/control-api/v1/tenants/demo-north/projects',{
         method:'POST',
         headers:{'Authorization':'Bearer '+token,
           'Content-Type':'application/json'},
-        body:JSON.stringify({name:'Real HTTP verified bearer'}),
+        body:JSON.stringify({name}),
       }));
     assert.equal(response.headers.get('Access-Control-Allow-Origin'),null);
     assert.equal(response.headers.get('Set-Cookie'),null);
@@ -386,6 +393,24 @@ try {
   await committedHttpProof(secondHttp,1);
   assert.equal(prepared.length,2);
 
+  // One confirmed real PG16 COMMIT followed by a deliberately lost
+  // application ACK: exactly one project/audit/UUID/session proof is
+  // persisted, but HTTP returns 503. The handler MUST NOT retry this.
+  const unknown=await createViaHttp(TOKEN_B,'Lost ACK no retry');
+  assert.equal(unknown.status,503);
+  assert.equal(prepared.length,3,'No automatic retry after UNKNOWN COMMIT');
+  const uncertain=prepared[2];
+  assert.match(uncertain.attemptId,V4);
+  const persisted=await scoped(
+    'SELECT (SELECT count(*) FROM saas_m1_private.projects WHERE project_id=$1)::int AS projects,'+
+    ' (SELECT count(*) FROM saas_m1_private.project_write_audit_outbox WHERE project_id=$1)::int AS audits,'+
+    ' (SELECT count(*) FROM saas_m1_private.project_attempt_bindings WHERE attempt_id=$2::uuid)::int AS attempts,'+
+    ' (SELECT count(*) FROM saas_m1_private.project_session_proofs p '+
+    ' JOIN saas_m1_private.project_write_audit_outbox a ON a.pg_txid=p.pg_txid '+
+    ' WHERE a.project_id=$1)::int AS proofs',
+    [uncertain.projectId,uncertain.attemptId]);
+  assert.deepEqual({...persisted[0]},{projects:1,audits:1,attempts:1,proofs:1});
+
   // Revoke A (the JWT is STILL cryptographically valid) from a separately
   // governed provisioning capability. PG session and subject lookups now
   // fail even though the session_epoch row itself remains active.
@@ -408,8 +433,8 @@ try {
   const survivor=crypto.randomUUID();
   await signedCreate(survivor,secondSession,1,fpB,true);
   const thirdHttp=await createViaHttp(TOKEN_B);
-  await committedHttpProof(thirdHttp,2);
-  assert.equal(prepared.length,3);
+  await committedHttpProof(thirdHttp,3);
+  assert.equal(prepared.length,4);
 
   // Issuer-subject terminal revoke independently invalidates directory.
   assert.equal(await withOperatorRole('saas_issuer_directory_admin',
@@ -425,8 +450,8 @@ try {
   assert.equal(prepared.length,beforeSubjectDenied,
     'Revoked issuer-subject may not mint a PG write attempt');
   await witness.stop();
-  assert.deepEqual(runOffline(assert,witnessPath,witness.publicKey,3)?.attempts,
-    prepared,'Only three server-issued HTTP writes have independent fsync intents');
+  assert.deepEqual(runOffline(assert,witnessPath,witness.publicKey,4)?.attempts,
+    prepared,'Exactly four server-issued HTTP writes, including UNKNOWN, have one-shot fsync evidence');
 
   // NOLOGIN runtime role cannot touch raw rows or provision any identity.
   const grants=await scoped(
@@ -438,7 +463,7 @@ try {
     "'saas_m1_api.pin_project_verified_token_session(uuid,text,text,text)',"+
     "'EXECUTE') AS provision");
   assert.deepEqual(grants[0],{bindings:false,sessions:false,provision:false});
-  console.info('PASS backend-04: signed real HTTPS-origin POST->sha256 bearer->PG16 session UUID->separate fsynced intent->SQL026 fixed signed COMMIT: project/audit/attempt 1:1:1; two valid token sessions, crossed A/B denied, A revoke/B survives, subject revoke denies, no ghost/retry');
+  console.info('PASS backend-04: signed HTTPS-origin POST->verified bearer SHA256->durable PG16 UUID->independent fsync intent->SQL026 signed COMMIT, lost ACK returns 503 with persisted 1:1:1:1 no retry; two valid token sessions, crossed A/B denied, A revoke/B survives, subject revoke denies');
 } finally {
   if(witness)await witness.stop();
   await identityDb.close({timeout:0});
