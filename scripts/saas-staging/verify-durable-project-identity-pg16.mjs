@@ -136,6 +136,8 @@ const scope=Object.freeze({actorId:ACTOR,tenantId:TENANT,
 const verified=await verifier.verifyAccessToken(TOKEN);
 assert.equal(verified?.issuer,ISSUER);
 assert.equal(verified?.subject,'account-one');
+assert.ok(await verifier.verifyAccessToken(TOKEN_B),
+  'B is also an independently valid, signed OAuth access token');
 
 async function signedCreate(project,session,revision,fingerprint,expected=false){
  const c=await projectDb.reserve();
