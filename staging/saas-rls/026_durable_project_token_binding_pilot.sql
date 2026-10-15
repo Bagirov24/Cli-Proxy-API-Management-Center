@@ -41,11 +41,8 @@ GRANT SELECT ON saas_rls_private.issuer_subject_bindings,
   TO saas_m1_session_owner;
 GRANT EXECUTE ON FUNCTION saas_rls_private.scope_verified()
   TO saas_m1_session_owner;
-
--- Until SQL026 only a fixture superuser could INSERT the PG25 UUID. The
--- NOLOGIN session owner can now issue a fresh ID, but ONLY via an approved
--- SECURITY DEFINER provisioner function in a committed transaction. Neither
--- HTTP, the project writer, nor the identity runtime gains INSERT.
+-- NOLOGIN project session owner can INSERT only via SQL026 operator-issued
+-- SECURITY DEFINER function, not through HTTP or project executor.
 CREATE POLICY m1_project_session_owner_issue
  ON saas_m1_private.project_session_epochs
  FOR INSERT TO saas_m1_session_owner WITH CHECK (true);
@@ -139,21 +136,48 @@ GRANT EXECUTE ON FUNCTION
  saas_m1_api.pin_project_verified_token_session(uuid,text,text,text)
  TO saas_issuer_provisioner;
 
--- Normal non-superuser provisioning path: mint the new UUIDv4 INSIDE SQL026
--- and immutably bind exactly ONE already independently verified SQL011
--- fingerprint to the fresh PG25 session in the SAME transaction. The
--- provisioner has EXECUTE but NO INSERT on either private table. If the
--- fingerprint has been used before, a unique constraint rolls back the
--- session INSERT as well; there is no orphan or transparent reissue.
+-- Mint one immutable PG25 session UUID per active SQL011 bearer inside one
+-- transaction. Unique collision rolls back the entire function's inserts.
 CREATE FUNCTION saas_m1_api.issue_verified_project_session(
- expected_actor TEXT, expected_tenant TEXT, expected_fingerprint TEXT
+ actor TEXT,tenant TEXT,fingerprint TEXT
 ) RETURNS TABLE(session_id UUID,session_revision BIGINT)
  LANGUAGE plpgsql VOLATILE SECURITY DEFINER
  SET search_path=pg_catalog,pg_temp AS $fn$
 DECLARE minted UUID;
 BEGIN
- IF expected_actor IS NULL
-    OR expected_actor !~ '^[A-Za-z0-9_-]{1,128} The server first
+ IF actor IS NULL OR actor !~ '^[A-Za-z0-9_-]{1,128}$'
+    OR tenant IS NULL OR tenant !~ '^[A-Za-z0-9_-]{1,64}$'
+    OR fingerprint IS NULL OR fingerprint !~ '^[0-9a-f]{64}$'
+    OR NOT EXISTS(
+      SELECT 1 FROM saas_rls_private.actor_token_sessions t
+      JOIN saas_rls_private.issuer_subject_bindings b
+        ON b.issuer=t.issuer AND b.subject=t.subject AND b.actor_id=t.actor_id
+      JOIN saas_rls_private.actor_session_state a ON a.actor_id=t.actor_id
+      WHERE t.fingerprint=fingerprint AND t.actor_id=actor
+        AND t.issuer IS NOT NULL AND t.subject IS NOT NULL
+        AND t.status='active' AND t.expires_at>statement_timestamp()
+        AND b.status='active' AND a.status='active'
+    ) THEN RETURN; END IF;
+ minted:=gen_random_uuid();
+ INSERT INTO saas_m1_private.project_session_epochs
+  (session_id,actor_id,tenant_id,revision,status)
+ VALUES(minted,actor,tenant,1,'active');
+ INSERT INTO saas_m1_private.project_session_token_links
+  (session_id,token_fingerprint,actor_id,tenant_id)
+ VALUES(minted,fingerprint,actor,tenant);
+ RETURN QUERY SELECT minted,1::BIGINT;
+EXCEPTION WHEN unique_violation OR check_violation OR foreign_key_violation
+ THEN RETURN;
+END $fn$;
+ALTER FUNCTION saas_m1_api.issue_verified_project_session(text,text,text)
+ OWNER TO saas_m1_session_owner;
+REVOKE ALL ON FUNCTION saas_m1_api.issue_verified_project_session(text,text,text)
+ FROM PUBLIC,saas_ci_runner,saas_rls_reader,saas_m1_project_executor,
+      saas_m1_identity_resolver,saas_issuer_directory_admin;
+GRANT EXECUTE ON FUNCTION saas_m1_api.issue_verified_project_session(text,text,text)
+ TO saas_issuer_provisioner;
+
+-- No caller-supplied actor or role is accepted by HTTP. The server first
 -- verifies issuer/signature, then this private durable directory resolves a
 -- single active actor. Revoked subject/actor returns zero rows.
 CREATE FUNCTION saas_m1_api.resolve_verified_subject_actor(
@@ -212,7 +236,10 @@ GRANT EXECUTE ON FUNCTION saas_m1_api.resolve_verified_project_session(text,text
 
 -- PG25 session proof in SAME SQL transaction MUST additionally be tied to
 -- actual server-signed SHA256 bearer fingerprint. Lock token + subject until
--- transaction completion: concurrent revocation is serialized by the\n-- existing PG25/M1d tenant authorization revision FOR SHARE lock. The\n-- SQL011 revoke trigger advances that same revision, so a later revoke\n-- cannot slip between this recheck and COMMIT.
+-- transaction completion: concurrent revocation is serialized by the
+-- existing PG25/M1d tenant authorization revision FOR SHARE lock. The
+-- SQL011 revoke trigger advances that same revision, so a later revoke
+-- cannot slip between this recheck and COMMIT.
 CREATE FUNCTION saas_m1_private.require_project_token_binding()
  RETURNS TRIGGER LANGUAGE plpgsql VOLATILE SECURITY DEFINER
  SET search_path=pg_catalog,pg_temp AS $fn$
@@ -282,10 +309,10 @@ BEGIN
     'saas_m1_api.issue_verified_project_session(text,text,text)','EXECUTE')
  OR has_function_privilege('saas_m1_identity_resolver',
     'saas_m1_api.issue_verified_project_session(text,text,text)','EXECUTE')
- OR NOT EXISTS(SELECT 1 FROM pg_policies WHERE
-    schemaname='saas_m1_private' AND tablename='project_session_epochs'
-    AND policyname='m1_project_session_owner_issue'
-    AND cmd='INSERT' AND with_check='true')
+ OR NOT EXISTS(SELECT 1 FROM pg_policies
+   WHERE schemaname='saas_m1_private' AND tablename='project_session_epochs'
+     AND policyname='m1_project_session_owner_issue'
+     AND cmd='INSERT' AND with_check='true')
  OR NOT EXISTS(SELECT 1 FROM pg_trigger
    WHERE tgrelid='saas_m1_private.projects'::regclass
      AND tgname='m1_project_token_binding_gate'
@@ -294,431 +321,4 @@ BEGIN
  END IF;
 END $assert$;
 COMMIT;
-\echo 'PASS SQL026: non-superuser atomic UUID issuance, immutable token/session, private actor resolution and signed PG16 project gate'
-
-    OR expected_tenant IS NULL
-    OR expected_tenant !~ '^[A-Za-z0-9_-]{1,64} The server first
--- verifies issuer/signature, then this private durable directory resolves a
--- single active actor. Revoked subject/actor returns zero rows.
-CREATE FUNCTION saas_m1_api.resolve_verified_subject_actor(
- verified_issuer TEXT, verified_subject TEXT
-) RETURNS TABLE(actor_id TEXT)
- LANGUAGE sql VOLATILE SECURITY DEFINER
- SET search_path=pg_catalog,pg_temp AS $fn$
- SELECT b.actor_id FROM saas_rls_private.issuer_subject_bindings b
- JOIN saas_rls_private.actor_session_state a ON a.actor_id=b.actor_id
- WHERE b.issuer=verified_issuer AND b.subject=verified_subject
-   AND b.status='active' AND a.status='active'
-   AND verified_issuer IS NOT NULL AND verified_subject IS NOT NULL
-   AND char_length(verified_issuer) BETWEEN 10 AND 256
-   AND char_length(verified_subject) BETWEEN 1 AND 256
- LIMIT 1
- $fn$;
-ALTER FUNCTION saas_m1_api.resolve_verified_subject_actor(text,text)
- OWNER TO saas_m1_session_owner;
-REVOKE ALL ON FUNCTION saas_m1_api.resolve_verified_subject_actor(text,text)
- FROM PUBLIC,saas_ci_runner,saas_m1_project_executor,saas_rls_reader,
-      saas_issuer_provisioner,saas_issuer_directory_admin;
-GRANT EXECUTE ON FUNCTION saas_m1_api.resolve_verified_subject_actor(text,text)
- TO saas_m1_identity_resolver;
-
--- One fingerprint -> one immutable session UUID. Enrolled issuer and subject
--- MUST still be active. Revision and status live in durable PG25, not RAM.
-CREATE FUNCTION saas_m1_api.resolve_verified_project_session(
- expected_actor TEXT,expected_tenant TEXT,expected_fingerprint TEXT
-) RETURNS TABLE(session_id UUID,session_revision BIGINT)
- LANGUAGE sql VOLATILE SECURITY DEFINER
- SET search_path=pg_catalog,pg_temp AS $fn$
- SELECT e.session_id,e.revision FROM saas_m1_private.project_session_token_links l
- JOIN saas_m1_private.project_session_epochs e ON e.session_id=l.session_id
- JOIN saas_rls_private.actor_token_sessions t ON t.fingerprint=l.token_fingerprint
- JOIN saas_rls_private.issuer_subject_bindings b
-   ON b.issuer=t.issuer AND b.subject=t.subject AND b.actor_id=t.actor_id
- JOIN saas_rls_private.actor_session_state a ON a.actor_id=t.actor_id
- WHERE l.token_fingerprint=expected_fingerprint
-   AND l.actor_id=expected_actor AND l.tenant_id=expected_tenant
-   AND e.actor_id=l.actor_id AND e.tenant_id=l.tenant_id
-   AND e.status='active' AND t.actor_id=l.actor_id AND t.status='active'
-   AND t.expires_at>statement_timestamp()
-   AND b.status='active' AND a.status='active'
-   AND expected_actor ~ '^[A-Za-z0-9_-]{1,128}$'
-   AND expected_tenant ~ '^[A-Za-z0-9_-]{1,64}$'
-   AND expected_fingerprint ~ '^[0-9a-f]{64}$'
- LIMIT 1
- $fn$;
-ALTER FUNCTION saas_m1_api.resolve_verified_project_session(text,text,text)
- OWNER TO saas_m1_session_owner;
-REVOKE ALL ON FUNCTION saas_m1_api.resolve_verified_project_session(text,text,text)
- FROM PUBLIC,saas_ci_runner,saas_m1_project_executor,saas_rls_reader,
-      saas_issuer_provisioner,saas_issuer_directory_admin;
-GRANT EXECUTE ON FUNCTION saas_m1_api.resolve_verified_project_session(text,text,text)
- TO saas_m1_identity_resolver;
-
--- PG25 session proof in SAME SQL transaction MUST additionally be tied to
--- actual server-signed SHA256 bearer fingerprint. Lock token + subject until
--- transaction completion: concurrent revocation is serialized by the\n-- existing PG25/M1d tenant authorization revision FOR SHARE lock. The\n-- SQL011 revoke trigger advances that same revision, so a later revoke\n-- cannot slip between this recheck and COMMIT.
-CREATE FUNCTION saas_m1_private.require_project_token_binding()
- RETURNS TRIGGER LANGUAGE plpgsql VOLATILE SECURITY DEFINER
- SET search_path=pg_catalog,pg_temp AS $fn$
-DECLARE
- fp TEXT:=NULLIF(current_setting('saas.scope_token_fingerprint',true),'');
- actor TEXT:=NULLIF(current_setting('saas.scope_actor',true),'');
- matched BOOLEAN:=FALSE;
-BEGIN
- IF fp IS NULL OR fp !~ '^[0-9a-f]{64}$'
-    OR actor IS NULL OR actor !~ '^[A-Za-z0-9_-]{1,128}$'
-    OR NOT saas_rls_private.scope_verified() THEN
-    RAISE EXCEPTION 'SQL026 missing verified token-bound write scope';
- END IF;
- SELECT TRUE INTO matched
- FROM saas_m1_private.project_session_proofs p
- JOIN saas_m1_private.project_session_token_links l ON l.session_id=p.session_id
- JOIN saas_m1_private.project_session_epochs e ON e.session_id=p.session_id
- JOIN saas_rls_private.actor_token_sessions t ON t.fingerprint=l.token_fingerprint
- JOIN saas_rls_private.issuer_subject_bindings b
-  ON b.issuer=t.issuer AND b.subject=t.subject AND b.actor_id=t.actor_id
- WHERE p.pg_txid=txid_current()::TEXT
-   AND p.actor_id=actor AND p.tenant_id=NEW.tenant_id
-   AND l.actor_id=p.actor_id AND l.tenant_id=p.tenant_id
-   AND l.token_fingerprint=fp
-   AND e.actor_id=p.actor_id AND e.tenant_id=p.tenant_id
-   AND e.status='active' AND e.revision=p.session_revision
-   AND t.actor_id=p.actor_id AND t.status='active'
-   AND t.expires_at>statement_timestamp()
-   AND b.status='active'
-;
- IF matched IS DISTINCT FROM TRUE THEN
-   RAISE EXCEPTION 'SQL026 signed project write lacks matched active token';
- END IF;
- RETURN NULL;
-END $fn$;
-ALTER FUNCTION saas_m1_private.require_project_token_binding()
- OWNER TO saas_m1_session_owner;
-REVOKE ALL ON FUNCTION saas_m1_private.require_project_token_binding()
- FROM PUBLIC,saas_ci_runner,saas_m1_project_executor,saas_rls_reader;
-CREATE TRIGGER m1_project_token_binding_gate
- AFTER INSERT OR UPDATE ON saas_m1_private.projects
- FOR EACH ROW EXECUTE FUNCTION saas_m1_private.require_project_token_binding();
-
-DO $assert$
-BEGIN
- IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='saas_m1_identity_resolver'
-   AND NOT rolcanlogin AND NOT rolsuper AND NOT rolbypassrls AND NOT rolinherit)
- OR NOT (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class
-    WHERE oid='saas_m1_private.project_session_token_links'::regclass)
- OR has_table_privilege('saas_m1_identity_resolver',
-    'saas_m1_private.project_session_token_links','SELECT')
- OR has_table_privilege('saas_ci_runner',
-    'saas_m1_private.project_session_token_links','SELECT')
- OR has_table_privilege('saas_m1_project_executor',
-    'saas_m1_private.project_session_token_links','INSERT')
- OR has_function_privilege('saas_m1_identity_resolver',
-    'saas_m1_api.pin_project_verified_token_session(uuid,text,text,text)','EXECUTE')
- OR has_function_privilege('saas_ci_runner',
-    'saas_m1_api.resolve_verified_project_session(text,text,text)','EXECUTE')
- OR NOT has_function_privilege('saas_m1_identity_resolver',
-    'saas_m1_api.resolve_verified_project_session(text,text,text)','EXECUTE')
- OR NOT EXISTS(SELECT 1 FROM pg_trigger
-   WHERE tgrelid='saas_m1_private.projects'::regclass
-     AND tgname='m1_project_token_binding_gate'
-     AND NOT tgisinternal)
- THEN RAISE EXCEPTION 'SQL026 private identity privileges or token gate unsafe';
- END IF;
-END $assert$;
-COMMIT;
-\echo 'PASS SQL026: durable issuer-actor/one-token-session resolution, mandatory signed token/session PG16 gate'
-
-    OR expected_fingerprint IS NULL
-    OR expected_fingerprint !~ '^[0-9a-f]{64} The server first
--- verifies issuer/signature, then this private durable directory resolves a
--- single active actor. Revoked subject/actor returns zero rows.
-CREATE FUNCTION saas_m1_api.resolve_verified_subject_actor(
- verified_issuer TEXT, verified_subject TEXT
-) RETURNS TABLE(actor_id TEXT)
- LANGUAGE sql VOLATILE SECURITY DEFINER
- SET search_path=pg_catalog,pg_temp AS $fn$
- SELECT b.actor_id FROM saas_rls_private.issuer_subject_bindings b
- JOIN saas_rls_private.actor_session_state a ON a.actor_id=b.actor_id
- WHERE b.issuer=verified_issuer AND b.subject=verified_subject
-   AND b.status='active' AND a.status='active'
-   AND verified_issuer IS NOT NULL AND verified_subject IS NOT NULL
-   AND char_length(verified_issuer) BETWEEN 10 AND 256
-   AND char_length(verified_subject) BETWEEN 1 AND 256
- LIMIT 1
- $fn$;
-ALTER FUNCTION saas_m1_api.resolve_verified_subject_actor(text,text)
- OWNER TO saas_m1_session_owner;
-REVOKE ALL ON FUNCTION saas_m1_api.resolve_verified_subject_actor(text,text)
- FROM PUBLIC,saas_ci_runner,saas_m1_project_executor,saas_rls_reader,
-      saas_issuer_provisioner,saas_issuer_directory_admin;
-GRANT EXECUTE ON FUNCTION saas_m1_api.resolve_verified_subject_actor(text,text)
- TO saas_m1_identity_resolver;
-
--- One fingerprint -> one immutable session UUID. Enrolled issuer and subject
--- MUST still be active. Revision and status live in durable PG25, not RAM.
-CREATE FUNCTION saas_m1_api.resolve_verified_project_session(
- expected_actor TEXT,expected_tenant TEXT,expected_fingerprint TEXT
-) RETURNS TABLE(session_id UUID,session_revision BIGINT)
- LANGUAGE sql VOLATILE SECURITY DEFINER
- SET search_path=pg_catalog,pg_temp AS $fn$
- SELECT e.session_id,e.revision FROM saas_m1_private.project_session_token_links l
- JOIN saas_m1_private.project_session_epochs e ON e.session_id=l.session_id
- JOIN saas_rls_private.actor_token_sessions t ON t.fingerprint=l.token_fingerprint
- JOIN saas_rls_private.issuer_subject_bindings b
-   ON b.issuer=t.issuer AND b.subject=t.subject AND b.actor_id=t.actor_id
- JOIN saas_rls_private.actor_session_state a ON a.actor_id=t.actor_id
- WHERE l.token_fingerprint=expected_fingerprint
-   AND l.actor_id=expected_actor AND l.tenant_id=expected_tenant
-   AND e.actor_id=l.actor_id AND e.tenant_id=l.tenant_id
-   AND e.status='active' AND t.actor_id=l.actor_id AND t.status='active'
-   AND t.expires_at>statement_timestamp()
-   AND b.status='active' AND a.status='active'
-   AND expected_actor ~ '^[A-Za-z0-9_-]{1,128}$'
-   AND expected_tenant ~ '^[A-Za-z0-9_-]{1,64}$'
-   AND expected_fingerprint ~ '^[0-9a-f]{64}$'
- LIMIT 1
- $fn$;
-ALTER FUNCTION saas_m1_api.resolve_verified_project_session(text,text,text)
- OWNER TO saas_m1_session_owner;
-REVOKE ALL ON FUNCTION saas_m1_api.resolve_verified_project_session(text,text,text)
- FROM PUBLIC,saas_ci_runner,saas_m1_project_executor,saas_rls_reader,
-      saas_issuer_provisioner,saas_issuer_directory_admin;
-GRANT EXECUTE ON FUNCTION saas_m1_api.resolve_verified_project_session(text,text,text)
- TO saas_m1_identity_resolver;
-
--- PG25 session proof in SAME SQL transaction MUST additionally be tied to
--- actual server-signed SHA256 bearer fingerprint. Lock token + subject until
--- transaction completion: concurrent revocation is serialized by the\n-- existing PG25/M1d tenant authorization revision FOR SHARE lock. The\n-- SQL011 revoke trigger advances that same revision, so a later revoke\n-- cannot slip between this recheck and COMMIT.
-CREATE FUNCTION saas_m1_private.require_project_token_binding()
- RETURNS TRIGGER LANGUAGE plpgsql VOLATILE SECURITY DEFINER
- SET search_path=pg_catalog,pg_temp AS $fn$
-DECLARE
- fp TEXT:=NULLIF(current_setting('saas.scope_token_fingerprint',true),'');
- actor TEXT:=NULLIF(current_setting('saas.scope_actor',true),'');
- matched BOOLEAN:=FALSE;
-BEGIN
- IF fp IS NULL OR fp !~ '^[0-9a-f]{64}$'
-    OR actor IS NULL OR actor !~ '^[A-Za-z0-9_-]{1,128}$'
-    OR NOT saas_rls_private.scope_verified() THEN
-    RAISE EXCEPTION 'SQL026 missing verified token-bound write scope';
- END IF;
- SELECT TRUE INTO matched
- FROM saas_m1_private.project_session_proofs p
- JOIN saas_m1_private.project_session_token_links l ON l.session_id=p.session_id
- JOIN saas_m1_private.project_session_epochs e ON e.session_id=p.session_id
- JOIN saas_rls_private.actor_token_sessions t ON t.fingerprint=l.token_fingerprint
- JOIN saas_rls_private.issuer_subject_bindings b
-  ON b.issuer=t.issuer AND b.subject=t.subject AND b.actor_id=t.actor_id
- WHERE p.pg_txid=txid_current()::TEXT
-   AND p.actor_id=actor AND p.tenant_id=NEW.tenant_id
-   AND l.actor_id=p.actor_id AND l.tenant_id=p.tenant_id
-   AND l.token_fingerprint=fp
-   AND e.actor_id=p.actor_id AND e.tenant_id=p.tenant_id
-   AND e.status='active' AND e.revision=p.session_revision
-   AND t.actor_id=p.actor_id AND t.status='active'
-   AND t.expires_at>statement_timestamp()
-   AND b.status='active'
-;
- IF matched IS DISTINCT FROM TRUE THEN
-   RAISE EXCEPTION 'SQL026 signed project write lacks matched active token';
- END IF;
- RETURN NULL;
-END $fn$;
-ALTER FUNCTION saas_m1_private.require_project_token_binding()
- OWNER TO saas_m1_session_owner;
-REVOKE ALL ON FUNCTION saas_m1_private.require_project_token_binding()
- FROM PUBLIC,saas_ci_runner,saas_m1_project_executor,saas_rls_reader;
-CREATE TRIGGER m1_project_token_binding_gate
- AFTER INSERT OR UPDATE ON saas_m1_private.projects
- FOR EACH ROW EXECUTE FUNCTION saas_m1_private.require_project_token_binding();
-
-DO $assert$
-BEGIN
- IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='saas_m1_identity_resolver'
-   AND NOT rolcanlogin AND NOT rolsuper AND NOT rolbypassrls AND NOT rolinherit)
- OR NOT (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class
-    WHERE oid='saas_m1_private.project_session_token_links'::regclass)
- OR has_table_privilege('saas_m1_identity_resolver',
-    'saas_m1_private.project_session_token_links','SELECT')
- OR has_table_privilege('saas_ci_runner',
-    'saas_m1_private.project_session_token_links','SELECT')
- OR has_table_privilege('saas_m1_project_executor',
-    'saas_m1_private.project_session_token_links','INSERT')
- OR has_function_privilege('saas_m1_identity_resolver',
-    'saas_m1_api.pin_project_verified_token_session(uuid,text,text,text)','EXECUTE')
- OR has_function_privilege('saas_ci_runner',
-    'saas_m1_api.resolve_verified_project_session(text,text,text)','EXECUTE')
- OR NOT has_function_privilege('saas_m1_identity_resolver',
-    'saas_m1_api.resolve_verified_project_session(text,text,text)','EXECUTE')
- OR NOT EXISTS(SELECT 1 FROM pg_trigger
-   WHERE tgrelid='saas_m1_private.projects'::regclass
-     AND tgname='m1_project_token_binding_gate'
-     AND NOT tgisinternal)
- THEN RAISE EXCEPTION 'SQL026 private identity privileges or token gate unsafe';
- END IF;
-END $assert$;
-COMMIT;
-\echo 'PASS SQL026: durable issuer-actor/one-token-session resolution, mandatory signed token/session PG16 gate'
-
-    OR NOT EXISTS (
-       SELECT 1 FROM saas_rls_private.actor_token_sessions t
-       JOIN saas_rls_private.issuer_subject_bindings b
-          ON b.issuer=t.issuer AND b.subject=t.subject AND b.actor_id=t.actor_id
-       JOIN saas_rls_private.actor_session_state a ON a.actor_id=t.actor_id
-       WHERE t.fingerprint=expected_fingerprint AND t.actor_id=expected_actor
-         AND t.issuer IS NOT NULL AND t.subject IS NOT NULL
-         AND t.status='active' AND t.expires_at>statement_timestamp()
-         AND b.status='active' AND a.status='active'
-    )
- THEN RETURN; END IF;
- minted := gen_random_uuid();
- INSERT INTO saas_m1_private.project_session_epochs
-    (session_id,actor_id,tenant_id,revision,status)
- VALUES(minted,expected_actor,expected_tenant,1,'active');
- INSERT INTO saas_m1_private.project_session_token_links
-    (session_id,token_fingerprint,actor_id,tenant_id)
- VALUES(minted,expected_fingerprint,expected_actor,expected_tenant);
- RETURN QUERY SELECT minted,1::BIGINT;
-EXCEPTION WHEN check_violation OR unique_violation OR foreign_key_violation
- THEN RETURN;
-END $fn$;
-ALTER FUNCTION saas_m1_api.issue_verified_project_session(text,text,text)
- OWNER TO saas_m1_session_owner;
-REVOKE ALL ON FUNCTION
- saas_m1_api.issue_verified_project_session(text,text,text)
- FROM PUBLIC,saas_ci_runner,saas_rls_reader,saas_m1_project_executor,
-      saas_m1_identity_resolver,saas_issuer_directory_admin;
-GRANT EXECUTE ON FUNCTION
- saas_m1_api.issue_verified_project_session(text,text,text)
- TO saas_issuer_provisioner;
-
--- No caller-supplied actor or role is accepted by HTTP. The server first
--- verifies issuer/signature, then this private durable directory resolves a
--- single active actor. Revoked subject/actor returns zero rows.
-CREATE FUNCTION saas_m1_api.resolve_verified_subject_actor(
- verified_issuer TEXT, verified_subject TEXT
-) RETURNS TABLE(actor_id TEXT)
- LANGUAGE sql VOLATILE SECURITY DEFINER
- SET search_path=pg_catalog,pg_temp AS $fn$
- SELECT b.actor_id FROM saas_rls_private.issuer_subject_bindings b
- JOIN saas_rls_private.actor_session_state a ON a.actor_id=b.actor_id
- WHERE b.issuer=verified_issuer AND b.subject=verified_subject
-   AND b.status='active' AND a.status='active'
-   AND verified_issuer IS NOT NULL AND verified_subject IS NOT NULL
-   AND char_length(verified_issuer) BETWEEN 10 AND 256
-   AND char_length(verified_subject) BETWEEN 1 AND 256
- LIMIT 1
- $fn$;
-ALTER FUNCTION saas_m1_api.resolve_verified_subject_actor(text,text)
- OWNER TO saas_m1_session_owner;
-REVOKE ALL ON FUNCTION saas_m1_api.resolve_verified_subject_actor(text,text)
- FROM PUBLIC,saas_ci_runner,saas_m1_project_executor,saas_rls_reader,
-      saas_issuer_provisioner,saas_issuer_directory_admin;
-GRANT EXECUTE ON FUNCTION saas_m1_api.resolve_verified_subject_actor(text,text)
- TO saas_m1_identity_resolver;
-
--- One fingerprint -> one immutable session UUID. Enrolled issuer and subject
--- MUST still be active. Revision and status live in durable PG25, not RAM.
-CREATE FUNCTION saas_m1_api.resolve_verified_project_session(
- expected_actor TEXT,expected_tenant TEXT,expected_fingerprint TEXT
-) RETURNS TABLE(session_id UUID,session_revision BIGINT)
- LANGUAGE sql VOLATILE SECURITY DEFINER
- SET search_path=pg_catalog,pg_temp AS $fn$
- SELECT e.session_id,e.revision FROM saas_m1_private.project_session_token_links l
- JOIN saas_m1_private.project_session_epochs e ON e.session_id=l.session_id
- JOIN saas_rls_private.actor_token_sessions t ON t.fingerprint=l.token_fingerprint
- JOIN saas_rls_private.issuer_subject_bindings b
-   ON b.issuer=t.issuer AND b.subject=t.subject AND b.actor_id=t.actor_id
- JOIN saas_rls_private.actor_session_state a ON a.actor_id=t.actor_id
- WHERE l.token_fingerprint=expected_fingerprint
-   AND l.actor_id=expected_actor AND l.tenant_id=expected_tenant
-   AND e.actor_id=l.actor_id AND e.tenant_id=l.tenant_id
-   AND e.status='active' AND t.actor_id=l.actor_id AND t.status='active'
-   AND t.expires_at>statement_timestamp()
-   AND b.status='active' AND a.status='active'
-   AND expected_actor ~ '^[A-Za-z0-9_-]{1,128}$'
-   AND expected_tenant ~ '^[A-Za-z0-9_-]{1,64}$'
-   AND expected_fingerprint ~ '^[0-9a-f]{64}$'
- LIMIT 1
- $fn$;
-ALTER FUNCTION saas_m1_api.resolve_verified_project_session(text,text,text)
- OWNER TO saas_m1_session_owner;
-REVOKE ALL ON FUNCTION saas_m1_api.resolve_verified_project_session(text,text,text)
- FROM PUBLIC,saas_ci_runner,saas_m1_project_executor,saas_rls_reader,
-      saas_issuer_provisioner,saas_issuer_directory_admin;
-GRANT EXECUTE ON FUNCTION saas_m1_api.resolve_verified_project_session(text,text,text)
- TO saas_m1_identity_resolver;
-
--- PG25 session proof in SAME SQL transaction MUST additionally be tied to
--- actual server-signed SHA256 bearer fingerprint. Lock token + subject until
--- transaction completion: concurrent revocation is serialized by the\n-- existing PG25/M1d tenant authorization revision FOR SHARE lock. The\n-- SQL011 revoke trigger advances that same revision, so a later revoke\n-- cannot slip between this recheck and COMMIT.
-CREATE FUNCTION saas_m1_private.require_project_token_binding()
- RETURNS TRIGGER LANGUAGE plpgsql VOLATILE SECURITY DEFINER
- SET search_path=pg_catalog,pg_temp AS $fn$
-DECLARE
- fp TEXT:=NULLIF(current_setting('saas.scope_token_fingerprint',true),'');
- actor TEXT:=NULLIF(current_setting('saas.scope_actor',true),'');
- matched BOOLEAN:=FALSE;
-BEGIN
- IF fp IS NULL OR fp !~ '^[0-9a-f]{64}$'
-    OR actor IS NULL OR actor !~ '^[A-Za-z0-9_-]{1,128}$'
-    OR NOT saas_rls_private.scope_verified() THEN
-    RAISE EXCEPTION 'SQL026 missing verified token-bound write scope';
- END IF;
- SELECT TRUE INTO matched
- FROM saas_m1_private.project_session_proofs p
- JOIN saas_m1_private.project_session_token_links l ON l.session_id=p.session_id
- JOIN saas_m1_private.project_session_epochs e ON e.session_id=p.session_id
- JOIN saas_rls_private.actor_token_sessions t ON t.fingerprint=l.token_fingerprint
- JOIN saas_rls_private.issuer_subject_bindings b
-  ON b.issuer=t.issuer AND b.subject=t.subject AND b.actor_id=t.actor_id
- WHERE p.pg_txid=txid_current()::TEXT
-   AND p.actor_id=actor AND p.tenant_id=NEW.tenant_id
-   AND l.actor_id=p.actor_id AND l.tenant_id=p.tenant_id
-   AND l.token_fingerprint=fp
-   AND e.actor_id=p.actor_id AND e.tenant_id=p.tenant_id
-   AND e.status='active' AND e.revision=p.session_revision
-   AND t.actor_id=p.actor_id AND t.status='active'
-   AND t.expires_at>statement_timestamp()
-   AND b.status='active'
-;
- IF matched IS DISTINCT FROM TRUE THEN
-   RAISE EXCEPTION 'SQL026 signed project write lacks matched active token';
- END IF;
- RETURN NULL;
-END $fn$;
-ALTER FUNCTION saas_m1_private.require_project_token_binding()
- OWNER TO saas_m1_session_owner;
-REVOKE ALL ON FUNCTION saas_m1_private.require_project_token_binding()
- FROM PUBLIC,saas_ci_runner,saas_m1_project_executor,saas_rls_reader;
-CREATE TRIGGER m1_project_token_binding_gate
- AFTER INSERT OR UPDATE ON saas_m1_private.projects
- FOR EACH ROW EXECUTE FUNCTION saas_m1_private.require_project_token_binding();
-
-DO $assert$
-BEGIN
- IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='saas_m1_identity_resolver'
-   AND NOT rolcanlogin AND NOT rolsuper AND NOT rolbypassrls AND NOT rolinherit)
- OR NOT (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class
-    WHERE oid='saas_m1_private.project_session_token_links'::regclass)
- OR has_table_privilege('saas_m1_identity_resolver',
-    'saas_m1_private.project_session_token_links','SELECT')
- OR has_table_privilege('saas_ci_runner',
-    'saas_m1_private.project_session_token_links','SELECT')
- OR has_table_privilege('saas_m1_project_executor',
-    'saas_m1_private.project_session_token_links','INSERT')
- OR has_function_privilege('saas_m1_identity_resolver',
-    'saas_m1_api.pin_project_verified_token_session(uuid,text,text,text)','EXECUTE')
- OR has_function_privilege('saas_ci_runner',
-    'saas_m1_api.resolve_verified_project_session(text,text,text)','EXECUTE')
- OR NOT has_function_privilege('saas_m1_identity_resolver',
-    'saas_m1_api.resolve_verified_project_session(text,text,text)','EXECUTE')
- OR NOT EXISTS(SELECT 1 FROM pg_trigger
-   WHERE tgrelid='saas_m1_private.projects'::regclass
-     AND tgname='m1_project_token_binding_gate'
-     AND NOT tgisinternal)
- THEN RAISE EXCEPTION 'SQL026 private identity privileges or token gate unsafe';
- END IF;
-END $assert$;
-COMMIT;
-\echo 'PASS SQL026: durable issuer-actor/one-token-session resolution, mandatory signed token/session PG16 gate'
+\echo 'PASS SQL026: one-use NOLOGIN session UUID, immutable bearer link and signed project gate'
