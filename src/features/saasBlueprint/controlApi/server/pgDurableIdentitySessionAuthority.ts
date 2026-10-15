@@ -59,8 +59,10 @@ export function createPgDurableIdentitySessionAuthority(pool:PgIdentityPool) {
      typeof pool.quarantine!=='function')
     throw new Error('Durable identity authority requires isolated PG pool');
 
-  async function one(sql:string,params:readonly string[],signal:AbortSignal):
-    Promise<readonly PgIdentityRow[]> {
+  async function one(
+    sql:string,params:readonly string[],signal:AbortSignal,
+    validRow:(row:PgIdentityRow)=>boolean,
+  ): Promise<readonly PgIdentityRow[]> {
     if(signal.aborted)throw new Error('Trusted identity request cancelled');
     let conn:PgIdentityConnection;
     try {conn=await pool.connect(signal);}
@@ -75,8 +77,14 @@ export function createPgDurableIdentitySessionAuthority(pool:PgIdentityPool) {
         await conn.query(q,[],signal);
       }
       const result=await conn.query(sql,params,signal);
+      // Validate DB fields BEFORE COMMIT/releasing the physical connection.
+      // A malformed SQL DTO is a corrupt identity boundary, not merely a
+      // missing actor. Quarantine and discard, never let that backend serve
+      // a later tenant or convert corrupted data into an authorization.
       if(signal.aborted||!result||!Array.isArray(result.rows)||
-         result.rows.length>1)throw new Error('Invalid identity result');
+         result.rows.length>1||
+         (result.rows.length===1 && !validRow(result.rows[0])))
+        throw new Error('Invalid identity result');
       await conn.query(PG_IDENTITY_SQL.commit,[],signal);
       if(signal.aborted)throw new Error('Identity response cancelled');
       discard=false;
@@ -102,13 +110,10 @@ export function createPgDurableIdentitySessionAuthority(pool:PgIdentityPool) {
       if(!identity||!issuer(identity.issuer)||!subject(identity.subject))
         return null;
       const rows=await one(PG_IDENTITY_SQL.actor,
-        [identity.issuer,identity.subject],new AbortController().signal);
-      if(rows.length===0)return null;
-      const row=rows[0];
-      if(Object.keys(row).sort().join(',')!=='actor_id' ||
-         typeof row.actor_id!=='string'||!ACTOR.test(row.actor_id))
-        throw new Error('Durable identity source unavailable');
-      return row.actor_id;
+        [identity.issuer,identity.subject],new AbortController().signal,
+        row=>Object.keys(row).sort().join(',')==='actor_id' &&
+          typeof row.actor_id==='string'&&ACTOR.test(row.actor_id));
+      return rows.length===0?null:rows[0].actor_id as string;
     },
   });
   const sessions:TenantProjectWriteSessionAuthority=Object.freeze({
@@ -117,18 +122,16 @@ export function createPgDurableIdentitySessionAuthority(pool:PgIdentityPool) {
          !FINGERPRINT.test(input.tokenFingerprint)||signal.aborted)
         return null;
       const rows=await one(PG_IDENTITY_SQL.session,
-        [input.actorId,input.tenantId,input.tokenFingerprint],signal);
+        [input.actorId,input.tenantId,input.tokenFingerprint],signal,
+        row=>Object.keys(row).sort().join(',')==='session_id,session_revision' &&
+          typeof row.session_id==='string'&&UUID.test(row.session_id) &&
+          typeof row.session_revision==='string' &&
+          /^[1-9][0-9]{0,15}$/.test(row.session_revision) &&
+          Number.isSafeInteger(Number(row.session_revision)));
       if(rows.length===0)return null;
-      const row=rows[0];
-      if(Object.keys(row).sort().join(',')!=='session_id,session_revision'||
-         typeof row.session_id!=='string'||!UUID.test(row.session_id)||
-         typeof row.session_revision!=='string'||
-         !/^[1-9][0-9]{0,15}$/.test(row.session_revision)||
-         !Number.isSafeInteger(Number(row.session_revision))){
-        throw new Error('Durable identity source unavailable');
-      }
       return Object.freeze({
-        sessionId:row.session_id,sessionRevision:Number(row.session_revision),
+        sessionId:rows[0].session_id as string,
+        sessionRevision:Number(rows[0].session_revision),
       });
     },
   });
