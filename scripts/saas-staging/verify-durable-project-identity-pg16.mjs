@@ -83,10 +83,11 @@ const verifier=await createOperatorPinnedOidcAccessVerifier({
 const b64=s=>Buffer.from(JSON.stringify(s)).toString('base64url');
 const currentSec=Math.floor(Date.now()/1000);
 const expiry=currentSec+300;
-async function mintToken(){
+async function mintToken(tokenLabel){
+  assert.match(tokenLabel,/^[A-Za-z0-9_-]{1,64}$/);
   const header=b64({alg:'RS256',typ:'at+jwt',kid:'ci-ephemeral-jwks-1'});
   const payload=b64({iss:ISSUER,aud:AUD,sub:'account-one',
-    iat:currentSec-5,exp:expiry});
+    iat:currentSec-5,exp:expiry,jti:tokenLabel});
   const unsigned=header+'.'+payload;
   const sig=new Uint8Array(await crypto.subtle.sign(
     'RSASSA-PKCS1-v1_5',jwtKey.privateKey,
@@ -121,8 +122,11 @@ const key=await crypto.subtle.importKey('raw',signBytes,{
   name:'HMAC',hash:'SHA-256'},false,['sign']);
 signBytes.fill(0);
 const signer=createPinnedHmacScopeIssuer(key);
-const TOKEN=await mintToken();
+const TOKEN=await mintToken('access-token-A');
+const TOKEN_B=await mintToken('access-token-B');
 const fp=createHash('sha256').update(TOKEN).digest('hex');
+const fpB=createHash('sha256').update(TOKEN_B).digest('hex');
+assert.notEqual(fp,fpB);
 const sessionId=crypto.randomUUID();
 const projectId=crypto.randomUUID();
 const secondSession=crypto.randomUUID();
@@ -189,6 +193,11 @@ try {
     "(session_id,actor_id,tenant_id,revision,status) "+
     "VALUES($1::uuid,$2,$3,1,'active')",
     [sessionId,ACTOR,TENANT]);
+  await scoped(
+    "INSERT INTO saas_m1_private.project_session_epochs "+
+    "(session_id,actor_id,tenant_id,revision,status) "+
+    "VALUES($1::uuid,$2,$3,1,'active')",
+    [secondSession,ACTOR,TENANT]);
 
   assert.equal(await withOperatorRole('saas_issuer_directory_admin',
     'SELECT saas_rls_private.pin_verified_subject($1::text,$2::text,$3::text) AS applied',
@@ -202,6 +211,15 @@ try {
   assert.equal(await withOperatorRole('saas_issuer_provisioner',
     'SELECT saas_m1_api.pin_project_verified_token_session($1::uuid,$2::text,$3::text,$4::text) AS applied',
     [sessionId,ACTOR,TENANT,fp]),false,'same UUID/fingerprint cannot reissue');
+  assert.equal(await withOperatorRole('saas_issuer_provisioner',
+    'SELECT saas_rls_private.enroll_verified_token($1::text,$2::text,$3::text,$4::text,$5::timestamptz) AS applied',
+    [ISSUER,'account-one',ACTOR,fpB,new Date(expiry*1000).toISOString()]),true);
+  assert.equal(await withOperatorRole('saas_issuer_provisioner',
+    'SELECT saas_m1_api.pin_project_verified_token_session($1::uuid,$2::text,$3::text,$4::text) AS applied',
+    [secondSession,ACTOR,TENANT,fpB]),true);
+  assert.equal(await withOperatorRole('saas_issuer_provisioner',
+    'SELECT saas_m1_api.pin_project_verified_token_session($1::uuid,$2::text,$3::text,$4::text) AS applied',
+    [sessionId,ACTOR,TENANT,fpB]),false,'B may not borrow A session');
 
   // Actual separate non-superuser login with NO direct table access:
   // SET LOCAL ROLE saas_m1_identity_resolver, readonly transaction, SQL
@@ -223,9 +241,18 @@ try {
     actorId:ACTOR,tenantId:TENANT,tokenFingerprint:'b'.repeat(64)},
     AbortSignal.timeout(9000)),null);
 
-  // Even a correctly signed actor scope using a DIFFERENT, unknown token
-  // fingerprint cannot borrow this PG25 session for a project mutation.
-  await signedCreate(crypto.randomUUID(),sessionId,1,'b'.repeat(64),false);
+  // B is also valid under SQL011, and PG25 by itself would allow any
+  // still-active session for the SAME actor/tenant. The new SQL026 trigger
+  // MUST DENY a fully valid B fingerprint used with A session UUID.
+  assert.deepEqual(await authority.sessions.resolve({
+    actorId:ACTOR,tenantId:TENANT,tokenFingerprint:fpB},
+    AbortSignal.timeout(9000)),{sessionId:secondSession,sessionRevision:1});
+  const impostor=crypto.randomUUID();
+  await signedCreate(impostor,sessionId,1,fpB,false);
+  const ghost=await scoped(
+    'SELECT count(*)::int AS c FROM saas_m1_private.projects WHERE project_id=$1',
+    [impostor]);
+  assert.equal(ghost[0].c,0);
   await signedCreate(projectId,sessionId,1,fp,true);
   const count=await scoped(
     'SELECT count(*)::int AS c FROM saas_m1_private.projects WHERE project_id=$1',
@@ -251,12 +278,22 @@ try {
     actorId:ACTOR,tenantId:TENANT,tokenFingerprint:fp},
     AbortSignal.timeout(9000)),null);
   await signedCreate(crypto.randomUUID(),sessionId,1,fp,false);
+  // Independent B retains current subject+token and its own PG25 UUID.
+  assert.deepEqual(await authority.sessions.resolve({
+    actorId:ACTOR,tenantId:TENANT,tokenFingerprint:fpB},
+    AbortSignal.timeout(9000)),{sessionId:secondSession,sessionRevision:1});
+  const survivor=crypto.randomUUID();
+  await signedCreate(survivor,secondSession,1,fpB,true);
 
   // Issuer-subject terminal revoke independently invalidates directory.
   assert.equal(await withOperatorRole('saas_issuer_directory_admin',
     'SELECT saas_rls_private.revoke_verified_subject($1::text,$2::text) AS applied',
     [ISSUER,'account-one']),true);
   assert.equal(await authority.directory.resolveActorId(verified),null);
+  assert.equal(await authority.sessions.resolve({
+    actorId:ACTOR,tenantId:TENANT,tokenFingerprint:fpB},
+    AbortSignal.timeout(9000)),null);
+  await signedCreate(crypto.randomUUID(),secondSession,1,fpB,false);
 
   // NOLOGIN runtime role cannot touch raw rows or provision any identity.
   const grants=await scoped(
@@ -268,7 +305,7 @@ try {
     "'saas_m1_api.pin_project_verified_token_session(uuid,text,text,text)',"+
     "'EXECUTE') AS provision");
   assert.deepEqual(grants[0],{bindings:false,sessions:false,provision:false});
-  console.info('PASS backend-04: distinct non-superuser PG16 durable issuer actor and token fingerprint/session lookup; mandatory signed PG25+SQL026 project audit/attempt 1:1; wrong token denied; revoke denies valid JWT with 0 ghost; no rebind');
+  console.info('PASS backend-04: distinct non-superuser PG16 durable issuer actor and token fingerprint/session lookup; two independently valid bearer sessions, mandatory signed PG25+SQL026 project audit/attempt, crossed A/B token-session DENIED with zero ghost; revoke A keeps B active, subject revoke denies B, no rebind/retry');
 } finally {
   await identityDb.close({timeout:0});
   await projectDb.close({timeout:0});
