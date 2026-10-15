@@ -14,7 +14,7 @@ const V4=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 type State='active'|'revoked';
 function fixture() {
   const attempts:TenantProjectWriteAttempt[]=[];
-  const writes:Array<Readonly<M1ProjectMutation & {attemptId:string;sessionId:string;sessionRevision:number}>>=[];
+  const writes:Array<Readonly<M1ProjectMutation & {attemptId:string;sessionId:string;sessionRevision:number;tokenFingerprint:string}>>=[];
   const sessionChecks:Array<{actorId:string;tenantId:string;tokenFingerprint:string}>=[];
   const actor={id:'actor-north',memberships:[{
     tenantId:'demo-north',role:'tenant-admin' as const,
@@ -130,6 +130,11 @@ describe('SaaS backend tenant projects mutation POST/PATCH (unmounted)',()=>{
       new TextEncoder().encode(TOKEN)));
     expect(f.sessionChecks[0].tokenFingerprint).toBe(Array.from(bytes,b=>
       b.toString(16).padStart(2,'0')).join(''));
+    // Identity lookup and signed DB writer MUST receive the SAME server-
+    // derived SHA256(full JWT), never a client-supplied UUID/jti/header.
+    expect(f.writes[0].tokenFingerprint).toBe(f.sessionChecks[0].tokenFingerprint);
+    expect(f.writes[0].tokenFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(f.writes[0].tokenFingerprint).not.toBe(TOKEN);
     const text=JSON.stringify(body);
     for(const forbidden of ['valid.signed.token','actor-north','attemptId',
       'JOURNAL_SIGNER_KEY_SECRET','PG_CONNECTION_PRIVATE_DETAIL'])
@@ -149,6 +154,7 @@ describe('SaaS backend tenant projects mutation POST/PATCH (unmounted)',()=>{
       operation:'rename',projectId:'project-24',name:'Renamed',
       expectedVersion:13,
     });
+    expect(f.writes[0].tokenFingerprint).toBe(f.sessionChecks[0].tokenFingerprint);
     expect(f.attempts).toHaveLength(1);
     expect(f.attempts[0].expectedVersion).toBe(13);
     expect(f.attempts[0].projectId).toBe('project-24');
