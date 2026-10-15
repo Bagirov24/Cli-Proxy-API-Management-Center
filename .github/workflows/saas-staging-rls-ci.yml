@@ -44,6 +44,8 @@ on:
       - 'src/features/saasBlueprint/controlApi/server/tenantProjectsWriteHttpHandler.ts'
       - 'tests/saasTenantProjectsWriteHttpHandler.test.ts'
       - 'tests/saasTenantProjectsReadHttpHandler.test.ts'
+      - 'src/features/saasBlueprint/controlApi/server/pgDurableIdentitySessionAuthority.ts'
+      - 'tests/saasPgDurableIdentitySessionAuthority.test.ts'
       - 'src/features/saasBlueprint/controlApi/server/syntheticCommittedIntent.ts'
       - 'src/features/saasBlueprint/controlApi/server/authorizationRevision.ts'
       - 'src/features/saasBlueprint/controlApi/server/signedPgAuthorizationRevision.ts'
@@ -1296,3 +1298,67 @@ jobs:
           fi
 
       # No deploy, repository secrets, production SQL connections or credentials.
+
+      # Backend 04 is run AFTER every old SQL001..025 and M1a..M1q job.
+      # Migration 026 intentionally changes the mandatory project write
+      # trigger so existing actor-only synthetic fixtures cannot be rerun.
+      # ALL data/roles are disposable GitHub Actions PostgreSQL16 ONLY.
+      - name: Verify durable issuer actor and token-bound project session (PostgreSQL16)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test "${PGUSER}" = "postgres"
+          test ! -e .env.production
+          test ! -e /data/auths
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/026_durable_project_token_binding_pilot.sql \
+            > /tmp/saas-pg26-install.log 2>&1 || {
+              tail -n 110 /tmp/saas-pg26-install.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-pg26-install.log
+          # Distinct ephemeral NON-superuser read login and its own temporary
+          # password; no access to scope_signers, private token rows or DML.
+          identity_password="$(openssl rand -hex 24)"
+          runner_password="$(openssl rand -hex 24)"
+          scope_key="$(psql -X -A -t -v ON_ERROR_STOP=1 -c \
+            "SELECT encode(secret,'hex') FROM saas_rls_private.scope_signers WHERE key_id='ci-pilot'")"
+          [[ "$identity_password" =~ ^[0-9a-f]{48}$ ]]
+          [[ "$runner_password" =~ ^[0-9a-f]{48}$ ]]
+          [[ "$scope_key" =~ ^[0-9a-f]{64}$ ]]
+          psql -X -v ON_ERROR_STOP=1 \
+            -v identity_password="$identity_password" \
+            -v runner_password="$runner_password" \
+            > /tmp/saas-pg26-ci-roles.log 2>&1 <<'SQL'
+          CREATE ROLE saas_identity_ci LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS
+            PASSWORD :'identity_password';
+          GRANT saas_m1_identity_resolver TO saas_identity_ci;
+          GRANT CONNECT ON DATABASE saas_ephemeral_test TO saas_identity_ci;
+          ALTER ROLE saas_ci_runner PASSWORD :'runner_password';
+          SQL
+          # Independently verify privileges WITHOUT giving identity role
+          # any direct SELECT on private tables or provisioning routines.
+          psql -X -v ON_ERROR_STOP=1 -c "
+            SELECT saas_rls_test.assert_true(
+              NOT has_table_privilege('saas_identity_ci',
+                'saas_rls_private.actor_token_sessions','SELECT')
+              AND NOT has_table_privilege('saas_identity_ci',
+                'saas_m1_private.project_session_token_links','SELECT')
+              AND NOT has_function_privilege('saas_identity_ci',
+                'saas_m1_api.pin_project_verified_token_session(uuid,text,text,text)',
+                'EXECUTE')
+              AND has_function_privilege('saas_identity_ci',
+                'saas_m1_api.resolve_verified_project_session(text,text,text)',
+                'EXECUTE'), 'private read login grant boundaries')" \
+            > /tmp/saas-pg26-role-assert.log 2>&1
+          timeout --signal=TERM --kill-after=5s 95s env \
+            SAAS_DURABLE_IDENTITY_PG_CI=true \
+            SAAS_EPHEMERAL_IDENTITY_DB_PASSWORD="$identity_password" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            bun scripts/saas-staging/verify-durable-project-identity-pg16.mjs
+          unset identity_password runner_password scope_key
