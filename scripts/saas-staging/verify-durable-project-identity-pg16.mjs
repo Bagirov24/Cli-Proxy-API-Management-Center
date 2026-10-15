@@ -145,7 +145,8 @@ assert.ok(await verifier.verifyAccessToken(TOKEN_B),
 const V4=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 let witness=null;
 async function signedCreate(project,session,revision,fingerprint,expected=false,
-                            attemptId=crypto.randomUUID(),name='Durable project boundary'){
+                            attemptId=crypto.randomUUID(),name='Durable project boundary',
+                            requirePg25SessionSuccess=false){
  assert.match(attemptId,V4,'Every signed PG attempt requires a server UUIDv4');
  const c=await projectDb.reserve();
  let committed=false;
@@ -168,6 +169,10 @@ async function signedCreate(project,session,revision,fingerprint,expected=false,
   const permitted=await c.unsafe(
     'SELECT saas_m1_api.lock_project_session_epoch($1::uuid,$2::bigint,$3::text,$4::text) AS allowed',
     [session,revision,TENANT,ACTOR]).execute();
+  if(requirePg25SessionSuccess){
+    assert.equal(permitted[0]?.allowed,true,
+      'PG25 must accept B bearer + A UUID before SQL026 specifically denies');
+  }
   let created=false;
   if(permitted[0]?.allowed){
     const rows=await c.unsafe(
@@ -258,11 +263,16 @@ try {
     actorId:ACTOR,tenantId:TENANT,tokenFingerprint:fpB},
     AbortSignal.timeout(9000)),{sessionId:secondSession,sessionRevision:1});
   const impostor=crypto.randomUUID();
-  await signedCreate(impostor,sessionId,1,fpB,false);
+  const impostorAttempt=crypto.randomUUID();
+  await signedCreate(impostor,sessionId,1,fpB,false,impostorAttempt,
+    'Durable project boundary',true);
   const ghost=await scoped(
-    'SELECT count(*)::int AS c FROM saas_m1_private.projects WHERE project_id=$1',
-    [impostor]);
-  assert.equal(ghost[0].c,0);
+    'SELECT (SELECT count(*) FROM saas_m1_private.projects WHERE project_id=$1)::int AS projects,'+
+    ' (SELECT count(*) FROM saas_m1_private.project_write_audit_outbox WHERE project_id=$1)::int AS audits,'+
+    ' (SELECT count(*) FROM saas_m1_private.project_attempt_bindings WHERE attempt_id=$2::uuid)::int AS attempts',
+    [impostor,impostorAttempt]);
+  assert.deepEqual({...ghost[0]},{projects:0,audits:0,attempts:0},
+    'No project, audit or attempt may survive SQL026 token/session mismatch');
   await signedCreate(projectId,sessionId,1,fp,true);
   const count=await scoped(
     'SELECT count(*)::int AS c FROM saas_m1_private.projects WHERE project_id=$1',
