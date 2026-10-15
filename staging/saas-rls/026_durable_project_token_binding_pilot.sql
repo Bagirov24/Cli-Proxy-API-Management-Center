@@ -110,7 +110,7 @@ BEGIN
      AND t.issuer IS NOT NULL AND t.subject IS NOT NULL
      AND t.status='active' AND t.expires_at>statement_timestamp()
      AND b.status='active' AND a.status='active'
-   FOR SHARE OF t,b,a
+
  ) THEN RETURN FALSE; END IF;
  INSERT INTO saas_m1_private.project_session_token_links
    (session_id,token_fingerprint,actor_id,tenant_id)
@@ -190,7 +190,7 @@ GRANT EXECUTE ON FUNCTION saas_m1_api.resolve_verified_project_session(text,text
 
 -- PG25 session proof in SAME SQL transaction MUST additionally be tied to
 -- actual server-signed SHA256 bearer fingerprint. Lock token + subject until
--- transaction completion: concurrent revocation must serialize or fail.
+-- transaction completion: concurrent revocation is serialized by the\n-- existing PG25/M1d tenant authorization revision FOR SHARE lock. The\n-- SQL011 revoke trigger advances that same revision, so a later revoke\n-- cannot slip between this recheck and COMMIT.
 CREATE FUNCTION saas_m1_private.require_project_token_binding()
  RETURNS TRIGGER LANGUAGE plpgsql VOLATILE SECURITY DEFINER
  SET search_path=pg_catalog,pg_temp AS $fn$
@@ -220,7 +220,7 @@ BEGIN
    AND t.actor_id=p.actor_id AND t.status='active'
    AND t.expires_at>statement_timestamp()
    AND b.status='active'
- FOR SHARE OF t,b;
+;
  IF matched IS DISTINCT FROM TRUE THEN
    RAISE EXCEPTION 'SQL026 signed project write lacks matched active token';
  END IF;
