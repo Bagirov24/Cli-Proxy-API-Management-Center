@@ -234,12 +234,10 @@ REVOKE ALL ON FUNCTION saas_m1_api.resolve_verified_project_session(text,text,te
 GRANT EXECUTE ON FUNCTION saas_m1_api.resolve_verified_project_session(text,text,text)
  TO saas_m1_identity_resolver;
 
--- PG25 session proof in SAME SQL transaction MUST additionally be tied to
--- actual server-signed SHA256 bearer fingerprint. Lock token + subject until
--- transaction completion: concurrent revocation is serialized by the
--- existing PG25/M1d tenant authorization revision FOR SHARE lock. The
--- SQL011 revoke trigger advances that same revision, so a later revoke
--- cannot slip between this recheck and COMMIT.
+-- PG25 proof must match this transaction's server-signed bearer SHA256.
+-- The prior PG25/M1d tenant-revision FOR SHARE lock fences concurrent
+-- SQL011 token/subject revocation (which advances that tenant revision).
+-- We DO NOT claim a token-row FOR SHARE here or independent off-host proof.
 CREATE FUNCTION saas_m1_private.require_project_token_binding()
  RETURNS TRIGGER LANGUAGE plpgsql VOLATILE SECURITY DEFINER
  SET search_path=pg_catalog,pg_temp AS $fn$
