@@ -98,10 +98,19 @@ describe('private PostgreSQL issuer identity and token session boundary',()=>{
     await expect(f.directory.resolveActorId(identity)).rejects.toThrow(
       'Durable identity source unavailable'
     );
+    expect(f.events).toContain('QUARANTINE:query-uncertain');
+    expect(f.events).toContain('RELEASE:true');
+    expect(f.events).not.toContain(PG_IDENTITY_SQL.commit);
     await expect(f.sessions.resolve({actorId:'actor-north',tenantId:'demo-north',
       tokenFingerprint:HASH},new AbortController().signal)).rejects.toThrow(
       'Durable identity source unavailable'
     );
+  });
+  test('empty current identity is a normal deny, not pool corruption',async()=>{
+    const f=fixture('empty');
+    expect(await f.directory.resolveActorId(identity)).toBeNull();
+    expect(f.events).toContain('RELEASE:false');
+    expect(f.events.some(x=>x.startsWith('QUARANTINE:'))).toBe(false);
   });
   test('query error, unknown COMMIT and release error quarantine without leaking SQL',async()=>{
     for(const outcome of ['failure','commit-unknown','release-error'] as const){
