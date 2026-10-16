@@ -13,6 +13,7 @@
  */
 import type {VerifiedAccessIdentity} from './trustedAccessToken';
 import type {TenantProjectWriteSessionAuthority} from './tenantProjectsWriteHttpHandler';
+import type {ControlActor, TenantRole} from '../contracts';
 
 export const PG_IDENTITY_SQL=Object.freeze({
   begin:'BEGIN READ ONLY',
@@ -20,6 +21,8 @@ export const PG_IDENTITY_SQL=Object.freeze({
   actor:'SELECT actor_id FROM saas_m1_api.resolve_verified_subject_actor($1::text,$2::text)',
   session:'SELECT session_id::text AS session_id, session_revision::text AS session_revision '+
     'FROM saas_m1_api.resolve_verified_project_session($1::text,$2::text,$3::text)',
+  memberships:'SELECT tenant_id, membership_role, membership_status '+
+    'FROM saas_m1_api.resolve_current_actor_memberships($1::text)',
   commit:'COMMIT',
   rollback:'ROLLBACK',
 });
@@ -39,6 +42,10 @@ export interface PgIdentityPool {
 const ACTOR=/^[A-Za-z0-9_-]{1,128}$/;
 const TENANT=/^[A-Za-z0-9_-]{1,64}$/;
 const FINGERPRINT=/^[a-f0-9]{64}$/;
+const MEMBERSHIP_ROLES=new Set<TenantRole>([
+  'tenant-owner','tenant-admin','tenant-viewer','tenant-auditor',
+]);
+const MAX_ACTOR_MEMBERSHIPS=32;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 function subject(value: unknown): value is string {
   return typeof value==='string' && value.length>=1 && value.length<=256 &&
@@ -62,6 +69,8 @@ export function createPgDurableIdentitySessionAuthority(pool:PgIdentityPool) {
   async function one(
     sql:string,params:readonly string[],signal:AbortSignal,
     validRow:(row:PgIdentityRow)=>boolean,
+    maxRows=1,
+    validRows?:(rows:readonly PgIdentityRow[])=>boolean,
   ): Promise<readonly PgIdentityRow[]> {
     if(signal.aborted)throw new Error('Trusted identity request cancelled');
     let conn:PgIdentityConnection;
@@ -82,8 +91,10 @@ export function createPgDurableIdentitySessionAuthority(pool:PgIdentityPool) {
       // Validate the exact private SQL DTO BEFORE COMMIT. A malformed
       // row is an untrusted data boundary and poisons the physical pool.
       if(signal.aborted||!result||!Array.isArray(result.rows)||
-         result.rows.length>1||
-         (result.rows.length===1 && !validRow(result.rows[0])))
+         result.rows.length>maxRows||
+         !result.rows.every(row=>row&&typeof row==='object'&&
+           !Array.isArray(row)&&validRow(row))||
+         (validRows!==undefined&&!validRows(result.rows)))
         throw new Error('Invalid identity result');
       await conn.query(PG_IDENTITY_SQL.commit,[],signal);
       if(signal.aborted)throw new Error('Identity response cancelled');
@@ -143,5 +154,31 @@ export function createPgDurableIdentitySessionAuthority(pool:PgIdentityPool) {
       });
     },
   });
-  return Object.freeze({directory,sessions});
+  const actors=Object.freeze({
+    async lookup(actorId:string,signal:AbortSignal):Promise<ControlActor|null>{
+      if(typeof actorId!=='string'||!ACTOR.test(actorId)||
+         !signal||signal.aborted)return null;
+      // SQL027 runs as a NONLOGIN SECURITY DEFINER which projects ONLY
+      // active tenant memberships after actor-wide and tenant-revision
+      // status checks; raw membership/epoch tables are never readable by
+      // this client. >32 memberships refuses rather than truncating.
+      const rows=await one(PG_IDENTITY_SQL.memberships,[actorId],signal,
+        row=>Object.keys(row).sort().join(',')===
+          'membership_role,membership_status,tenant_id' &&
+          typeof row.tenant_id==='string'&&TENANT.test(row.tenant_id) &&
+          typeof row.membership_role==='string' &&
+          MEMBERSHIP_ROLES.has(row.membership_role as TenantRole) &&
+          row.membership_status==='active',
+        MAX_ACTOR_MEMBERSHIPS,
+        all=>new Set(all.map(row=>row.tenant_id)).size===all.length);
+      if(rows.length===0)return null;
+      const memberships=Object.freeze(rows.map(row=>Object.freeze({
+        tenantId:row.tenant_id as string,
+        role:row.membership_role as TenantRole,
+        status:'active' as const,
+      })));
+      return Object.freeze({id:actorId,memberships});
+    },
+  });
+  return Object.freeze({directory,sessions,actors});
 }
