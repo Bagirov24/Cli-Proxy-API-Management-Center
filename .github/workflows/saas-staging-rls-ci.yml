@@ -1582,3 +1582,13 @@ jobs:
           test "${PGDATABASE}" = "saas_ephemeral_test"
           test ! -e .env.production
           bun test tests/saasBackend11PrivateOneShot.test.ts
+
+      - name: Backend12 private one-shot staging installer hash and no-retry guard (no Railway)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          bun test tests/saasBackend12PrivateRlsOnce.test.ts
