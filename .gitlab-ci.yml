@@ -1,0 +1,127 @@
+# GitLab.com hosted-runner bootstrap — NO production deploy, NO secrets.
+# Port of existing Main CI / release guard / Demo / Chromium from GitHub.
+# SQL001..026 real PostgreSQL16 workflow is NOT YET PORTED:
+# mandatory manual-blocking job below prevents false green/merge readiness.
+# Source branch imported from GitHub must preserve exact path below.
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+    - when: never
+
+stages:
+  - verify
+  - browser
+  - database
+
+default:
+  image: oven/bun:1.3.14
+  interruptible: true
+  before_script:
+    - test "${GITLAB_CI:-}" = "true"
+    - test "${CI_SERVER_HOST:-}" = "gitlab.com"
+    - test "${CI_PROJECT_PATH:-}" = "Bagirov24/Cli-Proxy-API-Management-Center"
+    - test -z "${RAILWAY_TOKEN:-}"
+    - test -z "${DATABASE_URL:-}"
+    - bun install --frozen-lockfile
+
+main_verify:
+  stage: verify
+  script:
+    - bun run verify
+    # Explicit source checks do NOT substitute for running SQL in PG16.
+    - bun test tests/saasDurableSessionSql026SourceGuard.test.ts
+    - bun test tests/saasPgDurableIdentitySessionAuthority.test.ts
+
+release_no_publish:
+  stage: verify
+  script:
+    - bun test tests/customManagementReleaseGuard.test.mjs
+    - bun run build
+    - test -s dist/index.html
+    - |
+      if grep -q 'saas-demo-tenant' dist/index.html; then
+        echo 'DENIED: synthetic SaaS fixture reached normal release bundle' >&2
+        exit 1
+      fi
+  # GitLab deploy jobs, GitHub Releases and Railway calls are intentionally
+  # absent. No production variables should be configured for this project.
+
+demo_build_default_off:
+  stage: verify
+  script:
+    - |
+      if VITE_ENABLE_SAAS_BLUEPRINT_DEMO=true bun run build           > /tmp/saas-denied-demo.log 2>&1; then
+        echo 'DENIED: normal GitLab bundle accepted synthetic SaaS demo' >&2
+        exit 1
+      fi
+      grep -q 'SAAS BLUEPRINT DEMO DENIED' /tmp/saas-denied-demo.log
+    - bun run build
+    - test -s dist/index.html
+    - |
+      if grep -q 'saas-demo-tenant' dist/index.html; then
+        echo 'DENIED: default bundle included synthetic tenant data' >&2
+        exit 1
+      fi
+  # Explicit GH-only synthetic PR build is NOT falsely emulated here.
+  # The browser job tests local DEV preview in isolated GitLab CI instead.
+
+chromium_synthetic:
+  stage: browser
+  variables:
+    VITE_ENABLE_SAAS_BLUEPRINT_DEMO: "true"
+    SAAS_BROWSER_URL: "http://127.0.0.1:5173/#/saas-demo-preview"
+    SAAS_BROWSER_ARTIFACTS: "tests/browser/artifacts"
+    SAAS_AXE_SCRIPT: "/tmp/saas-axe/node_modules/axe-core/axe.min.js"
+  script:
+    - |
+      apt-get update -qq
+      DEBIAN_FRONTEND=noninteractive apt-get install -y -qq         python3 python3-venv python3-pip curl ca-certificates
+      python3 -m venv /tmp/saas-python
+      /tmp/saas-python/bin/pip install --disable-pip-version-check playwright==1.55.0
+      /tmp/saas-python/bin/python -m playwright install --with-deps chromium
+      mkdir -p /tmp/saas-axe
+      printf '%s\n' '{"private":true}' > /tmp/saas-axe/package.json
+      (cd /tmp/saas-axe && bun add --exact axe-core@4.10.3)
+      test -s /tmp/saas-axe/node_modules/axe-core/axe.min.js
+    - |
+      bun run dev --host 127.0.0.1 --port 5173 --strictPort         > /tmp/saas-gitlab-vite.log 2>&1 &
+      vite_pid=$!
+      trap 'kill "$vite_pid" 2>/dev/null || true' EXIT
+      ready=0
+      for i in $(seq 1 45); do
+        if curl --silent --fail --output /dev/null http://127.0.0.1:5173/; then
+          ready=1
+          break
+        fi
+        sleep 2
+      done
+      test "$ready" -eq 1
+      /tmp/saas-python/bin/python tests/browser/saas_demo_browser.py
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - tests/browser/artifacts/
+  # Source code may only contact local fixture. No Core/Gateway/production.
+
+pg16_required_port:
+  stage: database
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
+      allow_failure: false
+    - if: '$CI_COMMIT_BRANCH'
+      when: manual
+      allow_failure: false
+  script:
+    - |
+      echo 'BLOCKED: SQL001..026 real PG16 acceptance has not yet been'
+      echo 'ported to an independently isolated GitLab-hosted runner.'
+      echo 'Do NOT spoof GITHUB_ACTIONS=true or borrow GitHub PR26 CI.'
+      echo 'Adapt guards for genuine GITLAB_CI and localhost-only'
+      echo 'saas_ephemeral_test first; all previous E2E must run unchanged.'
+      exit 1
+  # A blocking manual job leaves pipeline BLOCKED rather than falsely green.
+  # Remove it only in the same reviewed change that adds a successful
+  # self-contained, disposable PostgreSQL16 acceptance job.
