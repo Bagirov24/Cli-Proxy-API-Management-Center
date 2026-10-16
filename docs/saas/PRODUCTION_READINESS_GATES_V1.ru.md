@@ -668,3 +668,16 @@ BYOK/BYOA Vault/KMS, external off-host signer/WORM and PG COMMIT
 settlement, durable ACK and audit/billing remain future work.
 Production/SQL019/UUID issue-retry-reissue/repair/delivery/
 GC remain BLOCKED; `gcPermitted=false`.
+
+
+## M1c — локальная атомарность write audit (CI-only; gate НЕ пройден)
+
+SQL 021 в disposable PostgreSQL16 проверяет один атомарный COMMIT для
+project metadata + приватного audit event, а также rollback при сбое аудита.
+Это не внешнее неперезаписываемое WORM, не production PostgreSQL миграция,
+не гарантия revocation fencing после COMMIT или safe UNKNOWN COMMIT retry.
+Перед release всё ещё требуются independent ledger/retention/security review,
+production-grade pool quarantine/physical discard, реальные OIDC sessions,
+API RBAC и отдельное письменное разрешение владельца.
+Никакого merge/deploy, SQL 019, Railway изменения, UUID issue/reissue, delivery/GC.
+[M1c acceptance](M1C_PROJECT_ATOMIC_AUDIT_PG16.ru.md).

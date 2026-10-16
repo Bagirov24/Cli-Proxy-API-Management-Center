@@ -33,6 +33,7 @@
 | [BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md) | Этап 2F: Bun PostgreSQL native SQL на временной базе, конкуренция и повторное использование соединений |
 | [TRUSTED_SQL_READ_BOUNDARY_V1.ru.md](TRUSTED_SQL_READ_BOUNDARY_V1.ru.md) | 2G.2: pinned JWT → actor directory → RBAC → signed SQL + RLS → safe metadata rows, без HTTP/live |
 | [M1B_SIGNED_PG_DRIVER_E2E.ru.md](M1B_SIGNED_PG_DRIVER_E2E.ru.md) | M1b stacked Draft: CI-only pinned RS256 → server actor → signed SQL project writes на одноразовой PG16; UNKNOWN COMMIT quarantine, не production |
+| [M1C_PROJECT_ATOMIC_AUDIT_PG16.ru.md](M1C_PROJECT_ATOMIC_AUDIT_PG16.ru.md) | M1c stacked Draft: SQL 021 private project audit in SAME PG16 transaction, rollback and conflict tests, NOT independent WORM |
 
 ## Что добавлено в код
 
@@ -1198,3 +1199,14 @@ scope → M1a SQL create/rename/disable/get с FORCE RLS в disposable PG16.
 COMMIT (generic 503, whole CI pool quarantine, без retry). Реализация только в
 `scripts/saas-staging/`; никакого HTTP listener, Core/CPA/secret, production
 DB или реального write-audit outbox. [Ограничения M1b](M1B_SIGNED_PG_DRIVER_E2E.ru.md).
+
+
+## M1c — CI-only атомарный audit для project mutations
+
+Изолированный Draft поверх M1b: staging-only миграция 021 вставляет audit
+событие в ту же транзакцию, что и project create/rename/disable.
+Безуспешные CAS/duplicate не создают событий; ошибка обязательного аудита
+откатывает project mutation. CI тестирует это на disposable PostgreSQL16,
+включая committed project+audit при симулированной потере ACK.
+Это НЕ durable WORM или production audit API, а также не механизм
+безопасного автоматического retry. [Критерии M1c](M1C_PROJECT_ATOMIC_AUDIT_PG16.ru.md).
