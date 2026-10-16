@@ -8,6 +8,7 @@ on:
       - 'tests/sql/saas_rls_signed_scope.test.sql'
       - 'tests/sql/saas_scoped_queries.test.sql'
       - 'tests/sql/saas_driver_fixture.test.sql'
+      - 'tests/sql/saas_m1_project_metadata.test.sql'
       - 'tests/sql/saas_e2e_grants_fixture.test.sql'
       - 'tests/sql/saas_authorization_coverage.test.sql'
       - 'tests/sql/saas_authorization_expiry.test.sql'
@@ -166,6 +167,23 @@ jobs:
               exit 1
             }
           tail -n 3 /tmp/saas-authorization-revisions-install.log
+          # M1a STACKED DRAFT PR ONLY: real transactional create/read/rename/
+          # soft-disable tenant project metadata in separate disposable schema.
+          # No production migration, no HTTP listener, Core/CPA, tokens,
+          # keys, JWT issuer, UUID issuance, delivery or GC.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/020_m1_project_metadata_pilot.sql \
+            > /tmp/saas-m1a-project-install.log 2>&1 || {
+              tail -n 80 /tmp/saas-m1a-project-install.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1_project_metadata.test.sql \
+            > /tmp/saas-m1a-project-acceptance.log 2>&1 || {
+              tail -n 100 /tmp/saas-m1a-project-acceptance.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-m1a-project-acceptance.log
           PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
             -f staging/saas-rls/005_metadata_revision_coverage_pilot.sql \
             > /tmp/saas-authorization-coverage-install.log 2>&1 || {
