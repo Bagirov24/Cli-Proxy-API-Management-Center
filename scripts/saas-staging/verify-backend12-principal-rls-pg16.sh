@@ -95,11 +95,15 @@ read_as(){
   PGOPTIONS="-c saas.staging_only=true" PGUSER="$login" PGPASSWORD="$pass" \
     psql -XAt -v ON_ERROR_STOP=1 -d saas_staging_ci -c "$sql"
 }
+case_index=0
 expect_as(){
   local wanted="$1" login="$2" pass="$3" sql="$4" got
+  case_index=$((case_index + 1))
   got="$(read_as "$login" "$pass" "$sql")" || fail
   [[ "$got" == "$wanted" ]] || {
-    echo 'Backend12 tenant isolation test mismatch (redacted)' >&2
+    # The only values here are synthetic CI tenants, never real data.
+    printf 'Backend12 synthetic isolation case %d expected=%q actual=%q\n' \
+      "$case_index" "$wanted" "$got" >&2
     fail
   }
 }
