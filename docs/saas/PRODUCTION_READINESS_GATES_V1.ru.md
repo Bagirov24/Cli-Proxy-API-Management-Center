@@ -709,3 +709,16 @@ physical PID. Existing M1b case сохраняет row+audit при потеря
 network partition во время COMMIT, persistent uncertainty ledger,
 manual resolution или external immutable WORM; public API / release gate
 по-прежнему BLOCKED. [M1e boundaries](M1E_PG_PHYSICAL_DISCONNECT_CI.ru.md).
+
+
+## M1f — операторский READ ONLY просмотр локальных доказательств (gate НЕ пройден)
+
+CI-only SQL023 позволяет NOLOGIN оператору узнать, есть ли locally
+matching project+audit без выдачи клиентских метаданных/ключей,
+и заставляет возвращать STOP при неполной версии/несовпадении.
+Отсутствие локальных строк не доказывает отсутствие COMMIT, а
+совпадение таблиц одного PG не доказывает причинность конкретной
+потерянной попытки. Без independent durable operation ID, external
+WORM, human signoff, real network partition test и production pool
+physical discard этот gate остаётся BLOCKED. Не разрешает повторов,
+merge, deploy или SQL019. [M1f status](M1F_UNKNOWN_COMMIT_OPERATOR_LOCAL_EVIDENCE.ru.md).

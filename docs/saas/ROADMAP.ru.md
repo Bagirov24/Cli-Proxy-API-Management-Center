@@ -1411,8 +1411,20 @@ CPA keys и SQL019. [M1b acceptance and limitations](M1B_SIGNED_PG_DRIVER_E2E.ru
 - [x] Added opt-in M1e hook in unmounted Bun.SQL M1b CI driver and fixed PG16 negative acceptance SQL; no production driver/code changes.
 - [x] Actual physical backend termination and AbortSignal after M1c audit mutation but before COMMIT; generic 503, whole CI pool quarantine, PID must disappear, no second reservation/automatic retry.
 - [x] Baseline M1b committed lost ACK remains independently assertable as 1 project + 1 audit.
-- [ ] Require 4/4 Actions SUCCESS on exact final M1e HEAD, with PG16 logs explicitly confirming physical loss and abort.
+- [x] Verified 4/4 GitHub Actions SUCCESS on M1e HEAD `738e0e19`; real PG16 log confirms physical loss, abort, quarantine and the committed-lost-ACK control.
 - [ ] Independent partitioned-connection discard and production pool, durable operator-led UNKNOWN COMMIT settlement, token-bound sessions, third-party WORM — BLOCKED.
 
 Railway sandbox old mTLS service was independently observed redeployed on an inert no-listener start command, its persistent volume retained. This is platform evidence, not an active 8443 network probe. No Railway write in M1e.
 [M1e acceptance and limits](M1E_PG_PHYSICAL_DISCONNECT_CI.ru.md).
+
+
+## Stage M1f — operator-gated read-only UNKNOWN COMMIT local evidence (STACKED DRAFT / CI-only)
+
+- [x] Verified parent M1e Draft PR №8 `738e0e19` has 4/4 GitHub Actions SUCCESS; no parent merge or source mutation.
+- [x] New guarded SQL023 (NOLOGIN owner/operator, FORCE RLS SELECT) with READ COMMITTED READ ONLY local project+audit version-chain review.
+- [x] Negative SQL acceptance added: missing/in-flight evidence is inconclusive, mismatched actor/operation/version forces STOP; regular M1 roles cannot SELECT or EXECUTE.
+- [ ] Verify 4/4 GitHub Actions SUCCESS on M1f exact final HEAD, especially real disposable PG16 acceptance and SQL023 replay.
+- [ ] Immutable per-request operation ID, independent WORM, manual human signoff, real network partition during COMMIT and production-grade physical pool discard remain BLOCKED.
+
+No HTTP/SaaS server integration or OAuth/CPA/keys, no automatic retry,
+production/Railway/SQL019 or delivery/GC. [M1f evidence and limits](M1F_UNKNOWN_COMMIT_OPERATOR_LOCAL_EVIDENCE.ru.md).

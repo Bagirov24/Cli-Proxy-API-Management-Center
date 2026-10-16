@@ -36,6 +36,7 @@
 | [M1C_PROJECT_ATOMIC_AUDIT_PG16.ru.md](M1C_PROJECT_ATOMIC_AUDIT_PG16.ru.md) | M1c stacked Draft: SQL 021 private project audit in SAME PG16 transaction, rollback and conflict tests, NOT independent WORM |
 | [M1D_PROJECT_AUTHORIZATION_FENCE_PG16.ru.md](M1D_PROJECT_AUTHORIZATION_FENCE_PG16.ru.md) | M1d Draft: reuse signed tenant revision FOR SHARE to serialize project COMMIT vs membership/tenant revoke, PostgreSQL16 CI-only |
 | [M1E_PG_PHYSICAL_DISCONNECT_CI.ru.md](M1E_PG_PHYSICAL_DISCONNECT_CI.ru.md) | M1e Draft: actual Bun.SQL PostgreSQL16 backend loss and cancellation before COMMIT, quarantined CI pool, no ghost audit or automatic retry |
+| [M1F_UNKNOWN_COMMIT_OPERATOR_LOCAL_EVIDENCE.ru.md](M1F_UNKNOWN_COMMIT_OPERATOR_LOCAL_EVIDENCE.ru.md) | M1f Draft: NOLOGIN operator + READ ONLY local project/audit evidence for UNKNOWN COMMIT, no resolution/retry or external WORM |
 
 ## Что добавлено в код
 
@@ -1238,3 +1239,15 @@ Independent M1b lost ACK AFTER committed COMMIT retains exactly one
 project and one private audit: `503` never authorizes a retry.
 Not a production pool, HTTP API, partition simulation or independent WORM.
 [M1e acceptance](M1E_PG_PHYSICAL_DISCONNECT_CI.ru.md).
+
+
+## M1f — operator-only local evidence of UNKNOWN COMMIT (CI-only)
+
+Separate Draft above M1e: SQL023 creates a NOLOGIN read-only reviewer,
+who can inspect only a sanitized project+audit consistency projection in
+an explicit READ COMMITTED READ ONLY transaction. Outcomes are
+`LOCAL_PAIR_OBSERVED` (matching complete local audit),
+`NO_LOCAL_EVIDENCE` (inconclusive) or `INCONSISTENT_STOP`.
+No outcome proves the *specific original request* committed, authorizes
+retry or supplies an independent WORM. M1a–M1e signed PG16 acceptance
+remains mandatory. [M1f limits](M1F_UNKNOWN_COMMIT_OPERATOR_LOCAL_EVIDENCE.ru.md).
