@@ -41,6 +41,8 @@ on:
       - 'src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts'
       - 'src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts'
       - 'src/features/saasBlueprint/controlApi/server/tenantProjectsReadHttpHandler.ts'
+      - 'src/features/saasBlueprint/controlApi/server/tenantProjectsWriteHttpHandler.ts'
+      - 'tests/saasTenantProjectsWriteHttpHandler.test.ts'
       - 'tests/saasTenantProjectsReadHttpHandler.test.ts'
       - 'src/features/saasBlueprint/controlApi/server/syntheticCommittedIntent.ts'
       - 'src/features/saasBlueprint/controlApi/server/authorizationRevision.ts'
@@ -662,6 +664,20 @@ jobs:
               exit 1
             }
           tail -n 6 /tmp/saas-m1q-nonce-id-token-pg-acceptance.log
+          # Backend vertical slice 02: completely independent 12th disposable
+          # native PG16 invocation after unchanged M1a..M1q acceptance.
+          # Uses the SAME fixed signed PG writer, strict CAS and mandatory
+          # audit/attempt triggers, with a NEW unmounted POST/PATCH API and
+          # a separate fsynced pre-COMMIT witness; NO retry on UNKNOWN.
+          timeout --signal=TERM --kill-after=5s 120s env \
+            SAAS_EPHEMERAL_M1_PG_CI=true \
+            SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
+            SAAS_EPHEMERAL_M1_HTTP_CI=true \
+            SAAS_EPHEMERAL_M1J_HTTP_PG_CI=true \
+            SAAS_PROJECT_WRITE_HTTP_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
           unset runner_password scope_key
 
       - name: Verify staging authorization epochs and concurrent revocation
