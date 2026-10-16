@@ -310,7 +310,7 @@ try {
   // the same signed native PostgreSQL16 transaction and SQL026 mandatory
   // project/audit/attempt/session binding. The signer is a separate fsync
   // process without any PostgreSQL credentials, not an in-memory promise.
-  const witnessPath='/tmp/saas-backend04-http-'+crypto.randomUUID()+'.jsonl';
+  const witnessPath='/tmp/saas-m1h-intent-'+crypto.randomUUID()+'.jsonl';
   witness=await startWitness(assert,witnessPath);
   const prepared=[];
   const httpsOrigin='https://control.operator-ci.org';

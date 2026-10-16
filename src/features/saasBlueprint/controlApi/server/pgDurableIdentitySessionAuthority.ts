@@ -71,38 +71,43 @@ export function createPgDurableIdentitySessionAuthority(pool:PgIdentityPool) {
       throw new Error('Durable identity source unavailable');
     }
     let discard=true;
+    let failed=false;
+    let acceptedRows:readonly PgIdentityRow[]|null=null;
     try {
       if(signal.aborted)throw new Error('Trusted identity request cancelled');
       for(const q of [PG_IDENTITY_SQL.begin,PG_IDENTITY_SQL.role]){
         await conn.query(q,[],signal);
       }
       const result=await conn.query(sql,params,signal);
-      // Validate DB fields BEFORE COMMIT/releasing the physical connection.
-      // A malformed SQL DTO is a corrupt identity boundary, not merely a
-      // missing actor. Quarantine and discard, never let that backend serve
-      // a later tenant or convert corrupted data into an authorization.
+      // Validate the exact private SQL DTO BEFORE COMMIT. A malformed
+      // row is an untrusted data boundary and poisons the physical pool.
       if(signal.aborted||!result||!Array.isArray(result.rows)||
          result.rows.length>1||
          (result.rows.length===1 && !validRow(result.rows[0])))
         throw new Error('Invalid identity result');
       await conn.query(PG_IDENTITY_SQL.commit,[],signal);
       if(signal.aborted)throw new Error('Identity response cancelled');
+      acceptedRows=result.rows;
       discard=false;
-      return result.rows;
     } catch {
-      // Even COMMIT acknowledgement can be unknown. Drop the physical
-      // connection; never retry, promote it or return private SQL details.
+      failed=true;
+      // A lost COMMIT acknowledgement is UNKNOWN, not a rollback.
+      // Quarantine synchronously and do NOT retry this transaction.
       pool.quarantine('query-uncertain');
       try {await conn.query(PG_IDENTITY_SQL.rollback,[],signal);}
-      catch { /* already quarantined */ }
-      throw new Error('Durable identity source unavailable');
+      catch { /* connection is already quarantined */ }
     } finally {
       try {await conn.release(discard);}
       catch {
+        failed=true;
         pool.quarantine('release-uncertain');
-        throw new Error('Durable identity source unavailable');
       }
     }
+    // No return or throw from finally: release failure cannot accidentally
+    // publish a previous successful read or suppress original uncertainty.
+    if(failed || acceptedRows===null)
+      throw new Error('Durable identity source unavailable');
+    return acceptedRows;
   }
 
   const directory=Object.freeze({
@@ -117,7 +122,10 @@ export function createPgDurableIdentitySessionAuthority(pool:PgIdentityPool) {
     },
   });
   const sessions:TenantProjectWriteSessionAuthority=Object.freeze({
-    async resolve(input,signal){
+    async resolve(
+      input:Parameters<TenantProjectWriteSessionAuthority['resolve']>[0],
+      signal:AbortSignal,
+    ){
       if(!input||!ACTOR.test(input.actorId)||!TENANT.test(input.tenantId)||
          !FINGERPRINT.test(input.tokenFingerprint)||signal.aborted)
         return null;
