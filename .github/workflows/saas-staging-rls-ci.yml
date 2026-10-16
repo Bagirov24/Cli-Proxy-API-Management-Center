@@ -1635,3 +1635,13 @@ jobs:
           test "${PGDATABASE}" = "saas_ephemeral_test"
           test ! -e .env.production
           bun test tests/saasBackend14SessionFence.test.ts
+
+      - name: Backend14 immutable private one-shot runner hash and no-retry contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          bun test tests/saasBackend14PrivateSessionOnce.test.ts
