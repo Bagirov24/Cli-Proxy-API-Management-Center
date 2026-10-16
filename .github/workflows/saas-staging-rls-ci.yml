@@ -1303,7 +1303,7 @@ jobs:
       # Migration 026 intentionally changes the mandatory project write
       # trigger so existing actor-only synthetic fixtures cannot be rerun.
       # ALL data/roles are disposable GitHub Actions PostgreSQL16 ONLY.
-      - name: Verify durable issuer actor and token-bound project session (PostgreSQL16)
+      - name: Verify durable issuer, membership role and token-bound project session (PostgreSQL16)
         shell: bash
         run: |
           set -euo pipefail
@@ -1321,6 +1321,15 @@ jobs:
               exit 1
             }
           tail -n 5 /tmp/saas-pg26-install.log
+          # Install after SQL026 and after ALL old CI acceptance, so the
+          # new restricted actor projection cannot change prior baselines.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/027_current_actor_membership_projection_pilot.sql \
+            > /tmp/saas-pg27-install.log 2>&1 || {
+              tail -n 110 /tmp/saas-pg27-install.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-pg27-install.log
           # Distinct ephemeral NON-superuser read login and its own temporary
           # password; no access to scope_signers, private token rows or DML.
           identity_password="$(openssl rand -hex 24)"
@@ -1359,7 +1368,20 @@ jobs:
                 'saas_m1_identity_resolver','USAGE')
               AND NOT has_function_privilege('saas_identity_ci',
                 'saas_m1_api.resolve_verified_project_session(text,text,text)',
-                'EXECUTE'), 'private read login grant boundaries')" \
+                'EXECUTE')
+              AND NOT has_function_privilege('saas_identity_ci',
+                'saas_m1_api.resolve_current_actor_memberships(text)',
+                'EXECUTE')
+              AND has_function_privilege('saas_m1_identity_resolver',
+                'saas_m1_api.resolve_current_actor_memberships(text)',
+                'EXECUTE')
+              AND NOT has_table_privilege('saas_identity_ci',
+                'saas_rls.memberships','SELECT')
+              AND NOT has_table_privilege('saas_m1_identity_resolver',
+                'saas_rls.memberships','SELECT')
+              AND NOT has_table_privilege('saas_m1_identity_resolver',
+                'saas_rls_private.tenant_authorization_revisions','SELECT'),
+              'private read login grant boundaries SQL026 SQL027')" \
             > /tmp/saas-pg26-role-assert.log 2>&1
           timeout --signal=TERM --kill-after=5s 95s env \
             SAAS_DURABLE_IDENTITY_PG_CI=true \
