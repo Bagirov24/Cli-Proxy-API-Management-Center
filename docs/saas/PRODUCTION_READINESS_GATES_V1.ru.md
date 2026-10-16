@@ -681,3 +681,17 @@ production-grade pool quarantine/physical discard, реальные OIDC session
 API RBAC и отдельное письменное разрешение владельца.
 Никакого merge/deploy, SQL 019, Railway изменения, UUID issue/reissue, delivery/GC.
 [M1c acceptance](M1C_PROJECT_ATOMIC_AUDIT_PG16.ru.md).
+
+
+## M1d — подтверждаемая в disposable PG16 сериализация ревокации (gate НЕ пройден)
+
+SQL022 заставляет каждую успешную project mutation с приватным
+transactional audit event удерживать signed tenant epoch FOR SHARE до COMMIT.
+Конкурирующие membership revoke / tenant suspend обязаны обновить ту же
+строку ревизии, поэтому commit order сериализован. GitHub concurrency
+fixture требует реально наблюдаемого PostgreSQL Lock wait в обоих порядках.
+Однако никакие production server sessions/JWKS, межрепличный fence,
+UNKNOWN COMMIT reconciliation, durable independent WORM, network
+partition/cancel/discard proof или operator release authority не появились.
+NO merge, NO deployment, SQL019/production/Railway changes запрещены.
+[M1d readiness limits](M1D_PROJECT_AUTHORIZATION_FENCE_PG16.ru.md).

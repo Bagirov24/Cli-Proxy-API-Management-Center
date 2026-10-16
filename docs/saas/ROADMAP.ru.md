@@ -1391,3 +1391,15 @@ CPA keys и SQL019. [M1b acceptance and limitations](M1B_SIGNED_PG_DRIVER_E2E.ru
 
 Без public API, реальных ключей, production PostgreSQL и Railway. SQL 019 запрещена.
 [M1c acceptance checklist](M1C_PROJECT_ATOMIC_AUDIT_PG16.ru.md).
+
+
+## Stage M1d — tenant revocation / project COMMIT fence (STACKED DRAFT / PG16 CI-only)
+
+- [x] Новая отдельная ветка от зафиксированного HEAD M1c Draft PR №6.
+- [x] Staging-only SQL022: mandatory M1c project audit + signed existing 007 tenant epoch FOR SHARE; shared lock держится до транзакционного COMMIT и конфликтует с 004/008 revoke/status epoch UPDATE.
+- [x] Реальные concurrency fixtures: write-before-revoke, revoke-before-write, tenant-suspend-before-write; RLS и audit fail-closed; out-of-order replay SQL021 запрещён.
+- [ ] Проверить 4/4 GitHub Actions на точном финальном M1d HEAD; отдельный PG16 job должен подтвердить новый race harness и SQL022 replay.
+- [ ] Дальше: durable issuer/session fencing, independent audit/WORM, UNKNOWN COMMIT operator-led resolution, physical connection quarantine and security/code-owner review.
+
+Не открывает HTTP/API, production PostgreSQL, Core/CPA/Railway, SQL019 или retry/reissue/GC.
+[M1d contract and limitations](M1D_PROJECT_AUTHORIZATION_FENCE_PG16.ru.md).

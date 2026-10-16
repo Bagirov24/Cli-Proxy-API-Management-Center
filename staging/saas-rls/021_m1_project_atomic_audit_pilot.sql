@@ -10,6 +10,9 @@ BEGIN
     OR to_regclass('saas_m1_private.projects') IS NULL
     OR to_regprocedure('saas_rls.authorized_revision(text,text,text,text)') IS NULL
     OR to_regprocedure('saas_m1_api.create_project(text,text,text)') IS NULL
+    -- Refuse accidental out-of-order replay: SQL021 would replace the
+    -- M1d fenced trigger with the old non-fenced audit implementation.
+    OR to_regprocedure('saas_m1_private.append_project_write_audit_fenced()') IS NOT NULL
     OR NOT EXISTS (
       SELECT 1 FROM pg_roles WHERE rolname='saas_m1_project_owner'
         AND NOT rolcanlogin AND NOT rolsuper AND NOT rolbypassrls)

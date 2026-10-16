@@ -34,6 +34,7 @@
 | [TRUSTED_SQL_READ_BOUNDARY_V1.ru.md](TRUSTED_SQL_READ_BOUNDARY_V1.ru.md) | 2G.2: pinned JWT → actor directory → RBAC → signed SQL + RLS → safe metadata rows, без HTTP/live |
 | [M1B_SIGNED_PG_DRIVER_E2E.ru.md](M1B_SIGNED_PG_DRIVER_E2E.ru.md) | M1b stacked Draft: CI-only pinned RS256 → server actor → signed SQL project writes на одноразовой PG16; UNKNOWN COMMIT quarantine, не production |
 | [M1C_PROJECT_ATOMIC_AUDIT_PG16.ru.md](M1C_PROJECT_ATOMIC_AUDIT_PG16.ru.md) | M1c stacked Draft: SQL 021 private project audit in SAME PG16 transaction, rollback and conflict tests, NOT independent WORM |
+| [M1D_PROJECT_AUTHORIZATION_FENCE_PG16.ru.md](M1D_PROJECT_AUTHORIZATION_FENCE_PG16.ru.md) | M1d Draft: reuse signed tenant revision FOR SHARE to serialize project COMMIT vs membership/tenant revoke, PostgreSQL16 CI-only |
 
 ## Что добавлено в код
 
@@ -1210,3 +1211,16 @@ DB или реального write-audit outbox. [Ограничения M1b](M1
 включая committed project+audit при симулированной потере ACK.
 Это НЕ durable WORM или production audit API, а также не механизм
 безопасного автоматического retry. [Критерии M1c](M1C_PROJECT_ATOMIC_AUDIT_PG16.ru.md).
+
+
+## M1d — signed PostgreSQL16 tenant authorization epoch fence (CI-only)
+
+Изолированная ветка поверх M1c: SQL022 использует существующую signed
+FOR SHARE строку tenant epoch (миграции 004/007/008), чтобы project
+write+audit COMMIT не пересекался с конкурирующим membership revoke
+или tenant suspend COMMIT. CI проверяет оба порядка событий на реальном
+PostgreSQL16, обязательный audit для успешного write, отсутствие
+project/audit для запрещённого write, отказ при stale snapshot и запрет
+переигрывания старого SQL021 после установки fence.
+Это НЕ глобальный OIDC-session fence, safe UNKNOWN COMMIT recovery,
+WORM или готовый SaaS API. [M1d acceptance](M1D_PROJECT_AUTHORIZATION_FENCE_PG16.ru.md).

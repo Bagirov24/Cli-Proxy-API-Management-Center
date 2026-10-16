@@ -11,6 +11,7 @@ on:
       - 'tests/sql/saas_m1_project_metadata.test.sql'
       - 'tests/sql/saas_m1_pg_driver_role.test.sql'
       - 'tests/sql/saas_m1_project_atomic_audit.test.sql'
+      - 'tests/sql/saas_m1_project_authorization_fence.test.sql'
       - 'tests/sql/saas_e2e_grants_fixture.test.sql'
       - 'tests/sql/saas_authorization_coverage.test.sql'
       - 'tests/sql/saas_authorization_expiry.test.sql'
@@ -250,6 +251,53 @@ jobs:
               exit 1
             }
           tail -n 3 /tmp/saas-actor-state-install.log
+          # M1d STACKED DRAFT: AFTER 007 signed FOR SHARE and 008 actor
+          # epoch install, NOT an alternative auth source or production pool.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/022_m1_project_authorization_fence_pilot.sql \
+            > /tmp/saas-m1d-fence-install.log 2>&1 || {
+              tail -n 90 /tmp/saas-m1d-fence-install.log
+              exit 1
+            }
+          tail -n 3 /tmp/saas-m1d-fence-install.log
+          # Real independent psql connections force both COMMIT orders
+          # against the existing tenant epoch lock and mandatory audit.
+          timeout --signal=TERM --kill-after=5s 48s env \
+            SAAS_EPHEMERAL_M1_FENCE_CI=true \
+            bash scripts/saas-staging/verify-m1-project-revoke-fence.sh
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1_project_authorization_fence.test.sql \
+            > /tmp/saas-m1d-fence-acceptance.log 2>&1 || {
+              tail -n 130 /tmp/saas-m1d-fence-acceptance.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-m1d-fence-acceptance.log
+          # Old SQL021 replay would have silently replaced the fenced
+          # M1d trigger. It MUST now refuse instead of downgrading it.
+          if PGOPTIONS="-c saas.staging_only=true" \
+              psql -X -v ON_ERROR_STOP=1 \
+                -f staging/saas-rls/021_m1_project_atomic_audit_pilot.sql \
+                > /tmp/saas-m1d-downgrade-denial.log 2>&1; then
+            echo "ERROR: SQL021 replay downgraded the installed M1d fence"
+            exit 1
+          fi
+          grep -F "M1c atomic audit installation refused outside disposable PG16" \
+            /tmp/saas-m1d-downgrade-denial.log >/dev/null || {
+              echo "ERROR: SQL021 failed for an unexpected reason"
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 -c \
+            "SELECT saas_rls_test.assert_true(
+              EXISTS(SELECT 1 FROM pg_trigger
+                WHERE tgrelid='saas_m1_private.projects'::regclass
+                  AND tgname='m1_project_atomic_audit'
+                  AND tgfoid='saas_m1_private.append_project_write_audit_fenced()'::regprocedure),
+              'M1d fence remains active after blocked SQL021 replay')" \
+            > /tmp/saas-m1d-after-downgrade.log 2>&1 || {
+              tail -n 40 /tmp/saas-m1d-after-downgrade.log
+              exit 1
+            }
+          echo "PASS M1d: SQL021 downgrade is rejected, SQL022 replay retains fence"
           PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
             -f staging/saas-rls/009_signed_publication_outbox_pilot.sql \
             > /tmp/saas-outbox-install.log 2>&1 || {

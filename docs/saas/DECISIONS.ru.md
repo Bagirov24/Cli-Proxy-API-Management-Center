@@ -1379,3 +1379,20 @@ independent WORM/HSM, signer, recipient ACK, production audit ledger,
 идемпотентность и fencing между репликами. Ни новый endpoint, ни production
 sign-off этой реализацией не одобрены.
 [M1c boundaries](M1C_PROJECT_ATOMIC_AUDIT_PG16.ru.md).
+
+
+## M1d — reused signed tenant epoch lock, not a new authority (PROPOSED)
+
+Чтобы не вводить непроверенную параллельную систему tenant permission,
+M1d использует уже существующий PostgreSQL16 `004` tenant epoch UPDATE
+и `007` signed FOR SHARE с повторной проверкой actor/membership/tenant
+после ожидания. Новый CI-only SQL022 ставит эту блокировку внутри
+обязательного M1c audit trigger, вместе с project write в одной транзакции.
+Write-first фиксируется до revoke; revoke-first запрещает поздний write.
+SQL021 после установки SQL022 не может случайно восстановить старый триггер.
+
+Это **только local-PG cooperating-transactions commit ordering**,
+не revocation across replicas, не глобальное удаление JWT, не per-token
+persistent OIDC, не устранение unknown COMMIT или независимый WORM.
+Любая production integration по-прежнему требует отдельных решений и approvals.
+[M1d signed epoch fence](M1D_PROJECT_AUTHORIZATION_FENCE_PG16.ru.md).
