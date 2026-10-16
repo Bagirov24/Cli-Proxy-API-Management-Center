@@ -1565,3 +1565,13 @@ jobs:
           unset migrator_password
           echo 'PASS Backend08: signed migration receipt, no replay, separate CI dump-restore'
           echo 'PASS Backend09: non-superuser migrator/no inherited privilege, no pilot DB'
+
+      - name: Backend11 private staging executor syntax and checksum guard (no Railway)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          bun test tests/saasBackend11PrivateOneShot.test.ts
