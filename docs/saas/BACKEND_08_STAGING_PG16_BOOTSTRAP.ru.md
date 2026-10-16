@@ -1,5 +1,7 @@
 # Backend 08 — отдельная PostgreSQL16 staging и одноразовый migration bootstrap
 
+> **Исторический снимок перед deployment:** разделы ниже описывают состояние STAGED на момент Backend08. После отдельного разрешения пользователя 16 октября 2026 PostgreSQL16.15 была развёрнута только в `cliproxyapi-saas-staging` (deployment `dcb8a17e-bc3e-4985-9663-e012e8048a97` — SUCCESS), с томом и без публичных TCP proxies / HTTP domains. Текущее подтверждённое состояние и следующие ограничения находятся в [Backend09](BACKEND_09_STAGING_MIGRATOR_BACKUP.ru.md). Роли/ledger 0000–0001 на постоянной базе ещё НЕ установлены.
+
 **16 октября 2026. Статус:** новый SQL bootstrap и его доказательство — **только CI**; конфигурация PostgreSQL16 в Railway — **STAGED, не deployed**. Это не одобрение production, не постоянная миграция SQL001–027 и не запуск SaaS API.
 
 ## 1. Изолированный Railway-контур
