@@ -43,6 +43,12 @@ function insistEnabled(){
 function m1nEnabled(){
   return enabled() && process.env.SAAS_EPHEMERAL_M1N_TLS_CI==='true';
 }
+function m1qEnabled(){
+  return m1nEnabled() &&
+    process.env.SAAS_EPHEMERAL_M1O_TRUST_CI==='true' &&
+    process.env.SAAS_EPHEMERAL_M1P_CONTEXT_CI==='true' &&
+    process.env.SAAS_EPHEMERAL_M1Q_ID_TOKEN_CI==='true';
+}
 function issuerUrl(input,pathname,secure=false){
   const uri=new URL(input);
   if(uri.protocol==='http:'){
@@ -108,7 +114,7 @@ function genericDeny(){
 export function createSyntheticPkceClient({
   issuer,clientId,redirectUri,authorizationUrl,tokenUrl,
   tokenVerifier,resolveActorId,provisionSession,nowSeconds,
-  secureTransport,
+  secureTransport,nonceVerifier,
 }){
   insistEnabled();
   pinnedIssuer(issuer);
@@ -120,6 +126,10 @@ export function createSyntheticPkceClient({
   const secure=secureTransport!==undefined;
   if(secure&&(!m1nEnabled()||typeof secureTransport?.fetch!=='function'))
     throw new Error('M1n HTTPS transport missing or disabled');
+  const withNonce=nonceVerifier!==undefined;
+  if(withNonce&&(!secure||!m1qEnabled()||
+     typeof nonceVerifier?.verifyIdToken!=='function'))
+    throw new Error('M1q signed ID token nonce verifier disabled');
   const auth=issuerUrl(authorizationUrl,'/authorize',secure);
   const tokenEndpoint=issuerUrl(tokenUrl,'/token',secure);
   if(new URL(auth).origin!==new URL(tokenEndpoint).origin||
@@ -131,8 +141,9 @@ export function createSyntheticPkceClient({
       insistEnabled();
       if(pending.size>=8)throw genericDeny();
       const state=random(),verifier=random();
+      const nonce=withNonce?random():null;
       const hash=digest(state);
-      pending.set(hash,{verifier,expiresAt:nowSeconds()+90});
+      pending.set(hash,{verifier,nonce,expiresAt:nowSeconds()+90});
       const url=new URL(auth);
       url.searchParams.set('response_type','code');
       url.searchParams.set('client_id',clientId);
@@ -141,6 +152,7 @@ export function createSyntheticPkceClient({
       url.searchParams.set('state',state);
       url.searchParams.set('code_challenge',digest(verifier));
       url.searchParams.set('code_challenge_method','S256');
+      if(withNonce)url.searchParams.set('nonce',nonce);
       return Object.freeze({authorizationUrl:url.href});
     },
     async complete(callbackUri){
@@ -180,7 +192,9 @@ export function createSyntheticPkceClient({
            !/^application\/json(?:;\s*charset=utf-8)?$/i.test(
              response.headers.get('content-type')??''))throw genericDeny();
         const tokenBody=JSON.parse(await limitedText(response,MAX_BODY));
-        if(!exactObject(tokenBody,'access_token,expires_in,token_type')||
+        if(!exactObject(tokenBody,withNonce
+          ?'access_token,expires_in,id_token,token_type'
+          :'access_token,expires_in,token_type')||
            tokenBody.token_type!=='Bearer'||
            !Number.isSafeInteger(tokenBody.expires_in)||
            tokenBody.expires_in<1||tokenBody.expires_in>900||
@@ -189,6 +203,18 @@ export function createSyntheticPkceClient({
         const identity=await tokenVerifier.verifyAccessToken(tokenBody.access_token);
         if(!identity||identity.issuer!==issuer||!SAFE_ID.test(identity.subject))
           throw genericDeny();
+        if(withNonce){
+          if(typeof tokenBody.id_token!=='string'||
+             tokenBody.id_token.length>4096)throw genericDeny();
+          // Require a second pinned RS256 token proving this exact login's
+          // nonce, OAuth client audience and access-token subject BEFORE
+          // resolving the actor or enrolling a server-owned PG16 session.
+          const proof=await nonceVerifier.verifyIdToken(tokenBody.id_token,{
+            nonce:item.nonce,subject:identity.subject,
+          });
+          if(!proof||proof.issuer!==issuer||
+             proof.subject!==identity.subject)throw genericDeny();
+        }
         const actorId=await resolveActorId(identity);
         if(!SAFE_ID.test(actorId??''))throw genericDeny();
         const session=await provisionSession({
@@ -218,12 +244,14 @@ export function createSyntheticPkceClient({
  */
 export function createSyntheticPkceIssuer({
   issuer,audience,origin,clientId,redirectUri,privateKey,publicJwk,
-  nowSeconds,subject='north',kid='M1m',
+  nowSeconds,subject='north',kid='M1m',nonceMode=false,
 }){
   insistEnabled();
   pinnedIssuer(issuer);
   const auth=issuerUrl(origin+'/authorize','/authorize',
     new URL(origin).protocol==='https:');
+  if(nonceMode&&(!m1qEnabled()||new URL(origin).protocol!=='https:'))
+    throw new Error('M1q synthetic ID-token issuer disabled');
   const base=new URL(auth).origin;
   const redirect=urlString(redirectUri,'/oauth/callback');
   if(!SAFE_ID.test(clientId)||!SAFE_ID.test(subject)||!SAFE_ID.test(kid)||
@@ -254,8 +282,9 @@ export function createSyntheticPkceIssuer({
         }]});
       }
       if(req.method==='GET'&&url.pathname==='/authorize'){
-        if(!exactParams(url.searchParams,
-           'client_id,code_challenge,code_challenge_method,redirect_uri,response_type,scope,state')||
+        if(!exactParams(url.searchParams,nonceMode
+           ?'client_id,code_challenge,code_challenge_method,nonce,redirect_uri,response_type,scope,state'
+           :'client_id,code_challenge,code_challenge_method,redirect_uri,response_type,scope,state')||
            url.searchParams.get('client_id')!==clientId||
            url.searchParams.get('response_type')!=='code'||
            url.searchParams.get('scope')!=='openid'||
@@ -263,10 +292,12 @@ export function createSyntheticPkceIssuer({
            url.searchParams.get('code_challenge_method')!=='S256'||
            !STATE.test(url.searchParams.get('state')??'')||
            !STATE.test(url.searchParams.get('code_challenge')??'')||
+           (nonceMode&&!STATE.test(url.searchParams.get('nonce')??''))||
            codes.size>=16) return fail();
         const code=random();
         codes.set(digest(code),{
           challenge:url.searchParams.get('code_challenge'),
+          ...(nonceMode?{nonce:url.searchParams.get('nonce')}:{}),
           expiresAt:nowSeconds()+90,
         });
         minted++;
@@ -312,9 +343,28 @@ export function createSyntheticPkceIssuer({
           const input=head+'.'+claims;
           const signature=await crypto.subtle.sign(
             'RSASSA-PKCS1-v1_5',privateKey,bytes(input));
+          let idToken;
+          if(nonceMode){
+            // Distinct signed CI-only ID token. OAuth client audience,
+            // original authorization nonce and access token subject
+            // are verified separately before mock PG enrollment.
+            const idHeader=Buffer.from(JSON.stringify({
+              alg:'RS256',kid,typ:'JWT',
+            })).toString('base64url');
+            const idClaims=Buffer.from(JSON.stringify({
+              iss:issuer,aud:clientId,sub:subject,nonce:entry.nonce,
+              iat:nowSeconds()-10,exp:nowSeconds()+120,
+            })).toString('base64url');
+            const idSigningInput=idHeader+'.'+idClaims;
+            const idSignature=await crypto.subtle.sign(
+              'RSASSA-PKCS1-v1_5',privateKey,bytes(idSigningInput));
+            idToken=idSigningInput+'.'+
+              Buffer.from(idSignature).toString('base64url');
+          }
           spent++;
           return Response.json({
             access_token:input+'.'+Buffer.from(signature).toString('base64url'),
+            ...(nonceMode?{id_token:idToken}:{}),
             token_type:'Bearer',expires_in:120,
           },{headers:{'Cache-Control':'no-store'}});
         }catch{return fail();}

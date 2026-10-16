@@ -766,6 +766,7 @@ if (m1gOnly) {
     const { verifyM1m } = await import('./verify-m1m-pkce-pg-ci.mjs');
     await verifyM1m({ assert, makeDriver, actors, httpsMode: true,
         trustEpochMode: process.env.SAAS_EPHEMERAL_M1O_TRUST_CI === 'true',
-        loginContextMode: process.env.SAAS_EPHEMERAL_M1P_CONTEXT_CI === 'true' });
+        loginContextMode: process.env.SAAS_EPHEMERAL_M1P_CONTEXT_CI === 'true',
+        nonceMode: process.env.SAAS_EPHEMERAL_M1Q_ID_TOKEN_CI === 'true' });
   }
 }

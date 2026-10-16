@@ -10,6 +10,7 @@
  */
 import { createHash } from 'node:crypto';
 import { createM1pBoundPkceClient } from './m1p-bound-pkce-login-context.mjs';
+import { createM1qPinnedIdTokenVerifier } from './m1q-signed-id-token-nonce.mjs';
 import { createM1oExplicitTrustRotation } from './m1o-explicit-trust-rotation.mjs';
 import { createServer } from 'node:https';
 import { createDisposableM1nTlsFixture } from './m1n-ephemeral-tls-fixture.mjs';
@@ -30,7 +31,7 @@ const AUDIENCE='saas-m1m-ci';
 const CLIENT_ID='m1m-ephemeral-client';
 const NOW=1_800_000_000;
 const V4=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const PROJECT=/^m1[mnop]-[a-z-]{1,48}$/;
+const PROJECT=/^m1[mnopq]-[a-z-]{1,48}$/;
 const sha=value=>createHash('sha256').update(value).digest('hex');
 function pg(assert,sql){
   const command=Bun.spawnSync(
@@ -65,7 +66,7 @@ function evidence(assert,name){
     "JOIN saas_m1_private.project_write_audit_outbox a ON a.event_id=b.event_id "+
     "WHERE a.tenant_id='demo-north' AND a.project_id='"+name+"')::TEXT");
 }
-export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustEpochMode=false,loginContextMode=false}){
+export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustEpochMode=false,loginContextMode=false,nonceMode=false}){
   if(process.env.GITHUB_ACTIONS!=='true'||
      process.env.SAAS_EPHEMERAL_M1_PG_CI!=='true'||
      process.env.SAAS_EPHEMERAL_M1G_ATTEMPT_CI!=='true'||
@@ -75,6 +76,8 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
      process.env.SAAS_EPHEMERAL_M1L_OIDC_CI!=='true'||
      process.env.SAAS_EPHEMERAL_M1J_HTTP_PG_CI==='true'||
      process.env.SAAS_EPHEMERAL_M1H_INTENT_CI==='true'||
+     (nonceMode&&(!loginContextMode||
+       process.env.SAAS_EPHEMERAL_M1Q_ID_TOKEN_CI!=='true'))||
      (loginContextMode&&(!trustEpochMode||!httpsMode||
        process.env.SAAS_EPHEMERAL_M1P_CONTEXT_CI!=='true'))||
      (trustEpochMode&&(!httpsMode||process.env.SAAS_EPHEMERAL_M1O_TRUST_CI!=='true'))||
@@ -89,14 +92,16 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
      process.env.RAILWAY_SERVICE_ID){
     throw new Error('M1m OAuth/PG16 proof denied outside disposable GitHub CI');
   }
-  console.info(loginContextMode
+  console.info(nonceMode
+    ? 'STEP M1q: pinned HTTPS signed ID-token nonce -> bound PKCE -> PG16'
+    : loginContextMode
     ? 'STEP M1p: bound login contexts, pre-enrollment cancellation, HTTPS PG16'
     : trustEpochMode
     ? 'STEP M1o: explicit HTTPS trust epoch -> PKCE -> signed PG16'
     : httpsMode
     ? 'STEP M1n: real pinned HTTPS IdP CA/SAN/SPKI -> PKCE/state -> signed PG16'
     : 'STEP M1m: real mock OAuth PKCE code/state -> pinned JWT -> signed PG16 session');
-  const prefix=loginContextMode?'m1p':trustEpochMode?'m1o':httpsMode?'m1n':'m1m';
+  const prefix=nonceMode?'m1q':loginContextMode?'m1p':trustEpochMode?'m1o':httpsMode?'m1n':'m1m';
   const project=suffix=>prefix+'-'+suffix;
   const stamp=crypto.randomUUID();
   const journal='/tmp/saas-m1h-intent-'+stamp+'.jsonl';
@@ -226,7 +231,7 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
     mockIssuer=createSyntheticPkceIssuer({
       issuer:ISSUER,audience:AUDIENCE,origin:issuerBase,
       clientId:CLIENT_ID,redirectUri,privateKey:rsa.privateKey,
-      publicJwk,nowSeconds:()=>NOW,
+      publicJwk,nowSeconds:()=>NOW,nonceMode,
     });
     if(httpsMode){
       if(trustEpochMode){
@@ -286,6 +291,12 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
     }else{
       assert.deepEqual(await oidc.reload(1),{revision:1,keyIds:['M1m']});
     }
+    const idTokenVerifier=nonceMode
+      ?await createM1qPinnedIdTokenVerifier({
+        transport:secureTransport,issuer:ISSUER,clientId:CLIENT_ID,
+        kid:'M1m',nowSeconds:()=>NOW,
+      })
+      :null;
     function provisionSessionSync({token,actorId}){
       assert.equal(actorId,'actor-north');
       const item=Object.freeze({
@@ -308,6 +319,7 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
         },
       }:oidc,
       ...(httpsMode?{secureTransport}:{}),
+      ...(nonceMode?{nonceVerifier:idTokenVerifier}:{}),
       nowSeconds:()=>NOW,
       resolveActorId:directory.resolveActorId,
     };
@@ -318,8 +330,14 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
       :createSyntheticPkceClient({
         ...clientConfig,provisionSession:provisionSessionSync,
       });
-    async function authorize(loginContext=null){
-      const flow=loginContextMode?client.begin(loginContext):client.begin();
+    async function authorize(loginContext=null,selectedClient=client){
+      const flow=loginContextMode
+        ?selectedClient.begin(loginContext):selectedClient.begin();
+      if(nonceMode){
+        const params=new URL(flow.authorizationUrl).searchParams;
+        assert.match(params.get('nonce')??'',/^[A-Za-z0-9_-]{43}$/);
+        assert.notEqual(params.get('nonce'),params.get('state'));
+      }
       const res=await (httpsMode?secureTransport.fetch:fetch)(flow.authorizationUrl,{redirect:'manual'});
       assert.equal(res.status,302);
       const callback=res.headers.get('location');
@@ -442,6 +460,44 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
         /M1p synthetic bound login context denied/);
     }
 
+    if(nonceMode){
+      // Adversarially present a different expected nonce to the same
+      // pinned JWKS ID-token verifier. The genuine signed IdP token
+      // must be rejected AFTER one code exchange and BEFORE any PG row.
+      const wronglyBound=createM1pBoundPkceClient({
+        ...clientConfig,
+        nonceVerifier:{
+          verifyIdToken(token,expectation){
+            const forbidden='N'.repeat(43);
+            const wrong=expectation.nonce===forbidden
+              ?'M'.repeat(43):forbidden;
+            return idTokenVerifier.verifyIdToken(token,{
+              ...expectation,nonce:wrong,
+            });
+          },
+        },
+        provisionSessionSync,
+      });
+      const wrongContext=wronglyBound.openContext();
+      const beforeCount=pg(assert,
+        "SELECT COUNT(*) FROM saas_m1_private.project_session_epochs "+
+        "WHERE actor_id='actor-north' AND tenant_id='demo-north'");
+      const badCallback=await authorize(wrongContext,wronglyBound);
+      await assert.rejects(
+        ()=>wronglyBound.complete(wrongContext,badCallback),
+        /M1p synthetic bound login context denied/);
+      assert.equal(pg(assert,
+        "SELECT COUNT(*) FROM saas_m1_private.project_session_epochs "+
+        "WHERE actor_id='actor-north' AND tenant_id='demo-north'"),
+        beforeCount,'mismatched nonce cannot enroll PG session');
+      assert.equal(registry.size,3);
+      assert.equal(mockIssuer.stats().redeemedCodes,5,
+        'wrong nonce spends exactly one code with no retry/registration');
+      await assert.rejects(
+        ()=>wronglyBound.complete(wrongContext,badCallback),
+        /M1p synthetic bound login context denied/);
+    }
+
     // Critical race: an actual C-session bearer was verified twice by
     // M1a, passed HTTP authorization and fsynced a separate PRE-COMMIT
     // intent; before ANY PG reservation, privileged fixture revokes C.
@@ -488,8 +544,16 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
     assert.equal((await post(b,project('signer-dead'))),503);
     assert.equal(driver.stats().reservations,held);
     assert.equal(evidence(assert,project('signer-dead')),'0:0:0');
-    assert.equal(mockIssuer.stats().redeemedCodes,loginContextMode?4:3);
-    if(loginContextMode) console.info(
+    assert.equal(mockIssuer.stats().redeemedCodes,nonceMode?5:loginContextMode?4:3);
+    if(nonceMode) console.info(
+      'PASS M1q: real CA/SAN/SPKI-pinned rotated HTTPS mock IdP issues distinct '+
+      'RS256 ID token with per-context one-use nonce, exact OAuth client aud, '+
+      'issuer and access-token subject BEFORE PG enrollment; wrong nonce code '+
+      'spent once with 0 new PG rows, context cancellation 0 new sessions; '+
+      'signed PostgreSQL16 project/audit/UUID 3/3/3, revoked A/C 0 ghost, '+
+      'B active, dead witness 503/0 reservations; no retry or production'
+    );
+    else if(loginContextMode) console.info(
       'PASS M1p: real pinned HTTPS PKCE callbacks bound to opaque per-login contexts; '+
       'cross-context swap 0 bearer/0 PG, cancelled verified token BEFORE '+
       'PG enrollment 0 session; signed PG16 3/3/3 project/audit/UUID, '+

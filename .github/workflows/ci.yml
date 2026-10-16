@@ -81,3 +81,14 @@ jobs:
           SAAS_EPHEMERAL_M1O_TRUST_CI: 'true'
           SAAS_EPHEMERAL_M1P_CONTEXT_CI: 'true'
         run: bun test tests/saasM1pBoundPkceLoginContext.test.mjs
+
+      # M1q is strictly AFTER M1p: signed, separate OIDC ID token with
+      # exact client audience and one-use nonce. NOT a production login.
+      - name: Verify M1q signed OIDC ID token nonce before PKCE session
+        env:
+          SAAS_EPHEMERAL_M1M_PKCE_CI: 'true'
+          SAAS_EPHEMERAL_M1N_TLS_CI: 'true'
+          SAAS_EPHEMERAL_M1O_TRUST_CI: 'true'
+          SAAS_EPHEMERAL_M1P_CONTEXT_CI: 'true'
+          SAAS_EPHEMERAL_M1Q_ID_TOKEN_CI: 'true'
+        run: bun test tests/saasM1qSignedIdTokenNonce.test.mjs
