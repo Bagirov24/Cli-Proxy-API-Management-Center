@@ -1398,8 +1398,21 @@ CPA keys и SQL019. [M1b acceptance and limitations](M1B_SIGNED_PG_DRIVER_E2E.ru
 - [x] Новая отдельная ветка от зафиксированного HEAD M1c Draft PR №6.
 - [x] Staging-only SQL022: mandatory M1c project audit + signed existing 007 tenant epoch FOR SHARE; shared lock держится до транзакционного COMMIT и конфликтует с 004/008 revoke/status epoch UPDATE.
 - [x] Реальные concurrency fixtures: write-before-revoke, revoke-before-write, tenant-suspend-before-write; RLS и audit fail-closed; out-of-order replay SQL021 запрещён.
-- [ ] Проверить 4/4 GitHub Actions на точном финальном M1d HEAD; отдельный PG16 job должен подтвердить новый race harness и SQL022 replay.
+- [x] Verified 4/4 GitHub Actions SUCCESS на финальном M1d HEAD `34e2b118` (including PostgreSQL16 race harness / SQL022 replay); это CI, не release approval.
 - [ ] Дальше: durable issuer/session fencing, independent audit/WORM, UNKNOWN COMMIT operator-led resolution, physical connection quarantine and security/code-owner review.
 
 Не открывает HTTP/API, production PostgreSQL, Core/CPA/Railway, SQL019 или retry/reissue/GC.
 [M1d contract and limitations](M1D_PROJECT_AUTHORIZATION_FENCE_PG16.ru.md).
+
+
+## Stage M1e — real disconnected PG16 transaction before COMMIT (STACKED DRAFT / CI-only)
+
+- [x] Read-only checked parent Draft PR №7 at HEAD `34e2b118` with 4/4 GitHub Actions SUCCESS.
+- [x] Added opt-in M1e hook in unmounted Bun.SQL M1b CI driver and fixed PG16 negative acceptance SQL; no production driver/code changes.
+- [x] Actual physical backend termination and AbortSignal after M1c audit mutation but before COMMIT; generic 503, whole CI pool quarantine, PID must disappear, no second reservation/automatic retry.
+- [x] Baseline M1b committed lost ACK remains independently assertable as 1 project + 1 audit.
+- [ ] Require 4/4 Actions SUCCESS on exact final M1e HEAD, with PG16 logs explicitly confirming physical loss and abort.
+- [ ] Independent partitioned-connection discard and production pool, durable operator-led UNKNOWN COMMIT settlement, token-bound sessions, third-party WORM — BLOCKED.
+
+Railway sandbox old mTLS service was independently observed redeployed on an inert no-listener start command, its persistent volume retained. This is platform evidence, not an active 8443 network probe. No Railway write in M1e.
+[M1e acceptance and limits](M1E_PG_PHYSICAL_DISCONNECT_CI.ru.md).

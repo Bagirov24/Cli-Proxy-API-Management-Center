@@ -695,3 +695,17 @@ UNKNOWN COMMIT reconciliation, durable independent WORM, network
 partition/cancel/discard proof или operator release authority не появились.
 NO merge, NO deployment, SQL019/production/Railway changes запрещены.
 [M1d readiness limits](M1D_PROJECT_AUTHORIZATION_FENCE_PG16.ru.md).
+
+
+## M1e — физическая потеря CI backend / отмена до COMMIT (gate НЕ пройден)
+
+В disposable PG16, на одной Bun.SQL connection, синтетический
+`pg_terminate_backend` вызывается после signed mutation с private audit,
+но до COMMIT. CI должно подтвердить 503, карантин и отсутствие записи.
+Тот же сценарий с AbortSignal тестирует отмену и исчезновение
+physical PID. Existing M1b case сохраняет row+audit при потерянном
+локальном ACK после настоящего COMMIT.
+Нет доказательства production-safe physical single-connection discard,
+network partition во время COMMIT, persistent uncertainty ledger,
+manual resolution или external immutable WORM; public API / release gate
+по-прежнему BLOCKED. [M1e boundaries](M1E_PG_PHYSICAL_DISCONNECT_CI.ru.md).
