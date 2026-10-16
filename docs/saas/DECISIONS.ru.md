@@ -1344,3 +1344,21 @@ commit. `mergeable=true` is only a conflict check.
 No merge, deploy, SQL019, real issuer/tenant CRUD, UUID retry/
 reissue/repair/delivery/GC. `gcPermitted=false`.
 [M0 review/merge checklist](MERGE_READINESS_M0.ru.md).
+
+
+## M1b: решение об эксперименте с транзакционным SQL writer (PROPOSED / CI-only)
+
+Подключать настоящий SaaS CRUD HTTP endpoint сейчас **запрещено**.
+Вместо этого stacked M1b Draft исполняет *синтетический* pinned RS256 bearer,
+server actor lookup, server-side RBAC, pinned HMAC scope и fixed project
+SQL-функции на disposable PostgreSQL16 через Bun.SQL только в GitHub CI.
+Это proof of integration, а не разрешение на внешний сервис или
+production PostgreSQL migration. Роль M1 executor предоставляется только
+в ephemeral CI и не получает приватный signer key / table DML.
+
+**При неизвестном результате COMMIT:** generic 503, синхронный карантин
+всего CI pool, отсутствие retry. Потеря ACK после подтверждённого PG COMMIT
+намеренно проверяется; caller не знает, был ли commit. Производственная
+семантика recover/idempotency/fencing, атомарный audit outbox и physical
+connection discard остаются **открытыми security requirements**.
+[Наблюдаемые CI сценарии и ограничения](M1B_SIGNED_PG_DRIVER_E2E.ru.md).

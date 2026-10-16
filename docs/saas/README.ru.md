@@ -32,6 +32,7 @@
 | [IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md) | Этап 2E: закреплённые JWT access-token ключи, SQL read boundary и проверки SQL injection |
 | [BUN_SQL_DRIVER_PILOT.ru.md](BUN_SQL_DRIVER_PILOT.ru.md) | Этап 2F: Bun PostgreSQL native SQL на временной базе, конкуренция и повторное использование соединений |
 | [TRUSTED_SQL_READ_BOUNDARY_V1.ru.md](TRUSTED_SQL_READ_BOUNDARY_V1.ru.md) | 2G.2: pinned JWT → actor directory → RBAC → signed SQL + RLS → safe metadata rows, без HTTP/live |
+| [M1B_SIGNED_PG_DRIVER_E2E.ru.md](M1B_SIGNED_PG_DRIVER_E2E.ru.md) | M1b stacked Draft: CI-only pinned RS256 → server actor → signed SQL project writes на одноразовой PG16; UNKNOWN COMMIT quarantine, не production |
 
 ## Что добавлено в код
 
@@ -1185,3 +1186,15 @@ synthetic preview build.
 на точном SHA. Настоящие SaaS API/auth/PG/Core/VPN/BYOA/high-water
 settlement/ACK будут следующими отдельными PR. Production, SQL019,
 issuer, UUID retry/reissue/GC не тронуты; `gcPermitted=false`.
+
+
+## M1b — отдельный CI-only stacked Draft (не готовый SaaS)
+
+Продолжение M1a: отдельный закрытый сквозной эксперимент: настоящий синтетический
+RS256 access-token → server-held actor/role → Bun.SQL → transaction-bound HMAC
+scope → M1a SQL create/rename/disable/get с FORCE RLS в disposable PG16.
+Негативные проверки охватывают wrong audience, spoofed JWT claims, viewer/auditor,
+чужой tenant, DB revoked membership, stale CAS и потерю ACK после реального
+COMMIT (generic 503, whole CI pool quarantine, без retry). Реализация только в
+`scripts/saas-staging/`; никакого HTTP listener, Core/CPA/secret, production
+DB или реального write-audit outbox. [Ограничения M1b](M1B_SIGNED_PG_DRIVER_E2E.ru.md).
