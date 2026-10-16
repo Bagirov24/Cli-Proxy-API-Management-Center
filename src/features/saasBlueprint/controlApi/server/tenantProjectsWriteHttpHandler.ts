@@ -11,7 +11,9 @@
  * 4. Obtain durable fsynced pre-COMMIT intent receipt BEFORE invoking PG.
  * 5. Delegate signed transaction scope, DB membership, project CAS, mandatory
  *    audit and attempt binding to the injected restricted PG writer.
- * 5. Never retry after an uncertain COMMIT. A 503 is NOT proof of rollback.
+ * 6. Bind the same server-derived bearer SHA-256 into the private PG26
+ *    writer so the signed SQL transaction cannot borrow another session.
+ * 7. Never retry after an uncertain COMMIT. A 503 is NOT proof of rollback.
  *
  * Neither TypeScript interfaces nor the existing synthetic M1 PG driver
  * attest production durability/off-host WORM or physical connection discard.
@@ -49,6 +51,13 @@ export interface TenantProjectSignedWriter {
     /** PG25 requires this EXACT locked session in the same signed tx. */
     readonly sessionId: string;
     readonly sessionRevision: number;
+    /**
+     * SHA-256 of the twice-verified full bearer, computed server-side. The
+     * PG26 writer MUST sign this exact value as scope.tokenFingerprint, set
+     * saas.scope_token_fingerprint via SET LOCAL, and use the same current
+     * PG25 session UUID/revision. Never take a fingerprint or jti from HTTP.
+     */
+    readonly tokenFingerprint: string;
   }>): Promise<boolean>;
 }
 
@@ -293,7 +302,7 @@ export function createTenantProjectsWriteHttpHandler(
             // Exact issued UUID passed to PG M1g audit binding; failures,
             // including UNKNOWN after COMMIT, MUST NOT be retried here.
             return deps.writer.execute(Object.freeze({
-              ...input,attemptId,
+              ...input,attemptId,tokenFingerprint,
               sessionId:session.sessionId,sessionRevision:session.sessionRevision,
             }));
           },
