@@ -789,3 +789,18 @@ crypto-bound session claim in DB HMAC, distributed cache invalidation,
 external WORM, real network partitions DURING COMMIT, production pool
 and operator recovery. No merge/Ready/deploy without separate security
 and codeowner review. [M1k status](M1K_SESSION_EPOCH_REVOCATION_PG16_CI.ru.md).
+
+
+## M1l — synthetic OIDC/JWKS rollover (production gate НЕ пройден)
+
+The disposable CI-only key source fetches fixed loopback metadata/JWKS,
+rejects key rollback, issuer mismatch, private JWK material and JWT header
+injection. Real synthetic HTTP requests run through M1k signed PG16
+session gate even if a valid A token was checked before the issuer removed
+A; DB revocation then refuses an in-flight A mutation with 0 ghost rows.
+However, no real OIDC provider, TLS trust/cert pinning, PKCE, OAuth
+callback, refresh token/logout, durable JWKS key-rotation policy, multi-
+replica revocation, off-host WORM, committed request attestation, network
+partition DURING COMMIT, real public tenant API or production rollout.
+Independent code/security/operator approval remains required for any
+merge/Ready/release. [M1l gates](M1L_SYNTHETIC_OIDC_JWKS_ROTATION_SESSION_PG16_CI.ru.md).

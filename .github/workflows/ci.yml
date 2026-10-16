@@ -38,3 +38,10 @@ jobs:
         env:
           SAAS_EPHEMERAL_M1_HTTP_CI: 'true'
         run: bun test tests/saasM1ProjectHttpBoundary.test.ts
+
+      # M1l: no production IdP/SSO, only transient mock issuer on 127.0.0.1.
+      # Opt-in synthetic OIDC discovery/JWKS rotation and fail-closed tests.
+      - name: Verify M1l synthetic OIDC metadata and atomic JWKS rollover
+        env:
+          SAAS_EPHEMERAL_M1L_OIDC_CI: 'true'
+        run: bun test tests/saasM1lSyntheticOidcRotation.test.mjs

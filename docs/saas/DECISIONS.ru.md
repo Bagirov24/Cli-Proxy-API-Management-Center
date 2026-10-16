@@ -1507,3 +1507,18 @@ This is not live OIDC or portable cryptographic token binding: the
 scope MAC does NOT include session ID, and CI server memory / PostgreSQL
 share the same trust operator. No automatic retry after uncertain COMMIT.
 [M1k limits](M1K_SESSION_EPOCH_REVOCATION_PG16_CI.ru.md).
+
+
+## M1l — fail closed on synthetic issuer key removal; PG session still authoritative
+
+M1k proved token fingerprint → session UUID/epoch within the signed PG
+transaction, but the verifier held a single fixed synthetic public key.
+M1l introduces separate GitHub-only loopback metadata/JWKS verification
+with a statically pinned issuer/JWKS URI, bounded RSA-only snapshots,
+explicit monotone revisions, rejection of retired kid reuse and quarantine
+when refresh is invalid. JWT claims sid/actor/role/tenant remain untrusted.
+An HTTP token may be verified immediately *before* issuer key removal;
+therefore a cooperating PG session revoker must still serialize the exact
+session and reject an in-flight stale write before COMMIT. The CI fixture
+proves this race, not real backchannel logout or production key pinning.
+[M1l boundaries](M1L_SYNTHETIC_OIDC_JWKS_ROTATION_SESSION_PG16_CI.ru.md).

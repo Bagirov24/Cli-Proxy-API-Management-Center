@@ -42,6 +42,7 @@
 | [M1I_UNMOUNTED_PROJECT_WRITE_HTTP_CI.ru.md](M1I_UNMOUNTED_PROJECT_WRITE_HTTP_CI.ru.md) | M1i Draft: default-off unmounted POST/PATCH/DELETE project HTTP adapter, pinned RS256 + trusted writer boundary, CI-only loopback |
 | [M1J_REAL_HTTP_SIGNED_PG16_INTEGRATION_CI.ru.md](M1J_REAL_HTTP_SIGNED_PG16_INTEGRATION_CI.ru.md) | M1j Draft: full CI-only localhost HTTP → pinned RS256 → Ed25519 fsynced intent → signed PG16 project/audit/UUID same COMMIT, fail closed |
 | [M1K_SESSION_EPOCH_REVOCATION_PG16_CI.ru.md](M1K_SESSION_EPOCH_REVOCATION_PG16_CI.ru.md) | M1k Draft: server-managed synthetic token-fingerprint session UUID and revision, signed PG16 FOR SHARE per-session revoke vs COMMIT races; CI-only |
+| [M1L_SYNTHETIC_OIDC_JWKS_ROTATION_SESSION_PG16_CI.ru.md](M1L_SYNTHETIC_OIDC_JWKS_ROTATION_SESSION_PG16_CI.ru.md) | M1l Draft: fixed loopback synthetic OIDC discovery/JWKS A→A+B→B, revoked old signing key + PG16 session race, CI-only no real SSO |
 
 ## Что добавлено в код
 
@@ -1316,3 +1317,14 @@ legacy writes that skip it. A session revoke/epoch bump blocks stale HTTP
 writes without revoking a different session. Real revoker-before and
 write-before COMMIT lock orders are tested; no real OIDC, external session
 root, WORM or automatic retry. [M1k gates](M1K_SESSION_EPOCH_REVOCATION_PG16_CI.ru.md).
+
+
+## M1l — mock OIDC discovery, bounded JWKS rotation and PG16 session revoke (CI-only)
+
+A separate CI-only local mock OIDC issuer serves pinned discovery/JWKS
+on 127.0.0.1. Strict RSA public-key snapshots rotate A→A+B→B; retired
+JWT signing keys fail closed even before expiry. A real HTTP request that
+passed bearer authentication but is delayed before PG reserves a signed
+session is rejected when the mock issuer retires A and PostgreSQL revokes
+that session. No real IdP, refresh/login, distributed trust, external
+WORM or production listener. [M1l limits](M1L_SYNTHETIC_OIDC_JWKS_ROTATION_SESSION_PG16_CI.ru.md).
