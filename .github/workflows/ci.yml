@@ -30,3 +30,65 @@ jobs:
 
       - name: Verify
         run: bun run verify
+
+      # Deliberately separate opt-in fixture. The unmounted project write
+      # HTTP adapter may be constructed ONLY on a GitHub CI runner with this
+      # explicit flag; no deploy, SQL019 or real tenant secrets.
+      - name: Verify M1i synthetic pinned RS256 project HTTP loopback
+        env:
+          SAAS_EPHEMERAL_M1_HTTP_CI: 'true'
+        run: bun test tests/saasM1ProjectHttpBoundary.test.ts
+
+      # M1l: no production IdP/SSO, only transient mock issuer on 127.0.0.1.
+      # Opt-in synthetic OIDC discovery/JWKS rotation and fail-closed tests.
+      - name: Verify M1l synthetic OIDC metadata and atomic JWKS rollover
+        env:
+          SAAS_EPHEMERAL_M1L_OIDC_CI: 'true'
+        run: bun test tests/saasM1lSyntheticOidcRotation.test.mjs
+
+      # M1m: only synthetic loopback issuer, one-shot code + PKCE S256,
+      # CSRF state, no real IdP/OAuth callback/production credentials.
+      - name: Verify M1m opt-in synthetic PKCE code/state and issuer one-time exchange
+        env:
+          SAAS_EPHEMERAL_M1L_OIDC_CI: 'true'
+          SAAS_EPHEMERAL_M1M_PKCE_CI: 'true'
+        run: bun test tests/saasM1mSyntheticPkceCode.test.mjs
+
+      # M1n: OpenSSL ephemeral one-day CA+SAN leaf generated ONLY in
+      # GitHub CI, strict Node TLS chain/hostname/SPKI pin checks.
+      # Real HTTPS loopback PKCE IdP simulation, no Railway/live IdP.
+      - name: Verify M1n pinned ephemeral HTTPS IdP and OAuth PKCE
+        env:
+          SAAS_EPHEMERAL_M1M_PKCE_CI: 'true'
+          SAAS_EPHEMERAL_M1N_TLS_CI: 'true'
+        run: bun test tests/saasM1nPinnedHttpsTrust.test.mjs
+
+      # M1o: exact single-active TLS CA/SPKI, monotonic CAS epoch.
+      - name: Verify M1o explicit no-fallback HTTPS trust revision and PKCE
+        env:
+          SAAS_EPHEMERAL_M1M_PKCE_CI: 'true'
+          SAAS_EPHEMERAL_M1N_TLS_CI: 'true'
+          SAAS_EPHEMERAL_M1O_TRUST_CI: 'true'
+        run: bun test tests/saasM1oExplicitTrustRotation.test.mjs
+
+      # M1p: synthetic server-held per-login context, not browser cookies.
+      # Cross-context OAuth callbacks and cancelled JWT verification MUST
+      # never register a signed PostgreSQL session or exchange again.
+      - name: Verify M1p bound HTTPS PKCE login context and cancellation
+        env:
+          SAAS_EPHEMERAL_M1M_PKCE_CI: 'true'
+          SAAS_EPHEMERAL_M1N_TLS_CI: 'true'
+          SAAS_EPHEMERAL_M1O_TRUST_CI: 'true'
+          SAAS_EPHEMERAL_M1P_CONTEXT_CI: 'true'
+        run: bun test tests/saasM1pBoundPkceLoginContext.test.mjs
+
+      # M1q is strictly AFTER M1p: signed, separate OIDC ID token with
+      # exact client audience and one-use nonce. NOT a production login.
+      - name: Verify M1q signed OIDC ID token nonce before PKCE session
+        env:
+          SAAS_EPHEMERAL_M1M_PKCE_CI: 'true'
+          SAAS_EPHEMERAL_M1N_TLS_CI: 'true'
+          SAAS_EPHEMERAL_M1O_TRUST_CI: 'true'
+          SAAS_EPHEMERAL_M1P_CONTEXT_CI: 'true'
+          SAAS_EPHEMERAL_M1Q_ID_TOKEN_CI: 'true'
+        run: bun test tests/saasM1qSignedIdTokenNonce.test.mjs

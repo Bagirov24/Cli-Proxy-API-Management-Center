@@ -1,0 +1,88 @@
+# 2G.4d.6a — actor-wide PostgreSQL session revocation (ephemeral pilot)
+
+**IMPLEMENTED / VERIFIED** only in disposable PostgreSQL16, code SHA
+`2df528fa665a4702003fbf834e75e25e815e1025`:
+[PostgreSQL #38292965787](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965787), [CI #38292965756](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965756), [Demo #38292965740](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965740), [Chromium #38292965795](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38292965795) — 4/4 SUCCESS.
+This is NOT an OIDC/session-token registry.
+Only the synthetic singleton actor session state is authoritative in PG16.
+
+Migration `008_actor_session_epoch_pilot.sql` creates a private
+`actor_session_state` registry with one synthetic active/revoked
+kill-switch per actor. The `scope_membership_matches` signed gate now
+requires BOTH private actor active state and current DB membership
+with the exact server-authorized role, tenant and HMAC-verified actor
+signature. The least-privileged reader cannot SELECT, UPDATE or
+enumerate the private session table.
+
+A row-level trigger increments the same PostgreSQL tenant epoch as
+migration 004 when an actor session is inserted, revoked, restored or
+deleted. An actor with memberships in multiple tenants advances ALL
+affected tenant revisions in deterministic order, in the same
+transaction. UPDATE with no change leaves epochs unchanged; rollback
+undoes state and epoch. Replaying 008 never silently reactivates a
+previously revoked actor.
+
+The staging trusted publication chain still derives the actor from the
+pinned synthetic JWT/issuer+subject directory. Because that original
+signed transaction scope contains actor+tenant+txid+expiry rather than a
+token ID/subject, a second token for the same actor is not individually
+revocable; the pilot intentionally revokes the WHOLE actor. A proper
+token/session-scoped signed attestation and production identity issuer
+require a separate design, without trusting client-supplied claims.
+
+SQL acceptance checks signed grant read, actor-wide denial across
+revision, expiry attestation and publication FOR SHARE; unaffected
+Orbit state; multi-tenant fanout, private ACLs and rollback.
+The real PostgreSQL E2E additionally revokes the actor after the
+second metadata COMMIT, while both LIMITed project reads remain
+identical, and expects a generic tenantless Deny.
+
+No public endpoint, Core/Gateway, CPA/egress, production OIDC,
+Railway, credentials or production deploy/merge.
+
+## Multi-process actor logout serialization (2G.4d.6a)
+
+`verify-publication-barrier.sh` now also opens a signed PostgreSQL
+reader and a privileged synthetic actor-wide logout writer in separate
+physical connections. A third observer must see old actor-active state
+and unchanged epoch while the reader holds FOR SHARE. Logout COMMIT is
+required to wait until that reader commits; the newly signed scope
+afterward is denied and restoration bumps North again, not Orbit.
+This proves cooperative PostgreSQL DB ordering only, not remote
+transport delivery or real OIDC session logout.
+
+## Raw signed RLS gate after actor revocation
+
+Migration 008 also updates `scope_tenant()` and `read_allowed()`
+to check private active actor state. A previously HMAC-signed actor
+whose singleton synthetic session is revoked cannot use an allowed raw
+RLS SELECT to circumvent `SCOPED_READ_GATE_SQL`; the database returns
+zero project rows. This is actor-wide, not per-token OIDC revocation.
+
+## Final exact-SHA acceptance
+
+[PG16 #38293380854](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380854) on code SHA `bd96d7a038378fa30524914362013ebf06fd420f` verified the raw signed RLS denial,
+private session status update, exact epoch bump, multi-tenant fanout,
+rollback, and independent reader/logout-writer COMMIT order.
+[Main CI #38293380784](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380784) verifies 1,815 unit tests; [Demo #38293380672](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380672) and [Chromium #38293380657](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/38293380657) succeed.
+This **does not** prove issuer-bound per-token revocation or remote HTTP.
+
+## Follow-up 2G.4d.7a — individual-token revocation
+
+Migration 008 actor-wide kill switch remains mandatory; it denies
+EVERY token when actor is revoked. Migration 010 additionally permits
+individual enrolled SHA-256 bearer fingerprints to be revoked without
+disabling the actor and its sibling active tokens. Details and real
+acceptance evidence:
+[TOKEN_FINGERPRINT_REVOCATION_V1.ru.md](TOKEN_FINGERPRINT_REVOCATION_V1.ru.md).
+
+## 2G.4d.7b — issuer subject cancellation independent of actor-wide logout
+
+Actor-wide 008 revocation is still authoritative for all actor tokens;
+individual 010 token revocation still affects only that fingerprint.
+New 011 issuer SUBJECT revocation invalidates every token whose immutable
+subject binding was revoked, without updating each private token row.
+A cooperating writer waits for signed publication `FOR SHARE`; a
+stale subject is denied after COMMIT even when token status remains
+active. This is isolated PG16 only, NOT a real OIDC logout provider.
+See [ISSUER_SESSION_ENROLLMENT_V1.ru.md](ISSUER_SESSION_ENROLLMENT_V1.ru.md).

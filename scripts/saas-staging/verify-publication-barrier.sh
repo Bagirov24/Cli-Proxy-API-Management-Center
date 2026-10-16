@@ -1,0 +1,525 @@
+#!/usr/bin/env bash
+# Stage 2G.4d.4c: two physical PostgreSQL sessions + a third observer.
+# Never execute against Railway, production, real Core or real credentials.
+set -euo pipefail
+if [[ "${GITHUB_ACTIONS:-}" != "true" ||
+      "${SAAS_EPHEMERAL_PUBLICATION_CI:-}" != "true" ||
+      "${PGHOST:-}" != "127.0.0.1" ||
+      "${PGPORT:-}" != "5432" ||
+      "${PGDATABASE:-}" != "saas_ephemeral_test" ||
+      "${PGUSER:-}" != "postgres" ||
+      -n "${RAILWAY_ENVIRONMENT:-}" ||
+      -n "${RAILWAY_PROJECT_ID:-}" ]]; then
+  echo "Refusing publication barrier probe outside ephemeral PostgreSQL CI"
+  exit 1
+fi
+query() { psql -X -A -t -v ON_ERROR_STOP=1 -c "$1"; }
+start="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+orbit="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-orbit'")"
+[[ "$start" =~ ^[0-9]+$ && "$orbit" =~ ^[0-9]+$ ]] || exit 1
+
+reader_pid=""
+writer_pid=""
+cleanup() {
+  [[ -z "$reader_pid" ]] || kill "$reader_pid" 2>/dev/null || true
+  [[ -z "$writer_pid" ]] || kill "$writer_pid" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# The privileged fixture creates a synthetic signed scope first. Subsequent
+# SQL runs under reader privileges. The transaction stays open at the
+# simulated publication point; this is NOT actual HTTP delivery.
+PGAPPNAME=saas_publication_reader psql -X -q -v ON_ERROR_STOP=1 \
+  > /tmp/saas-publication-reader.log 2>&1 <<'SQL' &
+BEGIN;
+SET LOCAL statement_timeout='15000ms';
+SELECT saas_rls_test.issue_scope('actor-north','demo-north',120);
+SET LOCAL ROLE saas_rls_reader;
+SELECT saas_rls_test.assert_true(
+  saas_rls.acquire_authorized_read_barrier(
+    'demo-north','actor-north','tenant-admin','projects') IS NOT NULL,
+  'signed reader must acquire North publication epoch lock');
+SELECT pg_sleep(6);
+RESET ROLE;
+COMMIT;
+SQL
+reader_pid="$!"
+
+ready=0
+for i in {1..65}; do
+  if [[ "$(query "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name='saas_publication_reader' AND wait_event='PgSleep'")" == "1" ]]; then
+    ready=1
+    break
+  fi
+  sleep 0.1
+done
+if [[ "$ready" != "1" ]]; then
+  echo "Signed publication reader did not reach read-publication barrier"
+  tail -n 15 /tmp/saas-publication-reader.log
+  exit 1
+fi
+
+# An independent privileged fixture writer changes an auth grant. The 004
+# row trigger must wait on the reader's held FOR SHARE epoch lock.
+PGAPPNAME=saas_publication_revoke psql -X -q -v ON_ERROR_STOP=1 \
+  > /tmp/saas-publication-writer.log 2>&1 <<'SQL' &
+BEGIN;
+SET LOCAL statement_timeout='15000ms';
+UPDATE saas_rls.resource_grants
+   SET status='disabled'
+ WHERE id='grant-pool' AND grantee_tenant_id='demo-north'
+   AND status='active';
+COMMIT;
+SQL
+writer_pid="$!"
+
+blocked=0
+for i in {1..45}; do
+  if [[ "$(query "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name='saas_publication_revoke' AND wait_event_type='Lock'")" == "1" ]]; then
+    blocked=1
+    break
+  fi
+  sleep 0.1
+done
+if [[ "$blocked" != "1" ]]; then
+  echo "Revocation writer failed to wait for the read-publication epoch"
+  tail -n 20 /tmp/saas-publication-writer.log
+  exit 1
+fi
+
+mid="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+status="$(query "SELECT status FROM saas_rls.resource_grants WHERE id='grant-pool'")"
+if [[ "$mid" != "$start" || "$status" != "active" ]]; then
+  echo "Revocation became committed before the reader publication barrier ended"
+  exit 1
+fi
+
+wait "$reader_pid"
+reader_pid=""
+wait "$writer_pid"
+writer_pid=""
+after="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+independent="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-orbit'")"
+status="$(query "SELECT status FROM saas_rls.resource_grants WHERE id='grant-pool'")"
+if (( after != start + 1 )) || [[ "$independent" != "$orbit" || "$status" != "disabled" ]]; then
+  echo "Revocation epoch/order/tenant isolation assertion failed"
+  exit 1
+fi
+
+# Restore a synthetic grant through the SAME versioned trigger.
+query "UPDATE saas_rls.resource_grants SET status='active' WHERE id='grant-pool' AND grantee_tenant_id='demo-north' AND status='disabled'" >/dev/null
+final="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+if (( final != start + 2 )); then
+  echo "Restoration failed to advance revocation epoch"
+  exit 1
+fi
+echo "PASS: PG16 shared publication lock orders reader COMMIT before revoke COMMIT"
+
+# Abort/crash probe: a forcibly terminated PG reader backend MUST release
+# its FOR SHARE row lock and unblock a separately queued revocation writer.
+# This simulates loss of DB connection, not real HTTP cancellation.
+PGAPPNAME=saas_terminated_publication_reader psql -X -q -v ON_ERROR_STOP=1 \
+  > /tmp/saas-publication-aborted-reader.log 2>&1 <<'SQL' &
+BEGIN;
+SET LOCAL statement_timeout='30000ms';
+SELECT saas_rls_test.issue_scope('actor-north','demo-north',120);
+SET LOCAL ROLE saas_rls_reader;
+SELECT saas_rls_test.assert_true(
+  saas_rls.acquire_authorized_read_barrier(
+    'demo-north','actor-north','tenant-admin','projects') IS NOT NULL,
+  'reader must acquire a cancellable epoch barrier');
+SELECT pg_sleep(20);
+RESET ROLE;
+COMMIT;
+SQL
+reader_pid="$!"
+ready=0
+for i in {1..65}; do
+  if [[ "$(query "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name='saas_terminated_publication_reader' AND wait_event='PgSleep'")" == "1" ]]; then
+    ready=1
+    break
+  fi
+  sleep 0.1
+done
+if [[ "$ready" != "1" ]]; then
+  echo "Cancellable signed reader did not acquire barrier"
+  tail -n 15 /tmp/saas-publication-aborted-reader.log
+  exit 1
+fi
+
+PGAPPNAME=saas_terminated_publication_writer psql -X -q -v ON_ERROR_STOP=1 \
+  > /tmp/saas-publication-aborted-writer.log 2>&1 <<'SQL' &
+BEGIN;
+SET LOCAL statement_timeout='15000ms';
+UPDATE saas_rls.resource_grants SET status='active'
+WHERE id='grant-egress' AND grantee_tenant_id='demo-north' AND status='disabled';
+COMMIT;
+SQL
+writer_pid="$!"
+blocked=0
+for i in {1..40}; do
+  if [[ "$(query "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name='saas_terminated_publication_writer' AND wait_event_type='Lock'")" == "1" ]]; then
+    blocked=1
+    break
+  fi
+  sleep 0.1
+done
+if [[ "$blocked" != "1" ]]; then
+  echo "Forced-termination writer did not wait on publication lock"
+  tail -n 20 /tmp/saas-publication-aborted-writer.log
+  exit 1
+fi
+
+# This is explicitly the disposable container postgres fixture superuser,
+# never a live backend or network request. Termination rolls back the reader.
+terminated="$(query "SELECT bool_and(pg_terminate_backend(pid)) FROM pg_stat_activity WHERE application_name='saas_terminated_publication_reader'")"
+if [[ "$terminated" != "t" ]]; then
+  echo "Failed to terminate disposable reader backend"
+  exit 1
+fi
+wait "$reader_pid" || true
+reader_pid=""
+wait "$writer_pid"
+writer_pid=""
+after_abort="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+if (( after_abort != final + 1 )); then
+  echo "Revocation writer did not commit after aborted reader released lock"
+  exit 1
+fi
+query "UPDATE saas_rls.resource_grants SET status='disabled' WHERE id='grant-egress' AND grantee_tenant_id='demo-north' AND status='active'" >/dev/null
+restored="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+if (( restored != final + 2 )); then
+  echo "Failed to restore versioned synthetic Egress fixture after aborted reader"
+  exit 1
+fi
+echo "PASS: terminated PG16 reader rolls back FOR SHARE; pending revoke COMMIT unblocks"
+
+# 2G.4d.6a: actor-wide logout writer MUST use the same per-tenant
+# revision lock as grants. Two independent PG backends + an observer.
+initial_actor_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+initial_orbit_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-orbit'")"
+
+PGAPPNAME=saas_actor_publication_reader psql -X -q -v ON_ERROR_STOP=1 \
+  > /tmp/saas-actor-publication-reader.log 2>&1 <<'SQL' &
+BEGIN;
+SET LOCAL statement_timeout='15000ms';
+SELECT saas_rls_test.issue_scope('actor-north','demo-north',120);
+SET LOCAL ROLE saas_rls_reader;
+SELECT saas_rls_test.assert_true(
+  saas_rls.acquire_authorized_read_barrier(
+    'demo-north','actor-north','tenant-admin','projects') IS NOT NULL,
+  'Signed active actor must hold epoch while publishing');
+SELECT pg_sleep(4);
+RESET ROLE;
+COMMIT;
+SQL
+reader_pid="$!"
+ready=0
+for i in {1..65}; do
+  if [[ "$(query "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name='saas_actor_publication_reader' AND wait_event='PgSleep'")" == "1" ]]; then
+    ready=1
+    break
+  fi
+  sleep 0.1
+done
+if [[ "$ready" != "1" ]]; then
+  echo "Actor publication reader failed to acquire private epoch lock"
+  tail -n 20 /tmp/saas-actor-publication-reader.log
+  exit 1
+fi
+
+PGAPPNAME=saas_actor_logout_writer psql -X -q -v ON_ERROR_STOP=1 \
+  > /tmp/saas-actor-logout-writer.log 2>&1 <<'SQL' &
+BEGIN;
+SET LOCAL statement_timeout='15000ms';
+UPDATE saas_rls_private.actor_session_state
+ SET status='revoked',revision=revision+1
+ WHERE actor_id='actor-north' AND status='active';
+COMMIT;
+SQL
+writer_pid="$!"
+blocked=0
+for i in {1..45}; do
+  if [[ "$(query "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name='saas_actor_logout_writer' AND wait_event_type='Lock'")" == "1" ]]; then
+    blocked=1
+    break
+  fi
+  sleep 0.1
+done
+if [[ "$blocked" != "1" ]]; then
+  echo "Actor logout writer did not wait for signed reader epoch"
+  tail -n 20 /tmp/saas-actor-logout-writer.log
+  exit 1
+fi
+pre_logout_status="$(query "SELECT status FROM saas_rls_private.actor_session_state WHERE actor_id='actor-north'")"
+pre_logout_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+if [[ "$pre_logout_status" != "active" || "$pre_logout_epoch" != "$initial_actor_epoch" ]]; then
+  echo "Uncommitted logout became visible before signed publication COMMIT"
+  exit 1
+fi
+
+wait "$reader_pid"
+reader_pid=""
+wait "$writer_pid"
+writer_pid=""
+post_logout_status="$(query "SELECT status FROM saas_rls_private.actor_session_state WHERE actor_id='actor-north'")"
+post_logout_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+if [[ "$post_logout_status" != "revoked" ]] || (( post_logout_epoch != initial_actor_epoch + 1 )); then
+  echo "Actor-wide logout must COMMIT once after signed publication releases lock"
+  exit 1
+fi
+
+psql -X -q -v ON_ERROR_STOP=1 <<'SQL' > /tmp/saas-actor-after-logout-check.log
+BEGIN;
+SELECT saas_rls_test.issue_scope('actor-north','demo-north',120);
+SET LOCAL ROLE saas_rls_reader;
+SELECT saas_rls_test.assert_true(
+  NOT saas_rls.scope_membership_matches(
+    'demo-north','actor-north','tenant-admin'),
+  'Previously valid signed actor must be denied after logout COMMIT');
+RESET ROLE;
+ROLLBACK;
+SQL
+
+query "UPDATE saas_rls_private.actor_session_state SET status='active',revision=revision+1 WHERE actor_id='actor-north' AND status='revoked'" >/dev/null
+restored_actor_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+restored_orbit_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-orbit'")"
+if (( restored_actor_epoch != initial_actor_epoch + 2 )) ||
+   [[ "$restored_orbit_epoch" != "$initial_orbit_epoch" ]]; then
+  echo "Actor logout recovery must version North and leave Orbit unchanged"
+  exit 1
+fi
+echo "PASS: PG16 actor-wide logout COMMIT waits for signed publication; old scope then denied"
+
+# Stage 2G.4d.7a: independent physical sessions prove SINGLE TOKEN
+# revocation serializes with its signed publication epoch lock, without
+# revoking the whole actor or leaking token/private registry to the reader.
+# issue_bound_scope is the test-only privileged five-field HMAC issuer
+# installed by tests/sql/saas_token_fingerprint_scope.test.sql.
+query "BEGIN;
+  INSERT INTO saas_rls.memberships(actor_id,tenant_id,role,status)
+    VALUES ('actor-concurrent-token','demo-north','tenant-viewer','active');
+  INSERT INTO saas_rls_private.actor_session_state(actor_id,status)
+    VALUES ('actor-concurrent-token','active');
+  INSERT INTO saas_rls_private.actor_token_sessions(fingerprint,actor_id,status,expires_at)
+    VALUES (repeat('c',64),'actor-concurrent-token','active',
+            clock_timestamp()+interval '60 seconds');
+  COMMIT;" >/dev/null
+
+token_initial_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+PGAPPNAME=saas_bound_token_reader psql -X -q -v ON_ERROR_STOP=1 \
+  > /tmp/saas-token-publication-reader.log 2>&1 <<'SQL' &
+BEGIN;
+SET LOCAL statement_timeout='15000ms';
+SELECT saas_rls_test.issue_bound_scope(
+ 'actor-concurrent-token','demo-north',repeat('c',64),120);
+SET LOCAL ROLE saas_rls_reader;
+SELECT saas_rls_test.assert_true(
+  saas_rls.acquire_authorized_read_barrier(
+   'demo-north','actor-concurrent-token','tenant-viewer','projects') IS NOT NULL,
+  'Bound token must hold signed FOR SHARE tenant revision lock');
+SELECT pg_sleep(4);
+RESET ROLE;
+COMMIT;
+SQL
+reader_pid="$!"
+ready=0
+for i in {1..65}; do
+  if [[ "$(query "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name='saas_bound_token_reader' AND wait_event='PgSleep'")" == "1" ]]; then
+    ready=1
+    break
+  fi
+  sleep 0.1
+done
+if [[ "$ready" != "1" ]]; then
+  echo "Bound token reader did not acquire signed publication lock"
+  tail -n 20 /tmp/saas-token-publication-reader.log
+  exit 1
+fi
+
+PGAPPNAME=saas_bound_token_revoker psql -X -q -v ON_ERROR_STOP=1 \
+  > /tmp/saas-token-revoke-writer.log 2>&1 <<'SQL' &
+BEGIN;
+SET LOCAL statement_timeout='15000ms';
+UPDATE saas_rls_private.actor_token_sessions
+ SET status='revoked' WHERE fingerprint=repeat('c',64) AND status='active';
+COMMIT;
+SQL
+writer_pid="$!"
+blocked=0
+for i in {1..45}; do
+  if [[ "$(query "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name='saas_bound_token_revoker' AND wait_event_type='Lock'")" == "1" ]]; then
+    blocked=1
+    break
+  fi
+  sleep 0.1
+done
+if [[ "$blocked" != "1" ]]; then
+  echo "Token-specific revoker was not blocked by reader's signed epoch lock"
+  tail -n 20 /tmp/saas-token-revoke-writer.log
+  exit 1
+fi
+token_pre_status="$(query "SELECT status FROM saas_rls_private.actor_token_sessions WHERE fingerprint=repeat('c',64)")"
+token_pre_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+if [[ "$token_pre_status" != "active" || "$token_pre_epoch" != "$token_initial_epoch" ]]; then
+  echo "Token revoke became committed before signed local publication barrier released"
+  exit 1
+fi
+
+wait "$reader_pid"
+reader_pid=""
+wait "$writer_pid"
+writer_pid=""
+token_post_status="$(query "SELECT status FROM saas_rls_private.actor_token_sessions WHERE fingerprint=repeat('c',64)")"
+token_post_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+if [[ "$token_post_status" != "revoked" ]] ||
+   (( token_post_epoch != token_initial_epoch + 1 )); then
+  echo "Revoked token must bump tenant epoch once AFTER reader COMMIT"
+  exit 1
+fi
+psql -X -q -v ON_ERROR_STOP=1 <<'SQL' > /tmp/saas-token-post-revoke-check.log
+BEGIN;
+SELECT saas_rls_test.issue_bound_scope(
+ 'actor-concurrent-token','demo-north',repeat('c',64),120);
+SET LOCAL ROLE saas_rls_reader;
+SELECT saas_rls_test.assert_true(
+  saas_rls.scope_tenant() IS NULL AND
+  saas_rls.authorized_revision(
+   'demo-north','actor-concurrent-token','tenant-viewer','projects') IS NULL,
+  'Previously signed individual token cannot read after revoke COMMIT');
+RESET ROLE;
+ROLLBACK;
+SQL
+
+# Disposable cleanup: delete all synthetic actor/token rows. The private
+# enrollment tombstone deliberately remains, preventing actor ID reuse
+# from ever downgrading this ID to the old four-field HMAC.
+query "BEGIN;
+  DELETE FROM saas_rls_private.actor_token_sessions
+    WHERE actor_id='actor-concurrent-token';
+  DELETE FROM saas_rls_private.actor_session_state
+    WHERE actor_id='actor-concurrent-token';
+  DELETE FROM saas_rls.memberships
+    WHERE actor_id='actor-concurrent-token';
+  COMMIT;" >/dev/null
+echo "PASS: PG16 per-token revoke COMMIT waits for signed publication; revoked token then denied"
+
+# 2G.4d.7b: independent issuer SUBJECT revoke COMMIT is ordered with the
+# exact same signed publication epoch FOR SHARE. Token row stays active;
+# subject registry status is the authority. Test-only roles and identifiers.
+query "BEGIN;
+ INSERT INTO saas_rls.memberships(actor_id,tenant_id,role,status)
+ VALUES ('actor-concurrent-issuer','demo-north','tenant-viewer','active');
+ INSERT INTO saas_rls_private.actor_session_state(actor_id,status)
+ VALUES ('actor-concurrent-issuer','active');
+ COMMIT;" >/dev/null
+psql -X -q -v ON_ERROR_STOP=1 <<'SQL' > /tmp/saas-subject-pin-fixture.log
+BEGIN;
+SET LOCAL ROLE saas_issuer_directory_admin;
+SELECT saas_rls_private.pin_verified_subject(
+ 'https://ci-issuer.example.test/oauth','sub-concurrent',
+ 'actor-concurrent-issuer');
+COMMIT;
+BEGIN;
+SET LOCAL ROLE saas_issuer_provisioner;
+SELECT saas_rls_private.enroll_verified_token(
+ 'https://ci-issuer.example.test/oauth','sub-concurrent',
+ 'actor-concurrent-issuer',repeat('d',64),
+ statement_timestamp()+interval '90 seconds');
+COMMIT;
+SQL
+subject_initial_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+
+PGAPPNAME=saas_subject_publication_reader psql -X -q -v ON_ERROR_STOP=1 \
+ > /tmp/saas-subject-publication-reader.log 2>&1 <<'SQL' &
+BEGIN;
+SET LOCAL statement_timeout='15000ms';
+SELECT saas_rls_test.issue_bound_scope(
+ 'actor-concurrent-issuer','demo-north',repeat('d',64),120);
+SET LOCAL ROLE saas_rls_reader;
+SELECT saas_rls_test.assert_true(
+ saas_rls.acquire_authorized_read_barrier(
+  'demo-north','actor-concurrent-issuer','tenant-viewer','projects') IS NOT NULL,
+ 'Issuer-pinned subject signed publication must hold epoch lock');
+SELECT pg_sleep(4);
+RESET ROLE;
+COMMIT;
+SQL
+reader_pid="$!"
+ready=0
+for i in {1..65}; do
+ if [[ "$(query "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name='saas_subject_publication_reader' AND wait_event='PgSleep'")" == "1" ]]; then
+  ready=1
+  break
+ fi
+ sleep 0.1
+done
+if [[ "$ready" != "1" ]]; then
+ echo "Issuer-bound subject reader did not hold signed publication epoch lock"
+ tail -n 20 /tmp/saas-subject-publication-reader.log
+ exit 1
+fi
+
+PGAPPNAME=saas_subject_logout_writer psql -X -q -v ON_ERROR_STOP=1 \
+ > /tmp/saas-subject-logout-writer.log 2>&1 <<'SQL' &
+BEGIN;
+SET LOCAL statement_timeout='15000ms';
+SET LOCAL ROLE saas_issuer_directory_admin;
+SELECT saas_rls_private.revoke_verified_subject(
+ 'https://ci-issuer.example.test/oauth','sub-concurrent');
+COMMIT;
+SQL
+writer_pid="$!"
+blocked=0
+for i in {1..45}; do
+ if [[ "$(query "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name='saas_subject_logout_writer' AND wait_event_type='Lock'")" == "1" ]]; then
+  blocked=1
+  break
+ fi
+ sleep 0.1
+done
+if [[ "$blocked" != "1" ]]; then
+ echo "Issuer subject logout did not wait for signed publication"
+ tail -n 20 /tmp/saas-subject-logout-writer.log
+ exit 1
+fi
+subject_pre_status="$(query "SELECT status FROM saas_rls_private.issuer_subject_bindings WHERE issuer='https://ci-issuer.example.test/oauth' AND subject='sub-concurrent'")"
+subject_pre_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+if [[ "$subject_pre_status" != "active" || "$subject_pre_epoch" != "$subject_initial_epoch" ]]; then
+ echo "Subject revocation became visible before signed publication committed"
+ exit 1
+fi
+wait "$reader_pid"
+reader_pid=""
+wait "$writer_pid"
+writer_pid=""
+subject_post_status="$(query "SELECT status FROM saas_rls_private.issuer_subject_bindings WHERE issuer='https://ci-issuer.example.test/oauth' AND subject='sub-concurrent'")"
+subject_post_epoch="$(query "SELECT revision FROM saas_rls_private.tenant_authorization_revisions WHERE tenant_id='demo-north'")"
+subject_token_status="$(query "SELECT status FROM saas_rls_private.actor_token_sessions WHERE fingerprint=repeat('d',64)")"
+if [[ "$subject_post_status" != "revoked" || "$subject_token_status" != "active" ]] ||
+ (( subject_post_epoch != subject_initial_epoch + 1 )); then
+ echo "Subject revoke must bump tenant epoch once without bulk token mutation"
+ exit 1
+fi
+psql -X -q -v ON_ERROR_STOP=1 <<'SQL' > /tmp/saas-subject-post-revoke-check.log
+BEGIN;
+SELECT saas_rls_test.issue_bound_scope(
+ 'actor-concurrent-issuer','demo-north',repeat('d',64),120);
+SET LOCAL ROLE saas_rls_reader;
+SELECT saas_rls_test.assert_true(
+ saas_rls.scope_tenant() IS NULL AND
+ saas_rls.authorized_revision(
+  'demo-north','actor-concurrent-issuer','tenant-viewer','projects') IS NULL,
+ 'Subject-wide revoke denies previously valid bound token after COMMIT');
+RESET ROLE;
+ROLLBACK;
+SQL
+query "BEGIN;
+ DELETE FROM saas_rls_private.actor_token_sessions
+  WHERE actor_id='actor-concurrent-issuer';
+ DELETE FROM saas_rls_private.actor_session_state
+  WHERE actor_id='actor-concurrent-issuer';
+ DELETE FROM saas_rls.memberships
+  WHERE actor_id='actor-concurrent-issuer';
+ COMMIT;" >/dev/null
+echo "PASS: PG16 issuer SUBJECT revoke COMMIT waits for signed publication and denies active token"
