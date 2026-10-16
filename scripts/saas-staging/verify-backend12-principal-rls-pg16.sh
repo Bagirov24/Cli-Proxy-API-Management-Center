@@ -93,7 +93,7 @@ SQL
 read_as(){
   local login="$1" pass="$2" sql="$3"
   PGOPTIONS="-c saas.staging_only=true" PGUSER="$login" PGPASSWORD="$pass" \
-    psql -XAt -v ON_ERROR_STOP=1 -d saas_staging_ci -c "$sql"
+    psql -XqAt -v ON_ERROR_STOP=1 -d saas_staging_ci -c "$sql"
 }
 case_index=0
 expect_as(){
