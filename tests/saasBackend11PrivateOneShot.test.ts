@@ -49,7 +49,7 @@ describe('Backend11 private one-shot staging bootstrap', () => {
 
   test('no automatic migration retry and no logging of secrets or diagnostics', () => {
     expect(source).toContain("redirect:'error'");
-    expect(source).toContain("res.url !== url");
+    expect(source).toContain("r.url !== url");
     expect(source).toContain("console.error(FAIL)");
     expect(source).toContain("process.exitCode=1");
     expect(source).toContain('ALTER ROLE saas_schema_migrator NOLOGIN');
