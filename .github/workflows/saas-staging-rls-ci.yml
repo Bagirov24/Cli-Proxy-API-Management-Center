@@ -8,6 +8,7 @@ on:
       - 'tests/sql/saas_staging_bootstrap.test.sql'
       - 'tests/sql/saas_staging_migrator_role.test.sql'
       - 'tests/sql/saas_staging_tenant_projects_baseline.test.sql'
+      - 'tests/sql/saas_backend12_principal_rls.test.sql'
       - 'tests/sql/saas_rls_v1.test.sql'
       - 'tests/sql/saas_rls_signed_scope.test.sql'
       - 'tests/sql/saas_scoped_queries.test.sql'
@@ -1561,6 +1562,12 @@ jobs:
           test "$(psql -XAt -d saas_tenant_restore_ci \
             -c "SELECT COUNT(*) FROM pg_class WHERE oid IN ('saas_data.tenants'::regclass, 'saas_data.projects'::regclass) AND relrowsecurity AND relforcerowsecurity")" = "2"
           rm -f /tmp/saas-backend10-baseline.dump
+          # Backend12: only this disposable PostgreSQL16 receives the two
+          # new migrations, synthetic DB logins, tenants and denied-write QA.
+          bash -n scripts/saas-staging/verify-backend12-principal-rls-pg16.sh
+          SAAS_B12_EPHEMERAL_CI=true \
+          SAAS_B12_EPHEMERAL_MIGRATOR_PASSWORD="$migrator_password" \
+            bash scripts/saas-staging/verify-backend12-principal-rls-pg16.sh
           echo 'PASS Backend10: PG16 tenant/project deny-all RLS, no runtime grants, denied replay/pilot, isolated restore'
           unset migrator_password
           echo 'PASS Backend08: signed migration receipt, no replay, separate CI dump-restore'
