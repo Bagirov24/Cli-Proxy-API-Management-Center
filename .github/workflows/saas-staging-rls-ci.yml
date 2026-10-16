@@ -7,6 +7,7 @@ on:
       - 'staging/saas-bootstrap/**'
       - 'tests/sql/saas_staging_bootstrap.test.sql'
       - 'tests/sql/saas_staging_migrator_role.test.sql'
+      - 'tests/sql/saas_staging_tenant_projects_baseline.test.sql'
       - 'tests/sql/saas_rls_v1.test.sql'
       - 'tests/sql/saas_rls_signed_scope.test.sql'
       - 'tests/sql/saas_scoped_queries.test.sql'
@@ -1477,6 +1478,90 @@ jobs:
           restored="$(psql -XAt -d saas_restore_ci -c "SELECT migration_id || ':' || source_sha256 FROM saas_bootstrap.schema_migrations")"
           test "$restored" = "0001_ledger_only:$bootstrap_sha"
           rm -f /tmp/saas-backend08-ledger.dump
+          # Backend10 is applied ONLY to disposable saas_staging_ci (not Railway).
+          # The user has accepted NO BACKUP in real isolated staging; CI dump
+          # verification remains useful but is NOT a live-staging backup claim.
+          baseline_sha="$(sha256sum staging/saas-bootstrap/0002_tenant_projects_baseline.sql | cut -d' ' -f1)"
+          [[ "$baseline_sha" =~ ^[a-f0-9]{64}$ ]]
+          node -e '
+            const p=require("/tmp/saas-backend08-plan.json");
+            if(p.tenantProjectsBaseline?.executionAuthorized!==false||
+               p.tenantProjectsBaseline?.migration!=="0002_tenant_projects_baseline"||
+               p.tenantProjectsBaseline?.priorRequiredSha256!==p.sha256||
+               p.tenantProjectsBaseline?.sha256!==process.argv[1]) process.exit(1);
+          ' "$baseline_sha"
+          PGOPTIONS="-c saas.staging_only=true" PGUSER=saas_schema_migrator PGPASSWORD="$migrator_password" \
+            psql -X -v ON_ERROR_STOP=1 -d saas_staging_ci \
+              -v expected_0001_sha256="$bootstrap_sha" \
+              -v migration_sha256="$baseline_sha" \
+              -v source_commit="${GITHUB_SHA}" \
+              -f staging/saas-bootstrap/0002_tenant_projects_baseline.sql \
+              > /tmp/saas-backend10-baseline.log 2>&1 || {
+                tail -n 40 /tmp/saas-backend10-baseline.log
+                exit 1
+              }
+          psql -X -v ON_ERROR_STOP=1 -d saas_staging_ci \
+            -f tests/sql/saas_staging_tenant_projects_baseline.test.sql \
+            > /tmp/saas-backend10-contract.log
+          grep -q 'PASS Backend10' /tmp/saas-backend10-contract.log
+          test "$(psql -XAt -d saas_staging_ci \
+            -c "SELECT source_sha256 FROM saas_bootstrap.schema_migrations WHERE migration_id='0002_tenant_projects_baseline'")" = "$baseline_sha"
+          # MUST refuse replay (UNKNOWN COMMIT must be reconciled, not retried).
+          if PGOPTIONS="-c saas.staging_only=true" \
+              PGUSER=saas_schema_migrator PGPASSWORD="$migrator_password" \
+              psql -X -v ON_ERROR_STOP=1 -d saas_staging_ci \
+                -v expected_0001_sha256="$bootstrap_sha" \
+                -v migration_sha256="$baseline_sha" -v source_commit="${GITHUB_SHA}" \
+                -f staging/saas-bootstrap/0002_tenant_projects_baseline.sql \
+                > /tmp/saas-backend10-replay-deny.log 2>&1; then
+            echo 'ERROR: Backend10 accepted repeat migration' >&2
+            exit 1
+          fi
+          # Exclude even authorized CI migrator from a pilot or wrong database.
+          if PGOPTIONS="-c saas.staging_only=true" \
+              PGUSER=saas_schema_migrator PGPASSWORD="$migrator_password" \
+              psql -X -v ON_ERROR_STOP=1 -d saas_ephemeral_test \
+                -v expected_0001_sha256="$bootstrap_sha" \
+                -v migration_sha256="$baseline_sha" -v source_commit="${GITHUB_SHA}" \
+                -f staging/saas-bootstrap/0002_tenant_projects_baseline.sql \
+                > /tmp/saas-backend10-wrong-db-deny.log 2>&1; then
+            echo 'ERROR: Backend10 accepted pilot database' >&2
+            exit 1
+          fi
+          # Test live rows on the DISPOSABLE CI database: admin can write,
+          # but the table owner still cannot SELECT them due to FORCE RLS.
+          psql -X -v ON_ERROR_STOP=1 -d saas_staging_ci \
+            -c "WITH t AS (INSERT INTO saas_data.tenants (tenant_key, display_name) VALUES ('ci_tenant', 'CI Tenant') RETURNING tenant_id) INSERT INTO saas_data.projects (tenant_id, project_key, display_name) SELECT tenant_id, 'ci_project', 'CI Project' FROM t"
+          for relation in tenants projects; do
+            visible="$(PGUSER=saas_schema_migrator PGPASSWORD="$migrator_password" \
+              psql -XAt -d saas_staging_ci -c "SELECT COUNT(*) FROM saas_data.$relation")"
+            test "$visible" = "0" || {
+              echo "ERROR: Backend10 forced RLS leaked $relation" >&2
+              exit 1
+            }
+          done
+          if PGUSER=saas_schema_migrator PGPASSWORD="$migrator_password" \
+              psql -X -v ON_ERROR_STOP=1 -d saas_staging_ci \
+                -c "INSERT INTO saas_data.tenants (tenant_key, display_name) VALUES ('ci_denied', 'Denied')" \
+                > /tmp/saas-backend10-owner-insert-deny.log 2>&1; then
+            echo 'ERROR: Backend10 migration owner bypassed FORCE RLS' >&2
+            exit 1
+          fi
+          # Remove synthetic data before dumping schema + receipts.
+          psql -X -v ON_ERROR_STOP=1 -d saas_staging_ci \
+            -c "DELETE FROM saas_data.projects; DELETE FROM saas_data.tenants"
+          pg_dump -Fc --no-owner --no-acl \
+            -n saas_bootstrap -n saas_data \
+            -d saas_staging_ci -f /tmp/saas-backend10-baseline.dump
+          createdb -h 127.0.0.1 -p 5432 -U postgres saas_tenant_restore_ci
+          pg_restore --exit-on-error --no-owner --no-acl \
+            -d saas_tenant_restore_ci /tmp/saas-backend10-baseline.dump
+          test "$(psql -XAt -d saas_tenant_restore_ci \
+            -c "SELECT COUNT(*) FROM saas_bootstrap.schema_migrations")" = "2"
+          test "$(psql -XAt -d saas_tenant_restore_ci \
+            -c "SELECT COUNT(*) FROM pg_class WHERE oid IN ('saas_data.tenants'::regclass, 'saas_data.projects'::regclass) AND relrowsecurity AND relforcerowsecurity")" = "2"
+          rm -f /tmp/saas-backend10-baseline.dump
+          echo 'PASS Backend10: PG16 tenant/project deny-all RLS, no runtime grants, denied replay/pilot, isolated restore'
           unset migrator_password
           echo 'PASS Backend08: signed migration receipt, no replay, separate CI dump-restore'
           echo 'PASS Backend09: non-superuser migrator/no inherited privilege, no pilot DB'

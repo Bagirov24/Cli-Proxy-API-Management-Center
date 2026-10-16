@@ -17,6 +17,7 @@ const TARGET = Object.freeze({
 });
 const SQL = new URL('../../staging/saas-bootstrap/0001_ledger_only.sql', import.meta.url);
 const ROLE_SQL = new URL('../../staging/saas-bootstrap/0000_operator_migrator_role.sql', import.meta.url);
+const TENANT_SQL = new URL('../../staging/saas-bootstrap/0002_tenant_projects_baseline.sql', import.meta.url);
 const FAIL = 'Backend08 isolated staging migration preflight refused';
 
 function refuse() {
@@ -29,6 +30,8 @@ function migrationPlan() {
   const source = bytes.toString('utf8');
   const roleBytes = readFileSync(ROLE_SQL);
   const roleSource = roleBytes.toString('utf8');
+  const tenantBytes = readFileSync(TENANT_SQL);
+  const tenantSource = tenantBytes.toString('utf8');
   // Narrow source-shape check, not a general-purpose SQL sanitizer.
   // Only this reviewed file is eligible. No wildcard or pilot directory.
   if (bytes.byteLength < 900 || bytes.byteLength > 12_000 ||
@@ -41,7 +44,13 @@ function migrationPlan() {
       !roleSource.includes('CREATE ROLE saas_schema_migrator') ||
       !roleSource.includes('NOBYPASSRLS NOCREATEDB NOCREATEROLE') ||
       !roleSource.includes("current_database() NOT IN ('saas_staging', 'saas_staging_ci')") ||
-      /\\(?:i\b|ir\b|include\b)/i.test(roleSource)) refuse();
+      /\\(?:i\b|ir\b|include\b)/i.test(roleSource) ||
+      tenantBytes.byteLength < 2000 || tenantBytes.byteLength > 12000 ||
+      !tenantSource.includes('CREATE SCHEMA saas_data AUTHORIZATION saas_schema_migrator;') ||
+      !tenantSource.includes('ALTER TABLE saas_data.projects FORCE ROW LEVEL SECURITY;') ||
+      !tenantSource.includes('ALTER TABLE saas_data.tenants FORCE ROW LEVEL SECURITY;') ||
+      !tenantSource.includes("VALUES ('0002_tenant_projects_baseline'") ||
+      /\\(?:i\b|ir\b|include\b)/i.test(tenantSource)) refuse();
   return Object.freeze({
     operation: 'plan-only',
     executionAuthorized: false,
@@ -60,6 +69,15 @@ function migrationPlan() {
       login: TARGET.role,
     }),
     creates: ['saas_bootstrap.schema_migrations'],
+    tenantProjectsBaseline: Object.freeze({
+      path: 'staging/saas-bootstrap/0002_tenant_projects_baseline.sql',
+      sha256: createHash('sha256').update(tenantBytes).digest('hex'),
+      migration: '0002_tenant_projects_baseline',
+      priorRequiredSha256: createHash('sha256').update(bytes).digest('hex'),
+      executionAuthorized: false,
+      creates: ['saas_data.tenants', 'saas_data.projects'],
+      rls: 'force-enabled-with-zero-policies-deny-all',
+    }),
     forbidden: ['staging/saas-rls/001-027', 'SQL019', 'Core/Gateway databases'],
     approval: 'independent-security-ops-and-backup-restore-required',
   });
