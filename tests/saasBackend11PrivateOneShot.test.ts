@@ -43,6 +43,7 @@ describe('Backend11 private one-shot staging bootstrap', () => {
     expect(source).toContain("e.SAAS_BOOTSTRAP_EXPLICIT_ENABLE !== 'true'");
     expect(source).toContain("e.SAAS_BOOTSTRAP_OPERATOR_ACCEPT_LOSS !== 'true'");
     expect(source).toContain('STAGING_POSTGRES_PRIVATE_URL');
+    expect(source).toContain("options: '-c saas.staging_only=true'");
     expect(source).not.toContain('bd565370-7321-4dba-908a-412186b1b986');
     expect(source).not.toMatch(/DATABASE_PUBLIC_URL|Bun\.serve|\.listen\(|createServer|setInterval/);
   });

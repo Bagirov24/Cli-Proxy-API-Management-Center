@@ -80,6 +80,7 @@ function client(url: URL) {
   return new pg.Client({
     connectionString: url.toString(),
     connectionTimeoutMillis: 6000,
+    options: '-c saas.staging_only=true',
     query_timeout: 25000,
     statement_timeout: 20000,
     application_name: 'saas-backend11-once',

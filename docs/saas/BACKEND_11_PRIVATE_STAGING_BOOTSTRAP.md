@@ -20,7 +20,7 @@ Bun executes the reviewed SQL with the official `pg` client, substituting **only
 
 ## Railway execution gate
 
-The Function requires Railway's own `RAILWAY_PROJECT_ID`, `RAILWAY_ENVIRONMENT_ID`, `RAILWAY_ENVIRONMENT_NAME` and `RAILWAY_SERVICE_NAME=saas-bootstrap-once`. It also requires two explicit staging-only opt-ins, `SAAS_BOOTSTRAP_EXPLICIT_ENABLE=true` and `SAAS_BOOTSTRAP_OPERATOR_ACCEPT_LOSS=true`. The **only database variable** is `STAGING_POSTGRES_PRIVATE_URL=${{Postgres.DATABASE_URL}}` resolved by Railway at runtime. It accepts only `postgres.railway.internal:5432/saas_staging` with the `postgres` operator. Do not substitute the public `DATABASE_PUBLIC_URL`.
+The Function requires Railway's own `RAILWAY_PROJECT_ID`, `RAILWAY_ENVIRONMENT_ID`, `RAILWAY_ENVIRONMENT_NAME` and `RAILWAY_SERVICE_NAME=saas-bootstrap-once`. Each PG connection starts with `options: '-c saas.staging_only=true'` so SQL0000–0002 reject any session without the explicit isolated-staging setting. It also requires two explicit staging-only opt-ins, `SAAS_BOOTSTRAP_EXPLICIT_ENABLE=true` and `SAAS_BOOTSTRAP_OPERATOR_ACCEPT_LOSS=true`. The **only database variable** is `STAGING_POSTGRES_PRIVATE_URL=${{Postgres.DATABASE_URL}}` resolved by Railway at runtime. It accepts only `postgres.railway.internal:5432/saas_staging` with the `postgres` operator. Do not substitute the public `DATABASE_PUBLIC_URL`.
 
 Create the Function **staged**, stage the above variables in the same patch, verify no other staged resources, and apply only after all five GitHub Actions PASS on the reviewed runner SHA. Never attach a domain. Initial startup with unset flags intentionally refuses to run. Function has no HTTP listener; it terminates after success/failure.
 
