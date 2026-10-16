@@ -46,6 +46,7 @@ const SQL_TEXT = Object.freeze({
   rollback: 'ROLLBACK',
   txid: 'SELECT txid_current()::text AS transaction_id',
   backend: 'SELECT pg_backend_pid()::int AS backend_pid',
+  attempt: "SELECT set_config('saas.m1_attempt_id',$1::text,true) AS attempt_stamped",
   claim: 'SELECT set_config($1::text, $2::text, true)',
   role: 'SET LOCAL ROLE saas_m1_project_executor',
   create: 'SELECT saas_m1_api.create_project($1::text,$2::text,$3::text) AS applied',
@@ -60,11 +61,13 @@ const CLAIMS = new Set([
 const FIXED_COUNTS = new Map([
   [SQL_TEXT.begin, 0], [SQL_TEXT.commit, 0], [SQL_TEXT.rollback, 0],
   [SQL_TEXT.txid, 0], [SQL_TEXT.backend, 0], [SQL_TEXT.role, 0],
+  [SQL_TEXT.attempt, 1],
   [SQL_TEXT.create, 3], [SQL_TEXT.rename, 4],
   [SQL_TEXT.disable, 3], [SQL_TEXT.read, 2],
 ]);
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const SAFE_ACTOR = /^[A-Za-z0-9_-]{1,128}$/;
+const SAFE_UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 function canQuery(statement, params) {
   if (statement === SQL_TEXT.claim) {
     return params.length === 2 && CLAIMS.has(params[0]) &&
@@ -85,13 +88,13 @@ function makeNativeDb() {
     connectionTimeout: 5, idleTimeout: 5, prepare: false, tls: false,
   });
 }
-function makeDriver({ dropAckAfterCommit = false, beforeCommit } = {}) {
+function makeDriver({ dropAckAfterCommit = false, beforeCommit, attemptTagging = false } = {}) {
   const db = makeNativeDb();
   let poisoned = false;
   let reservations = 0;
   let commitAcks = 0;
   let ackFault = dropAckAfterCommit;
-  async function transaction(scope, operation, projectId, name, version, signal) {
+  async function transaction(scope, operation, projectId, name, version, signal, attemptId) {
     if (poisoned || signal.aborted || !validateScope(scope) ||
         !SAFE_ID.test(projectId) ||
         !['create', 'rename', 'disable', 'read'].includes(operation)) {
@@ -153,6 +156,12 @@ function makeDriver({ dropAckAfterCommit = false, beforeCommit } = {}) {
         ['saas.scope_mac', mac],
       ];
       for (const pair of values) await query(SQL_TEXT.claim, pair);
+      if (attemptTagging && operation !== 'read') {
+        if (typeof attemptId !== 'string' || !SAFE_UUID_V4.test(attemptId)) {
+          throw new Error('M1g missing server-minted UUIDv4 on signed write');
+        }
+        await query(SQL_TEXT.attempt, [attemptId]);
+      }
       await query(SQL_TEXT.role);
       if (signal.aborted) throw new Error('M1b cancelled before operation');
       let params;
@@ -222,8 +231,8 @@ function makeDriver({ dropAckAfterCommit = false, beforeCommit } = {}) {
   }
   return Object.freeze({
     async execute(input) {
-      const { scope, operation, projectId, name, expectedVersion, signal } = input;
-      return transaction(scope, operation, projectId, name, expectedVersion, signal);
+      const { scope, operation, projectId, name, expectedVersion, signal, attemptId } = input;
+      return transaction(scope, operation, projectId, name, expectedVersion, signal, attemptId);
     },
     read(scope, projectId, signal = AbortSignal.timeout(12000)) {
       return transaction(scope, 'read', projectId, undefined, undefined, signal);
@@ -306,6 +315,11 @@ const northScope = Object.freeze({
   role: 'tenant-admin', correlationId: 'm1b-ci-internal-read',
 });
 
+const m1gOnly = process.env.SAAS_EPHEMERAL_M1G_ATTEMPT_CI === 'true';
+if (m1gOnly && process.env.SAAS_EPHEMERAL_M1E_DISCONNECT_CI === 'true') {
+  throw new Error('M1g CI attempt run must not re-execute earlier M1e fixtures');
+}
+if (!m1gOnly) {
 console.info('STEP M1b: pinned synthetic RS256 identity and signed native PG16 command');
 const north = await signToken('north');
 const viewer = await signToken('orbit', {
@@ -521,5 +535,120 @@ if (process.env.SAAS_EPHEMERAL_M1E_DISCONNECT_CI === 'true') {
     'PASS M1e: real pg_terminate_backend BEFORE COMMIT and cancellation; ' +
     '503 + quarantine, physical PID gone, 0 project/0 audit, no repeat; ' +
     'M1b committed lost ACK remains 1 project/1 audit; NO PRODUCTION retry'
+  );
+}
+
+
+}
+if (m1gOnly) {
+  // A completely separate invocation, AFTER SQL024 installation.
+  // Real synthetic RS256 -> trusted issuer/subject -> M1a RBAC -> signed
+  // PostgreSQL transaction; UUIDv4 is minted by this CI server wrapper
+  // BEFORE its writer.execute call, never read from JWT or HTTP payload.
+  console.info('STEP M1g: server-issued UUIDv4 on signed native project writes');
+  const northToken = await signToken('north');
+  const issued = [];
+  function withServerAttempts(native) {
+    return boundary(Object.freeze({
+      async execute(input) {
+        const attemptId = crypto.randomUUID();
+        issued.push(Object.freeze({
+          attemptId, operation: input.operation, projectId: input.projectId,
+        }));
+        return native.execute({ ...input, attemptId });
+      },
+    }));
+  }
+  function attemptFor(projectId, operation) {
+    const row = issued.find(x => x.projectId === projectId && x.operation === operation);
+    assert.ok(row && SAFE_UUID_V4.test(row.attemptId), 'M1g server minted attempt must exist');
+    return row.attemptId;
+  }
+  const d = makeDriver({ attemptTagging: true });
+  try {
+    const invoke = withServerAttempts(d);
+    assert.equal((await invoke(command('create', northToken, 'm1g-first'))).status, 201);
+    const firstAttempt = attemptFor('m1g-first', 'create');
+    assert.equal((await invoke(command('rename', northToken, 'm1g-first', {
+      name: 'M1g renamed', expectedVersion: 1,
+    }))).status, 200);
+    assert.equal((await invoke(command('disable', northToken, 'm1g-first', {
+      expectedVersion: 2,
+    }))).status, 200);
+    assert.equal((await invoke(command('rename', northToken, 'm1g-first', {
+      name: 'No reactivation', expectedVersion: 3,
+    }))).status, 404);
+    const observed = await d.read(northScope, 'm1g-first');
+    assert.equal(observed.length, 1);
+    assert.equal(observed[0].status, 'disabled');
+    assert.equal(observed[0].version, '3');
+
+    // Deliberate server-side BUG simulation: the same already committed
+    // attempt UUID used to mutate an unrelated project must be denied by
+    // unique constraint, rolling back BOTH new project + its audit.
+    const reused = await d.execute({
+      scope: northScope, operation: 'create',
+      projectId: 'm1g-reused-attempt',
+      name: 'Must not commit', signal: AbortSignal.timeout(12000),
+      attemptId: firstAttempt,
+    });
+    assert.equal(reused, false);
+    assert.equal((await d.read(northScope, 'm1g-reused-attempt')).length, 0);
+
+    // A legacy signed writer missing the server attempt stamp must also
+    // fail closed after SQL024; never produce an unaudited mutation.
+    const legacy = makeDriver();
+    try {
+      const skipped = await legacy.execute({
+        scope: northScope, operation: 'create',
+        projectId: 'm1g-no-stamp',
+        name: 'Must not commit', signal: AbortSignal.timeout(12000),
+      });
+      assert.equal(skipped, false);
+    } finally {
+      await legacy.close();
+    }
+    assert.equal((await d.read(northScope, 'm1g-no-stamp')).length, 0);
+    assert.equal(d.stats().poisoned, false);
+  } finally {
+    await d.close();
+  }
+
+  // Fresh distinct UUID and signed transaction: actual COMMIT succeeds,
+  // local ACK is deliberately lost. The same originating caller sees 503;
+  // NO retry. An independent reviewer can later find the specific UUID,
+  // but the ID and receipt live in the same PG trust domain.
+  const uncertain = makeDriver({
+    attemptTagging: true, dropAckAfterCommit: true,
+  });
+  let uncertainId;
+  try {
+    const invoke = boundary({
+      execute(input) {
+        uncertainId = crypto.randomUUID();
+        return uncertain.execute({ ...input, attemptId: uncertainId });
+      },
+    });
+    const response = await invoke(command('create', northToken, 'm1g-lost-ack'));
+    assert.equal(response.status, 503);
+    assert.ok(SAFE_UUID_V4.test(uncertainId));
+    assert.equal(uncertain.stats().poisoned, true);
+    assert.equal(uncertain.stats().reservations, 1);
+    assert.equal(uncertain.stats().commitAcks, 0);
+  } finally {
+    await uncertain.close();
+  }
+  const healthy = makeDriver();
+  try {
+    const record = await healthy.read(northScope, 'm1g-lost-ack');
+    assert.equal(record.length, 1);
+    assert.equal(record[0].version, '1');
+  } finally {
+    await healthy.close();
+  }
+  console.info(
+    'PASS M1g: verified RS256 server-minted UUIDv4 binds same-COMMIT project/audit; ' +
+    'committed duplicate attempt and missing stamp deny; lost ACK=503 with durable ' +
+    'local UUID evidence, NO automatic retry, NO production'
   );
 }

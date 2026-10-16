@@ -13,6 +13,7 @@ on:
       - 'tests/sql/saas_m1_project_atomic_audit.test.sql'
       - 'tests/sql/saas_m1_physical_disconnect.test.sql'
       - 'tests/sql/saas_m1_unknown_commit_readonly_review.test.sql'
+      - 'tests/sql/saas_m1_attempt_bound_audit.test.sql'
       - 'tests/sql/saas_m1_project_authorization_fence.test.sql'
       - 'tests/sql/saas_e2e_grants_fixture.test.sql'
       - 'tests/sql/saas_authorization_coverage.test.sql'
@@ -410,6 +411,31 @@ jobs:
             SAAS_EPHEMERAL_E2E_CI=true SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
             SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
             bun scripts/saas-staging/verify-trusted-pg-e2e.mjs
+          # M1g STACKED DRAFT: install LAST among M1 project pilots, after
+          # M1a–M1f acceptance and other signed synthetic SQL fixtures.
+          # A second Bun process uses a new synthetic pinned RS256 identity
+          # and *server-issued* UUIDv4 set only on signed PG write sessions.
+          # Old unstamped write paths now fail closed. No release/writer API.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/024_m1_attempt_bound_project_audit_pilot.sql \
+            > /tmp/saas-m1g-attempt-install.log 2>&1 || {
+              tail -n 100 /tmp/saas-m1g-attempt-install.log
+              exit 1
+            }
+          tail -n 3 /tmp/saas-m1g-attempt-install.log
+          timeout --signal=TERM --kill-after=5s 90s env \
+            SAAS_EPHEMERAL_M1_PG_CI=true \
+            SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1_attempt_bound_audit.test.sql \
+            > /tmp/saas-m1g-attempt-acceptance.log 2>&1 || {
+              tail -n 150 /tmp/saas-m1g-attempt-acceptance.log
+              exit 1
+            }
+          tail -n 6 /tmp/saas-m1g-attempt-acceptance.log
           unset runner_password scope_key
 
       - name: Verify staging authorization epochs and concurrent revocation

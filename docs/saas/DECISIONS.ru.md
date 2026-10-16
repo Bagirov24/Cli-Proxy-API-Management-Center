@@ -1427,3 +1427,21 @@ caused that state. `NO_LOCAL_EVIDENCE` and `INCONSISTENT_STOP` both mean
 STOP, never safe retry. No manual status mutation/lease/ACK is added.
 This is a single PostgreSQL trust domain, not independent WORM.
 [M1f decision contract](M1F_UNKNOWN_COMMIT_OPERATOR_LOCAL_EVIDENCE.ru.md).
+
+
+## M1g — CI-server UUID stamp is LOCAL correlation, not independent idempotency
+
+M1f can inspect an existing project+audit pair but cannot identify the
+specific originating write. M1g adds a *server-minted in CI* UUIDv4
+placed via SET LOCAL on an already signed Bun.SQL scope. A second
+AFTER ROW trigger joins the mandatory M1d audit event by version,
+actor and txid, then stores UNIQUE UUID→audit event in the same COMMIT.
+Failure of this insert rolls back the tentative project and audit.
+No UUID from unverified JWT/HTTP claims. Existing M1d signed fence stays.
+
+This is a deliberately bounded **single-database correlation**, NOT
+a separately attested server command, immutable pre-COMMIT intent,
+independent WORM or safe idempotent reissue. A compromised SQL session
+can set custom GUCs; a prior aborted attempt has no persisted UUID.
+Only READ ONLY operator inspection and STOP outcomes are allowed.
+[M1g limits](M1G_ATTEMPT_UUID_BOUND_PROJECT_AUDIT_PG16.ru.md).

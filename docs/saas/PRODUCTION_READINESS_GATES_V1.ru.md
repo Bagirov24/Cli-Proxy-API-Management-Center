@@ -722,3 +722,16 @@ matching project+audit без выдачи клиентских метаданн
 WORM, human signoff, real network partition test и production pool
 physical discard этот gate остаётся BLOCKED. Не разрешает повторов,
 merge, deploy или SQL019. [M1f status](M1F_UNKNOWN_COMMIT_OPERATOR_LOCAL_EVIDENCE.ru.md).
+
+
+## M1g — server-stamped UUID / mandatory project audit binding (gate НЕ пройден)
+
+SQL024 on disposable PG16 links CI server UUIDv4 to an existing
+signed audit event inside the project transaction, rejecting committed
+UUID reuse and missing stamps. Supervised operator can observe an exact
+local attempt+audit+project pair. But UUID origin is NOT cryptographically
+attested by PG, it is not separately persisted before COMMIT and both
+sources share one DBA/trust domain. No external WORM, human sign-off,
+OIDC session revocation, network COMMIT partition proof or production
+pool physical discard. Any automatic retry/reissue/merge/deploy stays
+forbidden. [M1g review](M1G_ATTEMPT_UUID_BOUND_PROJECT_AUDIT_PG16.ru.md).
