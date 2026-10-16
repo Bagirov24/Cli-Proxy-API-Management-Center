@@ -319,19 +319,9 @@ try {
     tokens:verifier,
     directory:authority.directory,
     sessions:authority.sessions,
-    actors:{
-      async lookup(actorId,signal){
-        if(signal.aborted||actorId!==ACTOR)return null;
-        // CI fixture only; production needs an independent restricted
-        // current actor-membership reader, NOT a postgres superuser pool.
-        const rows=await scoped(
-          'SELECT tenant_id,role,status FROM saas_rls.memberships WHERE actor_id=$1',
-          [actorId]);
-        return {id:actorId,memberships:rows.map(row=>({
-          tenantId:row.tenant_id,role:row.role,status:row.status,
-        }))};
-      },
-    },
+    // Real role-restricted SQL027 actor membership query, same isolated
+    // NOINHERIT identity login as the SQL026 issuer/session authority.
+    actors:authority.actors,
     journal:{
       async prepare(entry){
         assert.match(entry.attemptId,V4);
@@ -454,6 +444,53 @@ try {
   await committedHttpProof(thirdHttp,3);
   assert.equal(prepared.length,4);
 
+  // The signed JWT B and SQL026 bearer session stay valid after membership
+  // revocation. The independent SQL027 current-membership projection must
+  // refuse this actor BEFORE a witness or PG write is reserved.
+  assert.deepEqual(await authority.actors.lookup(ACTOR,AbortSignal.timeout(9000)),{
+    id:ACTOR,memberships:[
+      {tenantId:TENANT,role:'tenant-admin',status:'active'},
+    ],
+  });
+  const revoked=await scoped(
+    "UPDATE saas_rls.memberships SET status='revoked' "+
+    "WHERE actor_id=$1 AND tenant_id=$2 AND status='active' "+
+    "RETURNING status",[ACTOR,TENANT]);
+  assert.equal(revoked.length,1);
+  assert.equal(revoked[0].status,'revoked');
+  assert.ok(await verifier.verifyAccessToken(TOKEN_B));
+  assert.deepEqual(await authority.sessions.resolve({
+    actorId:ACTOR,tenantId:TENANT,tokenFingerprint:fpB},
+    AbortSignal.timeout(9000)),{sessionId:secondSession,sessionRevision:1});
+  assert.equal(await authority.actors.lookup(ACTOR,AbortSignal.timeout(9000)),null);
+  const beforeMembershipDenied=prepared.length;
+  assert.equal((await createViaHttp(TOKEN_B)).status,401);
+  assert.equal(prepared.length,beforeMembershipDenied,
+    'SQL027 revoked membership forbids witness and project writes');
+
+  // Independent tenant suspension also denies a DIFFERENT active viewer
+  // without touching either public bearer or issuer/subject account.
+  const viewer='actor-pg27-viewer';
+  const viewerTenant='pg27-viewer-tenant';
+  await scoped(
+    "INSERT INTO saas_rls.tenants(id,name,status) VALUES($1,'Viewer test','active')",
+    [viewerTenant]);
+  await scoped(
+    "INSERT INTO saas_rls.memberships(actor_id,tenant_id,role,status) "+
+    "VALUES($1,$2,'tenant-viewer','active')",[viewer,viewerTenant]);
+  await scoped(
+    "INSERT INTO saas_rls_private.actor_session_state(actor_id,status,revision) "+
+    "VALUES($1,'active',1)",[viewer]);
+  assert.deepEqual(await authority.actors.lookup(viewer,AbortSignal.timeout(9000)),{
+    id:viewer,memberships:[
+      {tenantId:viewerTenant,role:'tenant-viewer',status:'active'},
+    ],
+  });
+  await scoped(
+    "UPDATE saas_rls.tenants SET status='suspended' WHERE id=$1",
+    [viewerTenant]);
+  assert.equal(await authority.actors.lookup(viewer,AbortSignal.timeout(9000)),null);
+
   // Issuer-subject terminal revoke independently invalidates directory.
   assert.equal(await withOperatorRole('saas_issuer_directory_admin',
     'SELECT saas_rls_private.revoke_verified_subject($1::text,$2::text) AS applied',
@@ -481,6 +518,7 @@ try {
     "'saas_m1_api.pin_project_verified_token_session(uuid,text,text,text)',"+
     "'EXECUTE') AS provision");
   assert.deepEqual(grants[0],{bindings:false,sessions:false,provision:false});
+  console.info('PASS backend-05: real non-superuser SQL027 actor memberships in signed HTTPS POST; token B remains signed and session active but revoked membership returns 401/zero witness; suspended viewer tenant invisible; SQL026 COMMIT/UNKNOWN-ACK proof retained');
   console.info('PASS backend-04: signed HTTPS-origin POST->verified bearer SHA256->durable PG16 UUID->independent fsync intent->SQL026 signed COMMIT, lost ACK returns 503 with persisted 1:1:1:1 no retry; two valid token sessions, crossed A/B denied, A revoke/B survives, subject revoke denies');
 } finally {
   if(witness)await witness.stop();
