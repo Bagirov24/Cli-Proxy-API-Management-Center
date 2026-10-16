@@ -345,9 +345,18 @@ const northScope = Object.freeze({
 const m1gOnly = process.env.SAAS_EPHEMERAL_M1G_ATTEMPT_CI === 'true';
 const m1jOnly = process.env.SAAS_EPHEMERAL_M1J_HTTP_PG_CI === 'true';
 const m1kOnly = process.env.SAAS_EPHEMERAL_M1K_SESSION_CI === 'true';
-const m1mOnly = process.env.SAAS_EPHEMERAL_M1M_PKCE_CI === 'true';
-// M1m requires the M1l JWKS guard but MUST NOT re-run M1l's fixture.
-const m1lOnly = process.env.SAAS_EPHEMERAL_M1L_OIDC_CI === 'true' && !m1mOnly;
+const m1nOnly = process.env.SAAS_EPHEMERAL_M1N_TLS_CI === 'true';
+const m1mOnly = process.env.SAAS_EPHEMERAL_M1M_PKCE_CI === 'true' && !m1nOnly;
+// M1m/M1n require M1l JWKS trust guard, but never rerun M1l fixture.
+const m1lOnly = process.env.SAAS_EPHEMERAL_M1L_OIDC_CI === 'true' && !m1mOnly && !m1nOnly;
+if(m1nOnly&&(!m1gOnly||m1jOnly||m1kOnly||m1lOnly||m1mOnly||
+   process.env.SAAS_EPHEMERAL_M1M_PKCE_CI!=='true'||
+   process.env.SAAS_EPHEMERAL_M1L_OIDC_CI!=='true'||
+   process.env.SAAS_EPHEMERAL_M1_HTTP_CI!=='true'||
+   process.env.SAAS_EPHEMERAL_M1H_INTENT_CI==='true'||
+   process.env.SAAS_EPHEMERAL_M1E_DISCONNECT_CI==='true')){
+  throw new Error('M1n pinned HTTPS IdP CI must run after M1m, separately');
+}
 if(m1mOnly&&(!m1gOnly||m1jOnly||m1kOnly||m1lOnly||
    process.env.SAAS_EPHEMERAL_M1L_OIDC_CI!=='true'||
    process.env.SAAS_EPHEMERAL_M1_HTTP_CI!=='true'||
@@ -603,7 +612,7 @@ if (m1gOnly) {
   const northToken = await signToken('north');
   // M1h is run in a separate CI process AFTER the entire M1g SQL
   // acceptance; it must not mutate the M1g four-row regression fixture.
-  if (process.env.SAAS_EPHEMERAL_M1H_INTENT_CI !== 'true' && !m1jOnly && !m1kOnly && !m1lOnly && !m1mOnly) {
+  if (process.env.SAAS_EPHEMERAL_M1H_INTENT_CI !== 'true' && !m1jOnly && !m1kOnly && !m1lOnly && !m1mOnly && !m1nOnly) {
     console.info('STEP M1g: server-issued UUIDv4 on signed native project writes');
     const issued = [];
   function withServerAttempts(native) {
@@ -749,5 +758,12 @@ if (m1gOnly) {
     // No live IdP, authorization route, callback or real token provisioning.
     const { verifyM1m } = await import('./verify-m1m-pkce-pg-ci.mjs');
     await verifyM1m({ assert, makeDriver, actors });
+  }
+  if (m1nOnly) {
+    // Eighth independent disposable CI invocation AFTER M1m: a real
+    // transient HTTPS socket authenticates the issuer's CA+SAN+SPKI
+    // before the same server-held PKCE state and signed PG16 session gate.
+    const { verifyM1m } = await import('./verify-m1m-pkce-pg-ci.mjs');
+    await verifyM1m({ assert, makeDriver, actors, httpsMode: true });
   }
 }

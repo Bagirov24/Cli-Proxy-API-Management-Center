@@ -9,6 +9,11 @@
  * off-host independent journal, production DB/keys, reissue or auto-retry.
  */
 import { createHash } from 'node:crypto';
+import { createServer } from 'node:https';
+import { createDisposableM1nTlsFixture } from './m1n-ephemeral-tls-fixture.mjs';
+import {
+  createM1nPinnedHttpsTransport,loadM1nVerifiedOidc,
+} from './m1n-synthetic-https-trust.mjs';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createSyntheticPkceClient,createSyntheticPkceIssuer } from
   './m1m-synthetic-pkce-code-flow.mjs';
@@ -23,7 +28,7 @@ const AUDIENCE='saas-m1m-ci';
 const CLIENT_ID='m1m-ephemeral-client';
 const NOW=1_800_000_000;
 const V4=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const PROJECT=/^m1m-[a-z-]{1,48}$/;
+const PROJECT=/^m1[mn]-[a-z-]{1,48}$/;
 const sha=value=>createHash('sha256').update(value).digest('hex');
 function pg(assert,sql){
   const command=Bun.spawnSync(
@@ -58,7 +63,7 @@ function evidence(assert,name){
     "JOIN saas_m1_private.project_write_audit_outbox a ON a.event_id=b.event_id "+
     "WHERE a.tenant_id='demo-north' AND a.project_id='"+name+"')::TEXT");
 }
-export async function verifyM1m({assert,makeDriver,actors}){
+export async function verifyM1m({assert,makeDriver,actors,httpsMode=false}){
   if(process.env.GITHUB_ACTIONS!=='true'||
      process.env.SAAS_EPHEMERAL_M1_PG_CI!=='true'||
      process.env.SAAS_EPHEMERAL_M1G_ATTEMPT_CI!=='true'||
@@ -68,6 +73,8 @@ export async function verifyM1m({assert,makeDriver,actors}){
      process.env.SAAS_EPHEMERAL_M1L_OIDC_CI!=='true'||
      process.env.SAAS_EPHEMERAL_M1J_HTTP_PG_CI==='true'||
      process.env.SAAS_EPHEMERAL_M1H_INTENT_CI==='true'||
+     (httpsMode&&process.env.SAAS_EPHEMERAL_M1N_TLS_CI!=='true')||
+     (!httpsMode&&process.env.SAAS_EPHEMERAL_M1N_TLS_CI==='true')||
      process.env.PGHOST!=='127.0.0.1'||
      process.env.PGPORT!=='5432'||
      process.env.PGDATABASE!=='saas_ephemeral_test'||
@@ -77,11 +84,16 @@ export async function verifyM1m({assert,makeDriver,actors}){
      process.env.RAILWAY_SERVICE_ID){
     throw new Error('M1m OAuth/PG16 proof denied outside disposable GitHub CI');
   }
-  console.info('STEP M1m: real mock OAuth PKCE code/state -> pinned JWT -> signed PG16 session');
+  console.info(httpsMode
+    ? 'STEP M1n: real pinned HTTPS IdP CA/SAN/SPKI -> PKCE/state -> signed PG16'
+    : 'STEP M1m: real mock OAuth PKCE code/state -> pinned JWT -> signed PG16 session');
+  const prefix=httpsMode?'m1n':'m1m';
+  const project=suffix=>prefix+'-'+suffix;
   const stamp=crypto.randomUUID();
   const journal='/tmp/saas-m1h-intent-'+stamp+'.jsonl';
   const witness=await startWitness(assert,journal);
   let mockIssuer=null, issuerServer=null, projectServer=null,hold=null;
+  let tlsFixture=null,secureTransport=null;
   const registry=new Map();
   const context=new AsyncLocalStorage();
   const attempts=[];
@@ -92,12 +104,52 @@ export async function verifyM1m({assert,makeDriver,actors}){
       publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256',
     },true,['sign','verify']);
     const publicJwk=await crypto.subtle.exportKey('jwk',rsa.publicKey);
-    issuerServer=Bun.serve({
-      hostname:'127.0.0.1',port:0,
-      fetch:req=>mockIssuer?.handle(req)??new Response('',{status:503}),
-    });
-    const issuerBase='http://127.0.0.1:'+issuerServer.port;
-    const oidc=createSyntheticOidcKeyRotation({
+    let issuerBase;
+    if(httpsMode){
+      tlsFixture=createDisposableM1nTlsFixture();
+      issuerServer=createServer({
+        cert:tlsFixture.primary.cert,key:tlsFixture.primary.key,
+        minVersion:'TLSv1.2',
+      },async(req,res)=>{
+        try {
+          const chunks=[];
+          let size=0;
+          for await(const chunk of req){
+            size+=chunk.byteLength;
+            if(size>4096)throw new Error('M1n bounded mock issuer POST overflow');
+            chunks.push(chunk);
+          }
+          const canonical='https://127.0.0.1:'+issuerServer.address().port;
+          const input=new Request(canonical+req.url,{
+            method:req.method,
+            headers:{'Content-Type':req.headers['content-type']||'application/json'},
+            body:req.method==='POST'?Buffer.concat(chunks):undefined,
+          });
+          const reply=await mockIssuer.handle(input);
+          // Explicit bound for the preverified M1n TLS socket's strict
+          // one-response HTTP/1.1 parser; no Transfer-Encoding ambiguity.
+          const data=Buffer.from(await reply.arrayBuffer());
+          res.writeHead(reply.status,{
+            ...Object.fromEntries(reply.headers),
+            'Content-Length':String(data.byteLength),
+            Connection:'close',
+          });
+          res.end(data);
+        }catch{
+          res.writeHead(503,{'Content-Type':'application/json'});
+          res.end('{"error":"CI HTTPS IdP unavailable"}');
+        }
+      });
+      await new Promise(resolve=>issuerServer.listen(0,'127.0.0.1',resolve));
+      issuerBase='https://127.0.0.1:'+issuerServer.address().port;
+    }else{
+      issuerServer=Bun.serve({
+        hostname:'127.0.0.1',port:0,
+        fetch:req=>mockIssuer?.handle(req)??new Response('',{status:503}),
+      });
+      issuerBase='http://127.0.0.1:'+issuerServer.port;
+    }
+    let oidc=httpsMode?null:createSyntheticOidcKeyRotation({
       issuer:ISSUER,audience:AUDIENCE,nowSeconds:()=>NOW,
       discoveryUrl:issuerBase+'/.well-known/openid-configuration',
       jwksUrl:issuerBase+'/jwks',
@@ -135,7 +187,7 @@ export async function verifyM1m({assert,makeDriver,actors}){
         const receipt=await witness.prepare(entry);
         assert.equal(receipt.attemptId,attemptId);
         attempts.push({...entry,sessionId:session.id});
-        if(hold&&input.projectId==='m1m-race-revoked'){
+        if(hold&&input.projectId===project('race-revoked')){
           hold.enter();
           await hold.resume;
         }
@@ -166,11 +218,37 @@ export async function verifyM1m({assert,makeDriver,actors}){
       clientId:CLIENT_ID,redirectUri,privateKey:rsa.privateKey,
       publicJwk,nowSeconds:()=>NOW,
     });
-    assert.deepEqual(await oidc.reload(1),{revision:1,keyIds:['M1m']});
+    if(httpsMode){
+      secureTransport=createM1nPinnedHttpsTransport({
+        baseUrl:issuerBase,caPem:tlsFixture.trustedCaPem,
+        spkiSha256:tlsFixture.primary.spkiSha256,callbackUri:redirectUri,
+      });
+      // Actual TLS handshake trust failures occur BEFORE code issuance.
+      const wrongCa=createM1nPinnedHttpsTransport({
+        baseUrl:issuerBase,caPem:tlsFixture.rogueCaPem,
+        spkiSha256:tlsFixture.primary.spkiSha256,callbackUri:redirectUri,
+      });
+      await assert.rejects(()=>wrongCa.fetch(issuerBase+'/jwks'),
+        /M1n verified HTTPS request denied/);
+      const wrongPin=createM1nPinnedHttpsTransport({
+        baseUrl:issuerBase,caPem:tlsFixture.trustedCaPem,
+        spkiSha256:tlsFixture.rotated.spkiSha256,callbackUri:redirectUri,
+      });
+      await assert.rejects(()=>wrongPin.fetch(issuerBase+'/jwks'),
+        /M1n verified HTTPS request denied/);
+      oidc=await loadM1nVerifiedOidc({
+        transport:secureTransport,issuer:ISSUER,audience:AUDIENCE,
+        nowSeconds:()=>NOW,
+      });
+      assert.equal(registry.size,0);
+    }else{
+      assert.deepEqual(await oidc.reload(1),{revision:1,keyIds:['M1m']});
+    }
     const client=createSyntheticPkceClient({
       issuer:ISSUER,clientId:CLIENT_ID,redirectUri,
       authorizationUrl:issuerBase+'/authorize',
       tokenUrl:issuerBase+'/token',tokenVerifier:oidc,
+      ...(httpsMode?{secureTransport}:{}),
       nowSeconds:()=>NOW,
       resolveActorId:directory.resolveActorId,
       async provisionSession({token,actorId}){
@@ -186,7 +264,7 @@ export async function verifyM1m({assert,makeDriver,actors}){
     });
     async function authorize(){
       const flow=client.begin();
-      const res=await fetch(flow.authorizationUrl,{redirect:'manual'});
+      const res=await (httpsMode?secureTransport.fetch:fetch)(flow.authorizationUrl,{redirect:'manual'});
       assert.equal(res.status,302);
       const callback=res.headers.get('location');
       assert.ok(callback?.startsWith(redirectUri+'?'));
@@ -229,8 +307,8 @@ export async function verifyM1m({assert,makeDriver,actors}){
     assert.notEqual(b.sessionId,c.sessionId);
     assert.equal(mockIssuer.stats().redeemedCodes,3);
     assert.equal(registry.size,3);
-    assert.equal((await post(a,'m1m-a-first')),201);
-    assert.equal((await post(b,'m1m-b-first')),201);
+    assert.equal((await post(a,project('a-first'))),201);
+    assert.equal((await post(b,project('b-first'))),201);
 
     // Forged callback state and an OAuth error must not provision any
     // session, touch PG or trigger a second code exchange.
@@ -257,7 +335,7 @@ export async function verifyM1m({assert,makeDriver,actors}){
     let release;
     const released=new Promise(resolve=>{release=resolve;});
     hold={enter:entered,resume:released};
-    const inFlight=post(c,'m1m-race-revoked');
+    const inFlight=post(c,project('race-revoked'));
     try{
       await Promise.race([reached,new Promise((_,reject)=>setTimeout(
         ()=>reject(new Error('M1m HTTP did not reach signed write gate')),8000))]);
@@ -268,14 +346,14 @@ export async function verifyM1m({assert,makeDriver,actors}){
       release();
       hold=null;
     }
-    assert.equal(evidence(assert,'m1m-race-revoked'),'0:0:0');
+    assert.equal(evidence(assert,project('race-revoked')),'0:0:0');
     revoke(assert,a.sessionId);
-    assert.equal((await post(a,'m1m-a-revoked')),404);
-    assert.equal(evidence(assert,'m1m-a-revoked'),'0:0:0');
-    assert.equal((await post(b,'m1m-b-after-revoke')),201);
-    assert.equal(evidence(assert,'m1m-a-first'),'1:1:1');
-    assert.equal(evidence(assert,'m1m-b-first'),'1:1:1');
-    assert.equal(evidence(assert,'m1m-b-after-revoke'),'1:1:1');
+    assert.equal((await post(a,project('a-revoked'))),404);
+    assert.equal(evidence(assert,project('a-revoked')),'0:0:0');
+    assert.equal((await post(b,project('b-after-revoke'))),201);
+    assert.equal(evidence(assert,project('a-first')),'1:1:1');
+    assert.equal(evidence(assert,project('b-first')),'1:1:1');
+    assert.equal(evidence(assert,project('b-after-revoke')),'1:1:1');
 
     // Exactly 5 precommit signed intents: 3 committed and 2 rejected by
     // a REAL PG session revocation, NEVER retried. The signer and database
@@ -289,13 +367,20 @@ export async function verifyM1m({assert,makeDriver,actors}){
     assert.equal(pg(assert,
       "SELECT COUNT(*) FROM saas_m1_private.project_session_proofs p "+
       "JOIN saas_m1_private.project_write_audit_outbox a "+
-      "ON a.pg_txid=p.pg_txid WHERE a.project_id LIKE 'm1m-%'"),'3');
+      "ON a.pg_txid=p.pg_txid WHERE a.project_id LIKE '"+prefix+"-%'"),'3');
     const held=driver.stats().reservations;
-    assert.equal((await post(b,'m1m-signer-dead')),503);
+    assert.equal((await post(b,project('signer-dead'))),503);
     assert.equal(driver.stats().reservations,held);
-    assert.equal(evidence(assert,'m1m-signer-dead'),'0:0:0');
+    assert.equal(evidence(assert,project('signer-dead')),'0:0:0');
     assert.equal(mockIssuer.stats().redeemedCodes,3);
-    console.info(
+    if(httpsMode) console.info(
+      'PASS M1n: real ephemeral HTTPS CA/SAN/leaf SPKI pinned IdP '+
+      'rejects rogue root and rotated unapproved leaf BEFORE OAuth; '+
+      'HTTPS code+PKCE S256/state, pinned JWKS RSA JWT -> signed PG16 '+
+      'session/Audit/UUID 3/3/3; revoked C in-flight and A 404 0/0/0, '+
+      'B active, witness 503 without PG reservation; no production/TLS cert reuse'
+    );
+    else console.info(
       'PASS M1m: real synthetic OAuth code+PKCE S256/state, one-time '+
       'callback -> pinned RS256 -> server-provisioned PG16 UUID session; '+
       'signed HTTP project/audit/UUID 3/3/3; revoked in-flight C and A '+
@@ -305,7 +390,13 @@ export async function verifyM1m({assert,makeDriver,actors}){
   }finally{
     if(hold)hold=null;
     projectServer?.stop(true);
-    issuerServer?.stop(true);
+    if(httpsMode&&issuerServer){
+      await new Promise(resolve=>{
+        issuerServer.close(()=>resolve());
+        issuerServer.closeAllConnections?.();
+      });
+    }else issuerServer?.stop(true);
+    tlsFixture?.dispose();
     await witness.stop();
     await driver.close();
   }

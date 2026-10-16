@@ -38,6 +38,26 @@ function enabled(){
 function insistEnabled(){
   if(!enabled())throw new Error('M1m mock authorization denied outside disposable CI');
 }
+// M1n never permits a public HTTPS endpoint; this is merely opt-in
+// 127.0.0.1 with a separate pinned CA/hostname/SPKI trust transport.
+function m1nEnabled(){
+  return enabled() && process.env.SAAS_EPHEMERAL_M1N_TLS_CI==='true';
+}
+function issuerUrl(input,pathname,secure=false){
+  const uri=new URL(input);
+  if(uri.protocol==='http:'){
+    if(secure)throw new Error('M1n cannot send OAuth codes over HTTP');
+    return urlString(input,pathname);
+  }
+  if(!secure||!m1nEnabled()||uri.protocol!=='https:'||
+     uri.hostname!=='127.0.0.1'||
+     !/^[1-9][0-9]{0,4}$/.test(uri.port)||
+     Number(uri.port)>65535||uri.username||uri.password||
+     uri.search||uri.hash||uri.pathname!==pathname){
+    throw new Error('M1n requires pinned opt-in HTTPS issuer transport');
+  }
+  return uri.href;
+}
 function exactParams(query,names){
   const all=[...query.keys()].sort().join(',');
   return all===names && [...query.values()].every(x=>typeof x==='string');
@@ -88,6 +108,7 @@ function genericDeny(){
 export function createSyntheticPkceClient({
   issuer,clientId,redirectUri,authorizationUrl,tokenUrl,
   tokenVerifier,resolveActorId,provisionSession,nowSeconds,
+  secureTransport,
 }){
   insistEnabled();
   pinnedIssuer(issuer);
@@ -96,10 +117,14 @@ export function createSyntheticPkceClient({
       typeof resolveActorId!=='function'||
       typeof provisionSession!=='function')throw new Error('M1m bad client config');
   const redirect=urlString(redirectUri,'/oauth/callback');
-  const auth=urlString(authorizationUrl,'/authorize');
-  const tokenEndpoint=urlString(tokenUrl,'/token');
-  if(new URL(auth).origin!==new URL(tokenEndpoint).origin)
-    throw new Error('M1m auth and token endpoints must share pinned origin');
+  const secure=secureTransport!==undefined;
+  if(secure&&(!m1nEnabled()||typeof secureTransport?.fetch!=='function'))
+    throw new Error('M1n HTTPS transport missing or disabled');
+  const auth=issuerUrl(authorizationUrl,'/authorize',secure);
+  const tokenEndpoint=issuerUrl(tokenUrl,'/token',secure);
+  if(new URL(auth).origin!==new URL(tokenEndpoint).origin||
+     (secure&&secureTransport.origin!==new URL(auth).origin))
+    throw new Error('M1m auth/token origins must match pinned transport');
   const pending=new Map();
   return Object.freeze({
     begin(){
@@ -141,7 +166,7 @@ export function createSyntheticPkceClient({
         if(isError||item.expiresAt<=nowSeconds())throw genericDeny();
         const code=callback.searchParams.get('code');
         if(!CODE.test(code??''))throw genericDeny();
-        const response=await fetch(tokenEndpoint,{
+        const response=await (secure?secureTransport.fetch:fetch)(tokenEndpoint,{
           method:'POST',redirect:'error',cache:'no-store',
           credentials:'omit',signal:AbortSignal.timeout(4000),
           headers:{'Content-Type':'application/x-www-form-urlencoded',
@@ -197,7 +222,8 @@ export function createSyntheticPkceIssuer({
 }){
   insistEnabled();
   pinnedIssuer(issuer);
-  const auth=urlString(origin+'/authorize','/authorize');
+  const auth=issuerUrl(origin+'/authorize','/authorize',
+    new URL(origin).protocol==='https:');
   const base=new URL(auth).origin;
   const redirect=urlString(redirectUri,'/oauth/callback');
   if(!SAFE_ID.test(clientId)||!SAFE_ID.test(subject)||!SAFE_ID.test(kid)||
