@@ -150,5 +150,19 @@ visible="$(PGOPTIONS='-c saas.staging_only=true' \
   -c 'SELECT COUNT(*) FROM saas_data.projects')" || fail
 [[ "$visible" == '0' ]] || fail
 
+# Backend13 always starts from the same EMPTY baseline as live staging.
+# Erase only synthetic data/roles in disposable saas_staging_ci AFTER all probes.
+psql -X -v ON_ERROR_STOP=1 -d saas_staging_ci \
+  > /tmp/saas-b12-fixture-cleanup.log 2>&1 <<'SQL'
+DELETE FROM saas_acl.principal_tenants;
+DELETE FROM saas_data.projects;
+DELETE FROM saas_data.tenants;
+REVOKE CONNECT ON DATABASE saas_staging_ci FROM saas_scope_a,saas_scope_b,saas_scope_c;
+REVOKE saas_runtime_reader FROM saas_scope_a,saas_scope_c;
+REVOKE saas_runtime_writer FROM saas_scope_b;
+DROP ROLE saas_scope_a,saas_scope_b,saas_scope_c;
+SQL
+test "$(psql -XAt -v ON_ERROR_STOP=1 -d saas_staging_ci \
+  -c 'SELECT (SELECT COUNT(*) FROM saas_acl.principal_tenants) + (SELECT COUNT(*) FROM saas_data.tenants) + (SELECT COUNT(*) FROM saas_data.projects)')" = '0' || fail
 unset fixture_a_pw fixture_b_pw fixture_c_pw migrator_pw
 echo 'PASS Backend12: real PG16 tenant isolation, spoofed GUC/SET ROLE denied, read-only grants, no replay'
