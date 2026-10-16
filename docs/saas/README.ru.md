@@ -38,6 +38,7 @@
 | [M1E_PG_PHYSICAL_DISCONNECT_CI.ru.md](M1E_PG_PHYSICAL_DISCONNECT_CI.ru.md) | M1e Draft: actual Bun.SQL PostgreSQL16 backend loss and cancellation before COMMIT, quarantined CI pool, no ghost audit or automatic retry |
 | [M1F_UNKNOWN_COMMIT_OPERATOR_LOCAL_EVIDENCE.ru.md](M1F_UNKNOWN_COMMIT_OPERATOR_LOCAL_EVIDENCE.ru.md) | M1f Draft: NOLOGIN operator + READ ONLY local project/audit evidence for UNKNOWN COMMIT, no resolution/retry or external WORM |
 | [M1G_ATTEMPT_UUID_BOUND_PROJECT_AUDIT_PG16.ru.md](M1G_ATTEMPT_UUID_BOUND_PROJECT_AUDIT_PG16.ru.md) | M1g Draft: CI-server-issued UUIDv4 linked to exactly one project audit event in same PG16 transaction; read-only attempt evidence, no retry/WORM |
+| [M1H_PRECOMMIT_SIGNED_INTENT_CI.ru.md](M1H_PRECOMMIT_SIGNED_INTENT_CI.ru.md) | M1h Draft: separate no-PG-credential Ed25519 local fsync intent before signed PG COMMIT; offline tamper/rollback denial, NOT off-host/WORM |
 
 ## Что добавлено в код
 
@@ -1266,3 +1267,15 @@ Supervised NOLOGIN reviewer can check only sanitized LOCAL attempt evidence
 in a READ COMMITTED READ ONLY transaction. No independent pre-COMMIT
 intent, token-bound signature, external WORM or exactly-once recovery.
 [M1g scope and blockers](M1G_ATTEMPT_UUID_BOUND_PROJECT_AUDIT_PG16.ru.md).
+
+
+## M1h — signed PRE-COMMIT intent (separate ephemeral CI process)
+
+Before a signed project write, a separate local Node witness signs and
+fsyncs a chained Ed25519 intent bound to server UUID/actor/tenant/project.
+A healthy PG COMMIT with lost ACK leaves 1 project/1 audit/1 UUID binding;
+physical pre-COMMIT backend loss leaves 0/0/0 but retains the intent.
+Offline verification rejects tamper, truncation with pinned count, and
+replacement key; dead signer prevents PostgreSQL reservation. This is
+on the SAME CI runner, not an external WORM/trust domain or retry approval.
+[M1h acceptance and merge gates](M1H_PRECOMMIT_SIGNED_INTENT_CI.ru.md).
