@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'staging/saas-rls/**'
+      - 'staging/saas-bootstrap/**'
+      - 'tests/sql/saas_staging_bootstrap.test.sql'
       - 'tests/sql/saas_rls_v1.test.sql'
       - 'tests/sql/saas_rls_signed_scope.test.sql'
       - 'tests/sql/saas_scoped_queries.test.sql'
@@ -1399,3 +1401,86 @@ jobs:
             SAAS_EPHEMERAL_IDENTITY_DB_PASSWORD="$identity_password" \
             bun scripts/saas-staging/verify-identity-physical-discard-pg16.mjs
           unset identity_password runner_password scope_key
+
+      - name: Backend08 isolated PG16 bootstrap ledger, hardstop and dump-restore (CI only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          # No user URL, Railway credentials or database secrets can enter
+          # the planner. It performs NO SQL, subprocesses or network I/O.
+          node scripts/saas-staging/plan-staging-bootstrap.mjs --plan \
+            > /tmp/saas-backend08-plan.json
+          node -e '
+            const p=require("/tmp/saas-backend08-plan.json");
+            if(p.executionAuthorized!==false||p.requiredPostgresMajor!==16||
+               p.migration!=="0001_ledger_only"||
+               !/^[a-f0-9]{64}$/.test(p.sha256)) process.exit(1);'
+          bootstrap_sha="$(sha256sum staging/saas-bootstrap/0001_ledger_only.sql | cut -d' ' -f1)"
+          [[ "$bootstrap_sha" =~ ^[a-f0-9]{64}$ ]]
+          [[ "${GITHUB_SHA}" =~ ^[a-f0-9]{40}$ ]]
+          # Independent FRESH database in the same disposable PG16 service.
+          # Do not install pilot SQL001..027, SQL019 or SaaS data here.
+          createdb -h 127.0.0.1 -p 5432 -U postgres saas_staging_ci
+          PGOPTIONS="-c saas.staging_only=true" \
+            psql -X -v ON_ERROR_STOP=1 -d saas_staging_ci \
+              -v bootstrap_sha256="$bootstrap_sha" \
+              -v source_commit="${GITHUB_SHA}" \
+              -f staging/saas-bootstrap/0001_ledger_only.sql \
+              > /tmp/saas-backend08-bootstrap.log 2>&1 || {
+                tail -n 35 /tmp/saas-backend08-bootstrap.log
+                exit 1
+              }
+          psql -X -v ON_ERROR_STOP=1 -d saas_staging_ci \
+            -f tests/sql/saas_staging_bootstrap.test.sql \
+            > /tmp/saas-backend08-acceptance.log
+          grep -q 'PASS Backend08' /tmp/saas-backend08-acceptance.log
+          test "$(psql -XAt -d saas_staging_ci \
+            -c 'SELECT source_sha256 FROM saas_bootstrap.schema_migrations')" \
+            = "$bootstrap_sha"
+          # Crucial: replay is NOT quietly idempotent after UNKNOWN COMMIT.
+          if PGOPTIONS="-c saas.staging_only=true" \
+              psql -X -v ON_ERROR_STOP=1 -d saas_staging_ci \
+                -v bootstrap_sha256="$bootstrap_sha" \
+                -v source_commit="${GITHUB_SHA}" \
+                -f staging/saas-bootstrap/0001_ledger_only.sql \
+                > /tmp/saas-backend08-replay-deny.log 2>&1; then
+            echo 'ERROR: Bootstrap08 accepted an unsafe replay' >&2
+            exit 1
+          fi
+          # Wrong database is rejected BEFORE any new schema creation.
+          if PGOPTIONS="-c saas.staging_only=true" \
+              psql -X -v ON_ERROR_STOP=1 -d saas_ephemeral_test \
+                -v bootstrap_sha256="$bootstrap_sha" \
+                -v source_commit="${GITHUB_SHA}" \
+                -f staging/saas-bootstrap/0001_ledger_only.sql \
+                > /tmp/saas-backend08-wrong-db-deny.log 2>&1; then
+            echo 'ERROR: Bootstrap08 accepted the pilot database' >&2
+            exit 1
+          fi
+          # Even the superuser cannot accidentally UPDATE or DELETE receipts
+          # via ordinary DML; this does not claim external WORM.
+          if psql -X -v ON_ERROR_STOP=1 -d saas_staging_ci \
+              -c "UPDATE saas_bootstrap.schema_migrations SET migration_id='wrong'" \
+              > /tmp/saas-backend08-update-deny.log 2>&1; then
+            echo 'ERROR: Bootstrap08 ledger update was accepted' >&2
+            exit 1
+          fi
+          # Prove schema+receipt can be dumped and restored to an
+          # independent ephemeral database. NOT a PITR/production backup SLA.
+          pg_dump -Fc --no-owner --no-acl -n saas_bootstrap \
+            -d saas_staging_ci -f /tmp/saas-backend08-ledger.dump
+          createdb -h 127.0.0.1 -p 5432 -U postgres saas_restore_ci
+          pg_restore --exit-on-error --no-owner --no-acl \
+            -d saas_restore_ci /tmp/saas-backend08-ledger.dump
+          restored="$(psql -XAt -d saas_restore_ci \
+            -c "SELECT migration_id || ':' || source_sha256 FROM saas_bootstrap.schema_migrations")"
+          test "$restored" = "0001_ledger_only:$bootstrap_sha"
+          rm -f /tmp/saas-backend08-ledger.dump
+          echo 'PASS Backend08: PG16 migration receipts, denied replay/wrong DB and isolated dump-restore'
