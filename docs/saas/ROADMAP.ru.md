@@ -1531,5 +1531,15 @@ No merge, Ready, deploy, SQL019, Railway signer/volume/cert rotation, live CPA k
 
 - [x] Single active CA/SPKI, monotonic CAS revision, stale handles and retired-pair replay fail closed before network.
 - [x] Opt-in real HTTPS adversarial tests and ninth disposable PG16 E2E with independent SQL acceptance under m1o- project IDs.
-- [ ] Verified 4/4 GitHub Actions and independent PASS M1o markers on final SHA (see Draft PR #18; never borrow previous SHA).
+- [x] Verified M1o 4/4 GitHub Actions and two independent PASS M1o markers on exact `e80c2c4476f777e53aff8ede10bdb7a504630f25` (Draft PR #18).
 - [ ] Production operator-governed PKI trust lifecycle, persistent anti-rollback and independent CA/cert revocation remain OPEN. No Railway TLS changes.
+
+## M1p — per-login opaque server context + cancel-before-enrollment (CI-only)
+
+- [x] Each opt-in PKCE login has a separate server-held context and M1m one-use state map; cross-context callback cannot swap authorization codes, spend either peer's state or provision PG.
+- [x] Cancellation after verified pinned HTTPS code/token but before synchronous PG16 registration is checked immediately prior to session enrollment, with code consumed and **no retry**.
+- [x] Separate adversarial unit tests, tenth disposable PG16 proof and independent SQL `m1p-` audit/session/SQL025 replay assertions.
+- [ ] Require Main/PG16/Demo/Chromium success and two `PASS M1p` on exact final SHA before CI acceptance.
+- [ ] Production browser cookie/CSRF+OIDC nonce, durable distributed session/logout fences, independent WORM/HSM and UNKNOWN COMMIT recovery remain BLOCKED.
+
+No public login/cookie route, Ready/merge/deploy, Railway TLS modifications or production credentials. [M1p scope](M1P_BOUND_PKCE_LOGIN_CONTEXT_PG16_CI.ru.md).

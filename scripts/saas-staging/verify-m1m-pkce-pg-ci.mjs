@@ -9,6 +9,7 @@
  * off-host independent journal, production DB/keys, reissue or auto-retry.
  */
 import { createHash } from 'node:crypto';
+import { createM1pBoundPkceClient } from './m1p-bound-pkce-login-context.mjs';
 import { createM1oExplicitTrustRotation } from './m1o-explicit-trust-rotation.mjs';
 import { createServer } from 'node:https';
 import { createDisposableM1nTlsFixture } from './m1n-ephemeral-tls-fixture.mjs';
@@ -29,7 +30,7 @@ const AUDIENCE='saas-m1m-ci';
 const CLIENT_ID='m1m-ephemeral-client';
 const NOW=1_800_000_000;
 const V4=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const PROJECT=/^m1[mno]-[a-z-]{1,48}$/;
+const PROJECT=/^m1[mnop]-[a-z-]{1,48}$/;
 const sha=value=>createHash('sha256').update(value).digest('hex');
 function pg(assert,sql){
   const command=Bun.spawnSync(
@@ -64,7 +65,7 @@ function evidence(assert,name){
     "JOIN saas_m1_private.project_write_audit_outbox a ON a.event_id=b.event_id "+
     "WHERE a.tenant_id='demo-north' AND a.project_id='"+name+"')::TEXT");
 }
-export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustEpochMode=false}){
+export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustEpochMode=false,loginContextMode=false}){
   if(process.env.GITHUB_ACTIONS!=='true'||
      process.env.SAAS_EPHEMERAL_M1_PG_CI!=='true'||
      process.env.SAAS_EPHEMERAL_M1G_ATTEMPT_CI!=='true'||
@@ -74,6 +75,8 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
      process.env.SAAS_EPHEMERAL_M1L_OIDC_CI!=='true'||
      process.env.SAAS_EPHEMERAL_M1J_HTTP_PG_CI==='true'||
      process.env.SAAS_EPHEMERAL_M1H_INTENT_CI==='true'||
+     (loginContextMode&&(!trustEpochMode||!httpsMode||
+       process.env.SAAS_EPHEMERAL_M1P_CONTEXT_CI!=='true'))||
      (trustEpochMode&&(!httpsMode||process.env.SAAS_EPHEMERAL_M1O_TRUST_CI!=='true'))||
       (httpsMode&&process.env.SAAS_EPHEMERAL_M1N_TLS_CI!=='true')||
      (!httpsMode&&process.env.SAAS_EPHEMERAL_M1N_TLS_CI==='true')||
@@ -86,17 +89,19 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
      process.env.RAILWAY_SERVICE_ID){
     throw new Error('M1m OAuth/PG16 proof denied outside disposable GitHub CI');
   }
-  console.info(trustEpochMode
+  console.info(loginContextMode
+    ? 'STEP M1p: bound login contexts, pre-enrollment cancellation, HTTPS PG16'
+    : trustEpochMode
     ? 'STEP M1o: explicit HTTPS trust epoch -> PKCE -> signed PG16'
     : httpsMode
     ? 'STEP M1n: real pinned HTTPS IdP CA/SAN/SPKI -> PKCE/state -> signed PG16'
     : 'STEP M1m: real mock OAuth PKCE code/state -> pinned JWT -> signed PG16 session');
-  const prefix=trustEpochMode?'m1o':httpsMode?'m1n':'m1m';
+  const prefix=loginContextMode?'m1p':trustEpochMode?'m1o':httpsMode?'m1n':'m1m';
   const project=suffix=>prefix+'-'+suffix;
   const stamp=crypto.randomUUID();
   const journal='/tmp/saas-m1h-intent-'+stamp+'.jsonl';
   const witness=await startWitness(assert,journal);
-  let mockIssuer=null, issuerServer=null, projectServer=null,hold=null;
+  let mockIssuer=null, issuerServer=null, projectServer=null,hold=null,loginHold=null;
   let tlsFixture=null,secureTransport=null,tlsHandler=null;
   const registry=new Map();
   const context=new AsyncLocalStorage();
@@ -281,26 +286,40 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
     }else{
       assert.deepEqual(await oidc.reload(1),{revision:1,keyIds:['M1m']});
     }
-    const client=createSyntheticPkceClient({
+    function provisionSessionSync({token,actorId}){
+      assert.equal(actorId,'actor-north');
+      const item=Object.freeze({
+        id:crypto.randomUUID(),revision:1,
+        actorId,tenantId:'demo-north',
+      });
+      register(assert,item.id);
+      registry.set(sha(token),item);
+      return item;
+    }
+    const clientConfig={
       issuer:ISSUER,clientId:CLIENT_ID,redirectUri,
       authorizationUrl:issuerBase+'/authorize',
-      tokenUrl:issuerBase+'/token',tokenVerifier:oidc,
+      tokenUrl:issuerBase+'/token',
+      tokenVerifier:loginContextMode?{
+        async verifyAccessToken(token){
+          const identity=await oidc.verifyAccessToken(token);
+          if(loginHold){loginHold.enter();await loginHold.resume;}
+          return identity;
+        },
+      }:oidc,
       ...(httpsMode?{secureTransport}:{}),
       nowSeconds:()=>NOW,
       resolveActorId:directory.resolveActorId,
-      async provisionSession({token,actorId}){
-        assert.equal(actorId,'actor-north');
-        const item=Object.freeze({
-          id:crypto.randomUUID(),revision:1,
-          actorId,tenantId:'demo-north',
-        });
-        register(assert,item.id);
-        registry.set(sha(token),item);
-        return item;
-      },
-    });
-    async function authorize(){
-      const flow=client.begin();
+    };
+    const client=loginContextMode
+      ?createM1pBoundPkceClient({
+        ...clientConfig,provisionSessionSync,
+      })
+      :createSyntheticPkceClient({
+        ...clientConfig,provisionSession:provisionSessionSync,
+      });
+    async function authorize(loginContext=null){
+      const flow=loginContextMode?client.begin(loginContext):client.begin();
       const res=await (httpsMode?secureTransport.fetch:fetch)(flow.authorizationUrl,{redirect:'manual'});
       assert.equal(res.status,302);
       const callback=res.headers.get('location');
@@ -309,13 +328,18 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
       return callback;
     }
     async function login(){
-      const callback=await authorize();
-      const result=await client.complete(callback);
+      const loginContext=loginContextMode?client.openContext():null;
+      const callback=await authorize(loginContext);
+      const complete=()=>loginContextMode
+        ?client.complete(loginContext,callback)
+        :client.complete(callback);
+      const result=await complete();
       assert.equal(result.actorId,'actor-north');
       assert.ok(V4.test(result.sessionId));
       assert.equal(result.tenantId,'demo-north');
-      await assert.rejects(()=>client.complete(callback),
-        /M1m synthetic OAuth authorization denied/);
+      await assert.rejects(complete,loginContextMode
+        ?/M1p synthetic bound login context denied/
+        :/M1m synthetic OAuth authorization denied/);
       return result;
     }
     async function post(loginSession,project){
@@ -349,19 +373,74 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
 
     // Forged callback state and an OAuth error must not provision any
     // session, touch PG or trigger a second code exchange.
-    const thirdParty=await authorize();
+    const thirdPartyContext=loginContextMode?client.openContext():null;
+    const thirdParty=await authorize(thirdPartyContext);
     const wrong=new URL(thirdParty);
     wrong.searchParams.set('state','A'.repeat(43));
-    await assert.rejects(()=>client.complete(wrong.href),
-      /M1m synthetic OAuth authorization denied/);
+    await assert.rejects(()=>loginContextMode
+      ?client.complete(thirdPartyContext,wrong.href)
+      :client.complete(wrong.href),loginContextMode
+      ?/M1p synthetic bound login context denied/
+      :/M1m synthetic OAuth authorization denied/);
     const failure=new URL(redirectUri);
     failure.searchParams.set('state',new URL(thirdParty).searchParams.get('state'));
     failure.searchParams.set('error','access_denied');
-    await assert.rejects(()=>client.complete(failure.href),
-      /M1m synthetic OAuth authorization denied/);
-    await assert.rejects(()=>client.complete(thirdParty),
-      /M1m synthetic OAuth authorization denied/);
+    await assert.rejects(()=>loginContextMode
+      ?client.complete(thirdPartyContext,failure.href)
+      :client.complete(failure.href),loginContextMode
+      ?/M1p synthetic bound login context denied/
+      :/M1m synthetic OAuth authorization denied/);
+    await assert.rejects(()=>loginContextMode
+      ?client.complete(thirdPartyContext,thirdParty)
+      :client.complete(thirdParty),loginContextMode
+      ?/M1p synthetic bound login context denied/
+      :/M1m synthetic OAuth authorization denied/);
     assert.equal(registry.size,3);
+
+    if(loginContextMode){
+      // Valid HTTPS+PKCE callbacks from D/E must never be accepted
+      // in the opposite server-held opaque login context.
+      const contextD=client.openContext(),contextE=client.openContext();
+      const callbackD=await authorize(contextD);
+      const callbackE=await authorize(contextE);
+      const beforeSwap=mockIssuer.stats().redeemedCodes;
+      await assert.rejects(()=>client.complete(contextD,callbackE),
+        /M1p synthetic bound login context denied/);
+      await assert.rejects(()=>client.complete(contextE,callbackD),
+        /M1p synthetic bound login context denied/);
+      assert.equal(mockIssuer.stats().redeemedCodes,beforeSwap);
+      assert.equal(registry.size,3);
+      client.cancelContext(contextE);
+      await assert.rejects(()=>client.complete(contextE,callbackE),
+        /M1p synthetic bound login context denied/);
+      const beforeEnrollment=pg(assert,
+        "SELECT COUNT(*) FROM saas_m1_private.project_session_epochs "+
+        "WHERE actor_id='actor-north' AND tenant_id='demo-north'");
+      let entered,release;
+      const reached=new Promise(resolve=>{entered=resolve;});
+      const resumed=new Promise(resolve=>{release=resolve;});
+      loginHold={enter:entered,resume:resumed};
+      const inflight=client.complete(contextD,callbackD);
+      try{
+        await Promise.race([reached,new Promise((_,reject)=>setTimeout(
+          ()=>reject(new Error('M1p token verifier pause not reached')),8000))]);
+        assert.equal(registry.size,3);
+        client.cancelContext(contextD);
+      }finally{
+        release();
+        loginHold=null;
+      }
+      await assert.rejects(inflight,/M1p synthetic bound login context denied/);
+      assert.equal(pg(assert,
+        "SELECT COUNT(*) FROM saas_m1_private.project_session_epochs "+
+        "WHERE actor_id='actor-north' AND tenant_id='demo-north'"),
+        beforeEnrollment,'cancelled callback cannot register PG session');
+      assert.equal(registry.size,3,'cancelled callback cannot bind bearer');
+      assert.equal(mockIssuer.stats().redeemedCodes,4,
+        'one code spent at issuer without PG session or retry');
+      await assert.rejects(()=>client.complete(contextD,callbackD),
+        /M1p synthetic bound login context denied/);
+    }
 
     // Critical race: an actual C-session bearer was verified twice by
     // M1a, passed HTTP authorization and fsynced a separate PRE-COMMIT
@@ -409,8 +488,14 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustE
     assert.equal((await post(b,project('signer-dead'))),503);
     assert.equal(driver.stats().reservations,held);
     assert.equal(evidence(assert,project('signer-dead')),'0:0:0');
-    assert.equal(mockIssuer.stats().redeemedCodes,3);
-    if(trustEpochMode) console.info(
+    assert.equal(mockIssuer.stats().redeemedCodes,loginContextMode?4:3);
+    if(loginContextMode) console.info(
+      'PASS M1p: real pinned HTTPS PKCE callbacks bound to opaque per-login contexts; '+
+      'cross-context swap 0 bearer/0 PG, cancelled verified token BEFORE '+
+      'PG enrollment 0 session; signed PG16 3/3/3 project/audit/UUID, '+
+      'C/A revoked 0 ghosts, B active, signer 503/0 reservations; no retry'
+    );
+    else if(trustEpochMode) console.info(
       'PASS M1o: explicit HTTPS CA/SPKI revision CAS and retired-pin deny BEFORE OAuth; '+
       'rotated HTTPS PKCE -> pinned JWT -> PG16 3/3/3 project/audit/UUID; '+
       'revoked C/A no ghosts, B active, signer 503, no retry/Railway changes'

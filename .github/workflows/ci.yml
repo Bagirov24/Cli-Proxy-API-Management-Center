@@ -70,3 +70,14 @@ jobs:
           SAAS_EPHEMERAL_M1N_TLS_CI: 'true'
           SAAS_EPHEMERAL_M1O_TRUST_CI: 'true'
         run: bun test tests/saasM1oExplicitTrustRotation.test.mjs
+
+      # M1p: synthetic server-held per-login context, not browser cookies.
+      # Cross-context OAuth callbacks and cancelled JWT verification MUST
+      # never register a signed PostgreSQL session or exchange again.
+      - name: Verify M1p bound HTTPS PKCE login context and cancellation
+        env:
+          SAAS_EPHEMERAL_M1M_PKCE_CI: 'true'
+          SAAS_EPHEMERAL_M1N_TLS_CI: 'true'
+          SAAS_EPHEMERAL_M1O_TRUST_CI: 'true'
+          SAAS_EPHEMERAL_M1P_CONTEXT_CI: 'true'
+        run: bun test tests/saasM1pBoundPkceLoginContext.test.mjs
