@@ -1,5 +1,7 @@
 # Backend 09 — PostgreSQL16 staging развёрнута; изолированный migrator / backup gate
 
+> **Backend 10 — temporary staging backup waiver (16 October 2026):** пользователь явно разрешил продолжить только изолированную разработку без backup/PITR, принимая потерю тестовых staging-данных. Описанные ниже backup/PITR gates остаются обязательными **перед реальными или незаменимыми данными и production**, но не блокируют новые CI-only tenant/project baseline и потенциальную ручную миграцию одноразового staging после остальных проверок. Подробнее: [Backend 10](BACKEND_10_STAGING_TENANT_PROJECTS_DENYALL.ru.md). Живая миграция по-прежнему **не подтверждена**.
+
 **16 октября 2026.** Текущее состояние, заменяет исторический pre-deploy snapshot в Backend08. Это **не production rollout** и ещё не установленная постоянная схема SaaS.
 
 ## Подтверждённые факты Railway (read-only после авторизованного apply)
