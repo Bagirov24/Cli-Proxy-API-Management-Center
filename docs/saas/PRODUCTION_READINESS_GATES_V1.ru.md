@@ -804,3 +804,18 @@ replica revocation, off-host WORM, committed request attestation, network
 partition DURING COMMIT, real public tenant API or production rollout.
 Independent code/security/operator approval remains required for any
 merge/Ready/release. [M1l gates](M1L_SYNTHETIC_OIDC_JWKS_ROTATION_SESSION_PG16_CI.ru.md).
+
+
+## M1m — mock OAuth authorization code+PKCE (production gate НЕ пройден)
+
+GitHub CI now verifies a one-shot S256 challenge, CSRF state, exact client
+and redirect, callback single use, signed synthetic RS256 access token,
+private server-bound PG16 UUID session and atomic project/audit COMMIT.
+Session revocation beats already-authenticated HTTP before PG reservation;
+B remains active. It does NOT implement a real TLS IdP, browser cookie/
+redirect handler, issuer onboarding/consent, PKCE PKCE browser storage,
+ID token/nonce, refresh rotation, logout, durable distributed state,
+production migrations, physical discard, external WORM/high-water or
+operator UNKNOWN COMMIT settlement. All merge/production gates remain
+BLOCKED pending independent reviews and explicit approval.
+[M1m scope](M1M_SYNTHETIC_PKCE_AUTH_CODE_SESSION_PG16_CI.ru.md).
