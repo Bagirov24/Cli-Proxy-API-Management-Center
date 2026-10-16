@@ -10,6 +10,7 @@ on:
       - 'tests/sql/saas_staging_tenant_projects_baseline.test.sql'
       - 'tests/sql/saas_backend12_principal_rls.test.sql'
       - 'tests/sql/saas_backend13_principal_lifecycle.test.sql'
+      - 'tests/sql/saas_backend14_session_fence.test.sql'
       - 'tests/sql/saas_rls_v1.test.sql'
       - 'tests/sql/saas_rls_signed_scope.test.sql'
       - 'tests/sql/saas_scoped_queries.test.sql'
@@ -1575,6 +1576,12 @@ jobs:
           SAAS_B13_EPHEMERAL_CI=true \
           SAAS_B13_EPHEMERAL_MIGRATOR_PASSWORD="$migrator_password" \
             bash scripts/saas-staging/verify-backend13-lifecycle-pg16.sh
+          # Backend14: session-fenced real authenticated LOGIN acceptance
+          # is disposable PG16 ONLY, after the Backend13 synthetic fixtures.
+          bash -n scripts/saas-staging/verify-backend14-session-pg16.sh
+          SAAS_B14_EPHEMERAL_CI=true \
+          SAAS_B14_EPHEMERAL_MIGRATOR_PASSWORD="$migrator_password" \
+            bash scripts/saas-staging/verify-backend14-session-pg16.sh
           echo 'PASS Backend10: PG16 tenant/project deny-all RLS, no runtime grants, denied replay/pilot, isolated restore'
           unset migrator_password
           echo 'PASS Backend08: signed migration receipt, no replay, separate CI dump-restore'
@@ -1618,3 +1625,13 @@ jobs:
           test "${PGDATABASE}" = "saas_ephemeral_test"
           test ! -e .env.production
           bun test tests/saasBackend13PrivateOnce.test.ts
+
+      - name: Backend14 private principal-session revocation and expiry guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          bun test tests/saasBackend14SessionFence.test.ts
