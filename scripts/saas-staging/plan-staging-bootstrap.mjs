@@ -16,6 +16,7 @@ const TARGET = Object.freeze({
   migration: '0001_ledger_only',
 });
 const SQL = new URL('../../staging/saas-bootstrap/0001_ledger_only.sql', import.meta.url);
+const ROLE_SQL = new URL('../../staging/saas-bootstrap/0000_operator_migrator_role.sql', import.meta.url);
 const FAIL = 'Backend08 isolated staging migration preflight refused';
 
 function refuse() {
@@ -26,6 +27,8 @@ function refuse() {
 function migrationPlan() {
   const bytes = readFileSync(SQL);
   const source = bytes.toString('utf8');
+  const roleBytes = readFileSync(ROLE_SQL);
+  const roleSource = roleBytes.toString('utf8');
   // Narrow source-shape check, not a general-purpose SQL sanitizer.
   // Only this reviewed file is eligible. No wildcard or pilot directory.
   if (bytes.byteLength < 900 || bytes.byteLength > 12_000 ||
@@ -33,7 +36,12 @@ function migrationPlan() {
       !source.includes("VALUES ('0001_ledger_only'") ||
       !source.includes('REVOKE ALL ON SCHEMA saas_bootstrap FROM PUBLIC;') ||
       !source.includes('CREATE TRIGGER deny_ledger_change') ||
-      /\\(?:i\b|ir\b|include\b)/i.test(source)) refuse();
+      /\\(?:i\b|ir\b|include\b)/i.test(source) ||
+      roleBytes.byteLength < 1000 || roleBytes.byteLength > 9000 ||
+      !roleSource.includes('CREATE ROLE saas_schema_migrator') ||
+      !roleSource.includes('NOBYPASSRLS NOCREATEDB NOCREATEROLE') ||
+      !roleSource.includes("current_database() NOT IN ('saas_staging', 'saas_staging_ci')") ||
+      /\\(?:i\b|ir\b|include\b)/i.test(roleSource)) refuse();
   return Object.freeze({
     operation: 'plan-only',
     executionAuthorized: false,
@@ -44,6 +52,13 @@ function migrationPlan() {
     migration: TARGET.migration,
     path: 'staging/saas-bootstrap/0001_ledger_only.sql',
     sha256: createHash('sha256').update(bytes).digest('hex'),
+    operatorRoleBootstrap: Object.freeze({
+      path: 'staging/saas-bootstrap/0000_operator_migrator_role.sql',
+      sha256: createHash('sha256').update(roleBytes).digest('hex'),
+      executionAuthorized: false,
+      mode: 'manual-operator-only-after-verified-backup',
+      login: TARGET.role,
+    }),
     creates: ['saas_bootstrap.schema_migrations'],
     forbidden: ['staging/saas-rls/001-027', 'SQL019', 'Core/Gateway databases'],
     approval: 'independent-security-ops-and-backup-restore-required',
