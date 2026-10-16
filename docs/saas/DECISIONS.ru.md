@@ -1475,3 +1475,17 @@ or a PostgreSQL production pool; no public route is created by its merge.
 A real HTTP→signed transaction→independent intent integration still
 requires separate code/security approval and production DB safety proof.
 [M1i decision](M1I_UNMOUNTED_PROJECT_WRITE_HTTP_CI.ru.md).
+
+
+## M1j — no public HTTP activation from successful signed PG16 CI proof
+
+An actual localhost POST/PATCH/DELETE now traverses M1i pinned RS256,
+trusted server actor/tenant RBAC, M1h separately fsynced Ed25519 intent,
+M1b signed native Bun.SQL connection, M1d fenced DB membership, M1c
+mandatory audit and M1g UUID binding. The end-to-end proof remains
+**disposable GitHub PostgreSQL16** and the precommit witness uses the
+same runner as the database; neither is a production security root.
+A client-visible 503 is compatible with both 1/1/1 committed evidence
+and 0/0/0 precommit disconnect: never auto retry based on HTTP status.
+No public listener, external WORM, OIDC/session provisioning, CPA or
+permission to merge/release is created. [M1j gates](M1J_REAL_HTTP_SIGNED_PG16_INTEGRATION_CI.ru.md).

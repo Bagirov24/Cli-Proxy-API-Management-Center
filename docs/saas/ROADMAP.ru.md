@@ -1459,8 +1459,20 @@ CI-local fsync is NOT off-host durability, third-party receipt or a safe retry k
 - [x] Parent M1h PR №11 HEAD `1f2a172b`, all 4 GitHub Actions SUCCESS; no merge/deploy.
 - [x] Add strictly opt-in/unmounted loopback POST/PATCH/DELETE project Request/Response boundary, bounded JSON, exact CAS DTO, CORS/cookie/attempt/role header denial and sealed response.
 - [x] CI-only real pinned RS256 access tokens, trusted issuer/subject directory and synthetic private writer; live Bun.serve only on loopback in isolated GitHub check.
-- [ ] Verify 4/4 on exact M1i final SHA and dedicated synthetic HTTP acceptance.
+- [x] Confirmed 4/4 GitHub Actions SUCCESS on M1i HEAD `7b1d668f`, including explicit synthetic HTTP 7/7 PASS and PG16 regressions.
 - [ ] Real OIDC/session issuer, signed PG16 writer through HTTP, independent WORM, tenant/API server deployment, production migrations and failure-tolerant release remain BLOCKED.
 
 Merge only by explicit code-owner/security/operator approval; no production, SQL019, Railway, CPA keys, retry or GC.
 [M1i notes](M1I_UNMOUNTED_PROJECT_WRITE_HTTP_CI.ru.md).
+
+
+## M1j — actual loopback HTTP→signed PG16 with M1h precommit witness (STACKED DRAFT / disposable CI)
+
+- [x] Parent M1i Draft PR №12 HEAD `7b1d668f` has Main/PG16/Demo/Chromium 4/4 SUCCESS.
+- [x] Reuse unmounted M1i fixed Request/Response handler, pinned synthetic RS256 trusted directory, M1a actor/tenant checks, signed M1d PostgreSQL16, M1c audit, M1g UUID binding and M1h fsynced precommit Ed25519 signer on one ephemeral runner.
+- [x] Real HTTP + PG16 adversarial tests: create/CAS rename/disable, forged bearer/actor/headers denied, revoked current PG membership, COMMIT lost ACK 503 with 1/1/1, physical pre-COMMIT disconnect 503 with 0/0/0, dead witness with 0 reservations; independent SQL acceptance.
+- [ ] Require 4/4 SUCCESS on **exact final M1j HEAD** including explicit `PASS M1j` Bun.SQL and PG16 SQL log lines; no parent success substitution.
+- [ ] Off-host independent WORM/high-water, real OIDC/session issuer, production signed PG pool and network partition DURING COMMIT, real deployed API/CPA/tenant provisioning and release review still BLOCKED.
+
+No merge/Ready/deploy/SQL019, Railway signer/journal/volume change or automatic retry.
+[M1j verification and limits](M1J_REAL_HTTP_SIGNED_PG16_INTEGRATION_CI.ru.md).

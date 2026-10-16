@@ -316,6 +316,12 @@ const northScope = Object.freeze({
 });
 
 const m1gOnly = process.env.SAAS_EPHEMERAL_M1G_ATTEMPT_CI === 'true';
+const m1jOnly = process.env.SAAS_EPHEMERAL_M1J_HTTP_PG_CI === 'true';
+if (m1jOnly && (!m1gOnly ||
+    process.env.SAAS_EPHEMERAL_M1H_INTENT_CI === 'true' ||
+    process.env.SAAS_EPHEMERAL_M1E_DISCONNECT_CI === 'true')) {
+  throw new Error('M1j HTTP-to-PG proof must be an independent post-M1h CI invocation');
+}
 if (m1gOnly && process.env.SAAS_EPHEMERAL_M1E_DISCONNECT_CI === 'true') {
   throw new Error('M1g CI attempt run must not re-execute earlier M1e fixtures');
 }
@@ -548,7 +554,7 @@ if (m1gOnly) {
   const northToken = await signToken('north');
   // M1h is run in a separate CI process AFTER the entire M1g SQL
   // acceptance; it must not mutate the M1g four-row regression fixture.
-  if (process.env.SAAS_EPHEMERAL_M1H_INTENT_CI !== 'true') {
+  if (process.env.SAAS_EPHEMERAL_M1H_INTENT_CI !== 'true' && !m1jOnly) {
     console.info('STEP M1g: server-issued UUIDv4 on signed native project writes');
     const issued = [];
   function withServerAttempts(native) {
@@ -662,6 +668,15 @@ if (m1gOnly) {
     const { verifyM1h } = await import('./verify-m1h-precommit-intent.mjs');
     await verifyM1h({
       assert, makeDriver, boundary, command, northToken, northScope,
+    });
+  }
+  if (m1jOnly) {
+    // M1j uses the SAME pinned RS256/actor, fixed signed Bun.SQL driver,
+    // append-only M1g UUID binding and exported M1h fsync witness,
+    // but exercises an actual temporary loopback HTTP handler.
+    const { verifyM1j } = await import('./verify-m1j-http-signed-pg.mjs');
+    await verifyM1j({
+      assert, makeDriver, verifier, directory, actors, signToken, northScope,
     });
   }
 }

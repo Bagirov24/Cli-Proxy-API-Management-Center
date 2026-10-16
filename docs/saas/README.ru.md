@@ -40,6 +40,7 @@
 | [M1G_ATTEMPT_UUID_BOUND_PROJECT_AUDIT_PG16.ru.md](M1G_ATTEMPT_UUID_BOUND_PROJECT_AUDIT_PG16.ru.md) | M1g Draft: CI-server-issued UUIDv4 linked to exactly one project audit event in same PG16 transaction; read-only attempt evidence, no retry/WORM |
 | [M1H_PRECOMMIT_SIGNED_INTENT_CI.ru.md](M1H_PRECOMMIT_SIGNED_INTENT_CI.ru.md) | M1h Draft: separate no-PG-credential Ed25519 local fsync intent before signed PG COMMIT; offline tamper/rollback denial, NOT off-host/WORM |
 | [M1I_UNMOUNTED_PROJECT_WRITE_HTTP_CI.ru.md](M1I_UNMOUNTED_PROJECT_WRITE_HTTP_CI.ru.md) | M1i Draft: default-off unmounted POST/PATCH/DELETE project HTTP adapter, pinned RS256 + trusted writer boundary, CI-only loopback |
+| [M1J_REAL_HTTP_SIGNED_PG16_INTEGRATION_CI.ru.md](M1J_REAL_HTTP_SIGNED_PG16_INTEGRATION_CI.ru.md) | M1j Draft: full CI-only localhost HTTP → pinned RS256 → Ed25519 fsynced intent → signed PG16 project/audit/UUID same COMMIT, fail closed |
 
 ## Что добавлено в код
 
@@ -1290,3 +1291,15 @@ boundary. It accepts only pinned synthetic RS256 access tokens, loopback
 HTTP, explicit GitHub CI flag, no public port in the running UI. Mocked
 writer proves transport safety; full HTTP→PG16→independent intent is NOT
 yet wired or production authorized. Never auto retry. [M1i acceptance](M1I_UNMOUNTED_PROJECT_WRITE_HTTP_CI.ru.md).
+
+
+## M1j — localhost HTTP to real signed PG16 and precommit intent (CI-only)
+
+The unmounted M1i HTTP adapter now runs a SECOND end-to-end CI scenario
+with the actual signed Bun.SQL PostgreSQL16 writer and M1h fsynced Ed25519
+witness (no PostgreSQL secrets). New cases assert real HTTP success for
+create/CAS rename/disable, current DB membership revoke denial,
+post-COMMIT lost ACK 503 with project/audit/attempt 1/1/1, pre-COMMIT
+backend loss 503 with 0/0/0 and dead signer 503 with 0 PG reservations.
+No public API, independent WORM, real OIDC or safe retry.
+[M1j contract](M1J_REAL_HTTP_SIGNED_PG16_INTEGRATION_CI.ru.md).
