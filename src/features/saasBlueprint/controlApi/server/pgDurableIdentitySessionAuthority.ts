@@ -122,7 +122,10 @@ export function createPgDurableIdentitySessionAuthority(pool:PgIdentityPool) {
     },
   });
   const sessions:TenantProjectWriteSessionAuthority=Object.freeze({
-    async resolve(input,signal){
+    async resolve(
+      input:Parameters<TenantProjectWriteSessionAuthority['resolve']>[0],
+      signal:AbortSignal,
+    ){
       if(!input||!ACTOR.test(input.actorId)||!TENANT.test(input.tenantId)||
          !FINGERPRINT.test(input.tokenFingerprint)||signal.aborted)
         return null;
