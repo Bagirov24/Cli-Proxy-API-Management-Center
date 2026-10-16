@@ -39,6 +39,7 @@
 | [M1F_UNKNOWN_COMMIT_OPERATOR_LOCAL_EVIDENCE.ru.md](M1F_UNKNOWN_COMMIT_OPERATOR_LOCAL_EVIDENCE.ru.md) | M1f Draft: NOLOGIN operator + READ ONLY local project/audit evidence for UNKNOWN COMMIT, no resolution/retry or external WORM |
 | [M1G_ATTEMPT_UUID_BOUND_PROJECT_AUDIT_PG16.ru.md](M1G_ATTEMPT_UUID_BOUND_PROJECT_AUDIT_PG16.ru.md) | M1g Draft: CI-server-issued UUIDv4 linked to exactly one project audit event in same PG16 transaction; read-only attempt evidence, no retry/WORM |
 | [M1H_PRECOMMIT_SIGNED_INTENT_CI.ru.md](M1H_PRECOMMIT_SIGNED_INTENT_CI.ru.md) | M1h Draft: separate no-PG-credential Ed25519 local fsync intent before signed PG COMMIT; offline tamper/rollback denial, NOT off-host/WORM |
+| [M1I_UNMOUNTED_PROJECT_WRITE_HTTP_CI.ru.md](M1I_UNMOUNTED_PROJECT_WRITE_HTTP_CI.ru.md) | M1i Draft: default-off unmounted POST/PATCH/DELETE project HTTP adapter, pinned RS256 + trusted writer boundary, CI-only loopback |
 
 ## Что добавлено в код
 
@@ -1279,3 +1280,13 @@ Offline verification rejects tamper, truncation with pinned count, and
 replacement key; dead signer prevents PostgreSQL reservation. This is
 on the SAME CI runner, not an external WORM/trust domain or retry approval.
 [M1h acceptance and merge gates](M1H_PRECOMMIT_SIGNED_INTENT_CI.ru.md).
+
+
+## M1i — default-off project write HTTP Request/Response adapter (CI-only)
+
+A new UNMOUNTED handler maps strictly bounded POST/PATCH/DELETE JSON on
+one project URL to the existing M1a token/actor/role-rechecking command
+boundary. It accepts only pinned synthetic RS256 access tokens, loopback
+HTTP, explicit GitHub CI flag, no public port in the running UI. Mocked
+writer proves transport safety; full HTTP→PG16→independent intent is NOT
+yet wired or production authorized. Never auto retry. [M1i acceptance](M1I_UNMOUNTED_PROJECT_WRITE_HTTP_CI.ru.md).

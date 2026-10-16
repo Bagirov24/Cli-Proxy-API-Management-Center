@@ -1447,8 +1447,20 @@ No real HTTP/API, Railway change, production PostgreSQL/SQL019, automatic retry/
 - [x] Parent M1g PR №10 HEAD `2f96c60`, 4/4 SUCCESS, still Draft/unmerged.
 - [x] Separate GitHub disposable Node signer has no SQL credentials; fsync-only local intent and chained Ed25519 proof precede actual M1g signed PG write.
 - [x] New adversarial CI harness contrasts lost ACK post-COMMIT 1/1/1 vs physically terminated backend pre-COMMIT 0/0/0, denies signer crash, duplicate intent, tampering, truncated expected high-water and replacement key.
-- [ ] Verify final M1h exact HEAD has Main/PG16/Demo/Chromium all SUCCESS.
+- [x] Verified final M1h HEAD `1f2a172b` Main/PG16/Demo/Chromium 4/4 SUCCESS.
 - [ ] Off-host anchored durable high-water, independent WORM/DBA, real network partition DURING COMMIT, manual authenticated recovery, live OIDC and release/merge review are STILL BLOCKED.
 
 CI-local fsync is NOT off-host durability, third-party receipt or a safe retry key.
 [M1h review](M1H_PRECOMMIT_SIGNED_INTENT_CI.ru.md).
+
+
+## M1i — guarded project HTTP write adapter (STACKED DRAFT / CI-only)
+
+- [x] Parent M1h PR №11 HEAD `1f2a172b`, all 4 GitHub Actions SUCCESS; no merge/deploy.
+- [x] Add strictly opt-in/unmounted loopback POST/PATCH/DELETE project Request/Response boundary, bounded JSON, exact CAS DTO, CORS/cookie/attempt/role header denial and sealed response.
+- [x] CI-only real pinned RS256 access tokens, trusted issuer/subject directory and synthetic private writer; live Bun.serve only on loopback in isolated GitHub check.
+- [ ] Verify 4/4 on exact M1i final SHA and dedicated synthetic HTTP acceptance.
+- [ ] Real OIDC/session issuer, signed PG16 writer through HTTP, independent WORM, tenant/API server deployment, production migrations and failure-tolerant release remain BLOCKED.
+
+Merge only by explicit code-owner/security/operator approval; no production, SQL019, Railway, CPA keys, retry or GC.
+[M1i notes](M1I_UNMOUNTED_PROJECT_WRITE_HTTP_CI.ru.md).
