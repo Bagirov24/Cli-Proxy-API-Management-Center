@@ -775,3 +775,17 @@ private backend, network interruption DURING COMMIT, durable recovery
 intent reconciliation, real Core/CPA/egress and production migrations.
 Separate codeowner/security/operational approval remains mandatory.
 [M1j status](M1J_REAL_HTTP_SIGNED_PG16_INTEGRATION_CI.ru.md).
+
+
+## M1k — per-session revocation in signed PG16 (production gate НЕ пройден)
+
+SQL025 and the server CI wrapper connect synthetic pinned RS256 token
+fingerprints with NOLOGIN/FORCE-RLS per-session UUID+revision. Exact
+session is locked through real HTTP→signed PostgreSQL16 mutation,
+preventing a cooperating session revoke from committing first, while
+a prior committed revoke forces signed HTTP denial and no ghost audit.
+This does not implement production OIDC sessions/JWKS/session issuer,
+crypto-bound session claim in DB HMAC, distributed cache invalidation,
+external WORM, real network partitions DURING COMMIT, production pool
+and operator recovery. No merge/Ready/deploy without separate security
+and codeowner review. [M1k status](M1K_SESSION_EPOCH_REVOCATION_PG16_CI.ru.md).
