@@ -196,7 +196,7 @@ AS $issue$
 DECLARE
   access record;
   session_value uuid;
-  current_time timestamptz := clock_timestamp();
+  v_now timestamptz := clock_timestamp();
 BEGIN
   IF session_user <> 'postgres' OR current_user <> 'postgres'
      OR current_database() NOT IN ('saas_staging','saas_staging_ci')
@@ -205,8 +205,8 @@ BEGIN
      OR p_principal IS NULL OR p_tenant IS NULL
      OR p_expected_grant_revision IS NULL OR p_expected_grant_revision < 1
      OR p_identity_binding_id IS NULL
-     OR p_expires_at IS NULL OR p_expires_at <= current_time
-     OR p_expires_at > current_time + interval '15 minutes'
+     OR p_expires_at IS NULL OR p_expires_at <= v_now
+     OR p_expires_at > v_now + interval '15 minutes'
      OR p_reason IS NULL OR char_length(btrim(p_reason)) NOT BETWEEN 8 AND 160 THEN
     RAISE EXCEPTION 'Backend14 refused untrusted or expired session request';
   END IF;

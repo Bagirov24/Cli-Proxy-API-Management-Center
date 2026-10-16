@@ -49,7 +49,7 @@ describe('Backend14 private, expiring PG16 session fence',()=>{
     expect(sql).toContain('CREATE TRIGGER b14_session_block_truncate');
     expect(sql).toContain('REVOKE ALL ON ALL FUNCTIONS IN SCHEMA saas_identity FROM PUBLIC');
     expect(sql).toContain('REVOKE ALL ON ALL TABLES IN SCHEMA saas_identity FROM PUBLIC');
-    expect(sql).toContain("p_expires_at > current_time + interval '15 minutes'");
+    expect(sql).toContain("p_expires_at > v_now + interval '15 minutes'");
     expect(sql).not.toMatch(/\bCREATE\s+ROLE\b|\bALTER\s+ROLE\s+.*LOGIN\b/i);
     expect(sql).not.toMatch(/\bCREATE\s+POLICY\b/i);
   });
