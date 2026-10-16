@@ -833,3 +833,7 @@ This is NOT a trusted staging or production IdP, PKI lifecycle, deployed
 HTTPS callback/login, refresh/revoke cookies, external immutable trust root,
 network interruption DURING COMMIT, CPA onboarding or release approval.
 [Acceptance and blocked gates](M1N_PINNED_HTTPS_IDP_PKCE_SESSION_PG16_CI.ru.md).
+
+## M1o — explicit mock IdP trust-epoch CAS (NOT a release gate)
+
+Opt-in one-runner CI checks exactly one current CA/SPKI, expected-version monotonic transitions, no stale-handle request, no retired-pair fallback, no concurrent rotation while HTTPS is in flight and independent CA/SAN/SPKI verification before OAuth. The ninth independent disposable PostgreSQL16 proof and SQL row assertions preserve mandatory audit, attempt and session revocation. See [M1o acceptance](M1O_EXPLICIT_HTTPS_TRUST_EPOCH_PG16_CI.ru.md). These checks do not create an off-host trusted CA lifecycle, durable signed pin policy, multi-process anti-rollback or real OAuth IdP. Railway no-listener read-only evidence is not an independent negative TCP 8443 scan. Production and merge gates remain OPEN.

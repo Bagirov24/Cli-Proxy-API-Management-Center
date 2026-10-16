@@ -62,3 +62,11 @@ jobs:
           SAAS_EPHEMERAL_M1M_PKCE_CI: 'true'
           SAAS_EPHEMERAL_M1N_TLS_CI: 'true'
         run: bun test tests/saasM1nPinnedHttpsTrust.test.mjs
+
+      # M1o: exact single-active TLS CA/SPKI, monotonic CAS epoch.
+      - name: Verify M1o explicit no-fallback HTTPS trust revision and PKCE
+        env:
+          SAAS_EPHEMERAL_M1M_PKCE_CI: 'true'
+          SAAS_EPHEMERAL_M1N_TLS_CI: 'true'
+          SAAS_EPHEMERAL_M1O_TRUST_CI: 'true'
+        run: bun test tests/saasM1oExplicitTrustRotation.test.mjs

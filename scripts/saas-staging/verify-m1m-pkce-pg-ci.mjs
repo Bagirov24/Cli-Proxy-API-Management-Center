@@ -9,6 +9,7 @@
  * off-host independent journal, production DB/keys, reissue or auto-retry.
  */
 import { createHash } from 'node:crypto';
+import { createM1oExplicitTrustRotation } from './m1o-explicit-trust-rotation.mjs';
 import { createServer } from 'node:https';
 import { createDisposableM1nTlsFixture } from './m1n-ephemeral-tls-fixture.mjs';
 import {
@@ -28,7 +29,7 @@ const AUDIENCE='saas-m1m-ci';
 const CLIENT_ID='m1m-ephemeral-client';
 const NOW=1_800_000_000;
 const V4=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const PROJECT=/^m1[mn]-[a-z-]{1,48}$/;
+const PROJECT=/^m1[mno]-[a-z-]{1,48}$/;
 const sha=value=>createHash('sha256').update(value).digest('hex');
 function pg(assert,sql){
   const command=Bun.spawnSync(
@@ -63,7 +64,7 @@ function evidence(assert,name){
     "JOIN saas_m1_private.project_write_audit_outbox a ON a.event_id=b.event_id "+
     "WHERE a.tenant_id='demo-north' AND a.project_id='"+name+"')::TEXT");
 }
-export async function verifyM1m({assert,makeDriver,actors,httpsMode=false}){
+export async function verifyM1m({assert,makeDriver,actors,httpsMode=false,trustEpochMode=false}){
   if(process.env.GITHUB_ACTIONS!=='true'||
      process.env.SAAS_EPHEMERAL_M1_PG_CI!=='true'||
      process.env.SAAS_EPHEMERAL_M1G_ATTEMPT_CI!=='true'||
@@ -73,7 +74,8 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false}){
      process.env.SAAS_EPHEMERAL_M1L_OIDC_CI!=='true'||
      process.env.SAAS_EPHEMERAL_M1J_HTTP_PG_CI==='true'||
      process.env.SAAS_EPHEMERAL_M1H_INTENT_CI==='true'||
-     (httpsMode&&process.env.SAAS_EPHEMERAL_M1N_TLS_CI!=='true')||
+     (trustEpochMode&&(!httpsMode||process.env.SAAS_EPHEMERAL_M1O_TRUST_CI!=='true'))||
+      (httpsMode&&process.env.SAAS_EPHEMERAL_M1N_TLS_CI!=='true')||
      (!httpsMode&&process.env.SAAS_EPHEMERAL_M1N_TLS_CI==='true')||
      process.env.PGHOST!=='127.0.0.1'||
      process.env.PGPORT!=='5432'||
@@ -84,16 +86,18 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false}){
      process.env.RAILWAY_SERVICE_ID){
     throw new Error('M1m OAuth/PG16 proof denied outside disposable GitHub CI');
   }
-  console.info(httpsMode
+  console.info(trustEpochMode
+    ? 'STEP M1o: explicit HTTPS trust epoch -> PKCE -> signed PG16'
+    : httpsMode
     ? 'STEP M1n: real pinned HTTPS IdP CA/SAN/SPKI -> PKCE/state -> signed PG16'
     : 'STEP M1m: real mock OAuth PKCE code/state -> pinned JWT -> signed PG16 session');
-  const prefix=httpsMode?'m1n':'m1m';
+  const prefix=trustEpochMode?'m1o':httpsMode?'m1n':'m1m';
   const project=suffix=>prefix+'-'+suffix;
   const stamp=crypto.randomUUID();
   const journal='/tmp/saas-m1h-intent-'+stamp+'.jsonl';
   const witness=await startWitness(assert,journal);
   let mockIssuer=null, issuerServer=null, projectServer=null,hold=null;
-  let tlsFixture=null,secureTransport=null;
+  let tlsFixture=null,secureTransport=null,tlsHandler=null;
   const registry=new Map();
   const context=new AsyncLocalStorage();
   const attempts=[];
@@ -107,10 +111,7 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false}){
     let issuerBase;
     if(httpsMode){
       tlsFixture=createDisposableM1nTlsFixture();
-      issuerServer=createServer({
-        cert:tlsFixture.primary.cert,key:tlsFixture.primary.key,
-        minVersion:'TLSv1.2',
-      },async(req,res)=>{
+      tlsHandler=async(req,res)=>{
         try {
           const chunks=[];
           let size=0;
@@ -139,7 +140,11 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false}){
           res.writeHead(503,{'Content-Type':'application/json'});
           res.end('{"error":"CI HTTPS IdP unavailable"}');
         }
-      });
+      };
+      issuerServer=createServer({
+        cert:tlsFixture.primary.cert,key:tlsFixture.primary.key,
+        minVersion:'TLSv1.2',
+      },tlsHandler);
       await new Promise(resolve=>issuerServer.listen(0,'127.0.0.1',resolve));
       issuerBase='https://127.0.0.1:'+issuerServer.address().port;
     }else{
@@ -219,7 +224,38 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false}){
       publicJwk,nowSeconds:()=>NOW,
     });
     if(httpsMode){
-      secureTransport=createM1nPinnedHttpsTransport({
+      if(trustEpochMode){
+        const manager=createM1oExplicitTrustRotation({
+          baseUrl:issuerBase,callbackUri:redirectUri,
+          initial:{revision:1,caPem:tlsFixture.trustedCaPem,
+            spkiSha256:tlsFixture.primary.spkiSha256},
+        });
+        const old=manager.currentTransport();
+        secureTransport=manager.commitExplicitRotation({
+          revision:2,expectedRevision:1,caPem:tlsFixture.trustedCaPem,
+          spkiSha256:tlsFixture.rotated.spkiSha256,
+        });
+        await assert.rejects(()=>old.fetch(issuerBase+'/jwks'),/stale/);
+        await assert.rejects(()=>secureTransport.fetch(issuerBase+'/jwks'),
+          /M1n verified HTTPS request denied/);
+        assert.throws(()=>manager.commitExplicitRotation({
+          revision:3,expectedRevision:2,caPem:tlsFixture.trustedCaPem,
+          spkiSha256:tlsFixture.primary.spkiSha256,
+        }),/retired/);
+        // Bun v1.3.14 does not expose Node's setSecureContext().
+        // Shut down only the ephemeral mock TLS listener, preserve the
+        // exact local pinned origin and launch a fresh rotated TLS leaf.
+        const samePort=issuerServer.address().port;
+        await new Promise(resolve=>{
+          issuerServer.close(resolve);issuerServer.closeAllConnections?.();
+        });
+        issuerServer=createServer({
+          cert:tlsFixture.rotated.cert,key:tlsFixture.rotated.key,
+          minVersion:'TLSv1.2',
+        },tlsHandler);
+        await new Promise(resolve=>
+          issuerServer.listen(samePort,'127.0.0.1',resolve));
+      }else secureTransport=createM1nPinnedHttpsTransport({
         baseUrl:issuerBase,caPem:tlsFixture.trustedCaPem,
         spkiSha256:tlsFixture.primary.spkiSha256,callbackUri:redirectUri,
       });
@@ -232,7 +268,8 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false}){
         /M1n verified HTTPS request denied/);
       const wrongPin=createM1nPinnedHttpsTransport({
         baseUrl:issuerBase,caPem:tlsFixture.trustedCaPem,
-        spkiSha256:tlsFixture.rotated.spkiSha256,callbackUri:redirectUri,
+        spkiSha256:(trustEpochMode?tlsFixture.primary:tlsFixture.rotated).spkiSha256,
+        callbackUri:redirectUri,
       });
       await assert.rejects(()=>wrongPin.fetch(issuerBase+'/jwks'),
         /M1n verified HTTPS request denied/);
@@ -373,7 +410,12 @@ export async function verifyM1m({assert,makeDriver,actors,httpsMode=false}){
     assert.equal(driver.stats().reservations,held);
     assert.equal(evidence(assert,project('signer-dead')),'0:0:0');
     assert.equal(mockIssuer.stats().redeemedCodes,3);
-    if(httpsMode) console.info(
+    if(trustEpochMode) console.info(
+      'PASS M1o: explicit HTTPS CA/SPKI revision CAS and retired-pin deny BEFORE OAuth; '+
+      'rotated HTTPS PKCE -> pinned JWT -> PG16 3/3/3 project/audit/UUID; '+
+      'revoked C/A no ghosts, B active, signer 503, no retry/Railway changes'
+    );
+    else if(httpsMode) console.info(
       'PASS M1n: real ephemeral HTTPS CA/SAN/leaf SPKI pinned IdP '+
       'rejects rogue root and rotated unapproved leaf BEFORE OAuth; '+
       'HTTPS code+PKCE S256/state, pinned JWKS RSA JWT -> signed PG16 '+
