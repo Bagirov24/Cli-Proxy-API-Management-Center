@@ -1,0 +1,14 @@
+# EXAMPLE ONLY. Merge this block into the EXISTING /data/config.yaml.
+# Do not replace the existing server, management, access, oauth or other settings.
+# This matches the Dockerfile in this folder, NOT the stock CLIProxyAPI image.
+plugins:
+  enabled: true
+  dir: "/CLIProxyAPI/plugins"
+  configs:
+    cpa-key-policy:
+      enabled: true
+      priority: 10
+      # Account rules, newly issued keys, quotas and usage survive Railway redeploys.
+      state_file: "/data/cpa-key-policy-state.json"
+      # Keep alias credential-group restrictions effective.
+      global_weighted_round_robin: false

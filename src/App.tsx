@@ -5,6 +5,8 @@ import { NotificationContainer } from '@/components/common/NotificationContainer
 import { ConfirmationModal } from '@/components/common/ConfirmationModal';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { ProtectedRoute } from '@/router/ProtectedRoute';
+import { SAAS_BLUEPRINT_DEMO_ENABLED } from '@/features/saasBlueprint/demo/featureFlag';
+import { SaasDemoRoute } from '@/features/saasBlueprint/demo/SaasDemoRoute';
 import { useLanguageStore, useThemeStore } from '@/stores';
 
 function RootShell() {
@@ -22,6 +24,10 @@ const router = createHashRouter([
     element: <RootShell />,
     children: [
       { path: '/login', element: <LoginPage /> },
+      // Local design review is the sole unauthenticated route: synthetic-only, DEV and explicit flag.
+      ...(import.meta.env.DEV && SAAS_BLUEPRINT_DEMO_ENABLED
+        ? [{ path: '/saas-demo-preview', element: <SaasDemoRoute /> }]
+        : []),
       {
         path: '/*',
         element: (

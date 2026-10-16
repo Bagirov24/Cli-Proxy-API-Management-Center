@@ -1,0 +1,27 @@
+name: Verify Russian CPA Key Policy
+on:
+  push:
+    branches:
+      - custom-no-apikey-fun
+    paths:
+      - 'integrations/cpa-key-policy/Dockerfile.ru'
+      - 'integrations/cpa-key-policy/ru-overlay/**'
+      - '.github/workflows/verify-cpa-key-policy-ru.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test pinned RU/EN plugin
+        run: docker build --platform linux/amd64 -f integrations/cpa-key-policy/Dockerfile.ru -t cpa-key-policy-ru:verify .
+      - name: Verify plugin binary and core
+        run: |
+          docker run --rm --platform linux/amd64 --entrypoint /bin/sh cpa-key-policy-ru:verify -ec '
+            test -x /CLIProxyAPI/CLIProxyAPI
+            test -s /CLIProxyAPI/plugins/linux/amd64/cpa-key-policy.so
+            ldd /CLIProxyAPI/plugins/linux/amd64/cpa-key-policy.so
+          '

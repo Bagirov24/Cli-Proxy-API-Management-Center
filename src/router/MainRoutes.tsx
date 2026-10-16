@@ -13,14 +13,16 @@ import { ConfigPage } from '@/features/config/ConfigPage';
 import { LogsPage } from '@/features/logs/LogsPage';
 import { SystemPage } from '@/pages/SystemPage';
 import { useAuthStore } from '@/stores';
+import { SAAS_BLUEPRINT_DEMO_ENABLED } from '@/features/saasBlueprint/demo/featureFlag';
+import { SaasDemoRoute } from '@/features/saasBlueprint/demo/SaasDemoRoute';
 
 const createMainRoutes = (supportsPlugin: boolean) => [
   { path: '/', element: <DashboardPage /> },
   { path: '/dashboard', element: <DashboardPage /> },
   { path: '/settings', element: <Navigate to="/config" replace /> },
   { path: '/api-keys', element: <Navigate to="/config" replace /> },
-  { path: '/quick-start', element: <ProvidersWorkbenchPage fixedBrand="apikeyFun" /> },
-  { path: '/quick-start/*', element: <Navigate to="/quick-start" replace /> },
+  { path: '/quick-start', element: <Navigate to="/ai-providers" replace /> },
+  { path: '/quick-start/*', element: <Navigate to="/ai-providers" replace /> },
   { path: '/ai-providers', element: <ProvidersWorkbenchPage /> },
   { path: '/ai-providers/*', element: <Navigate to="/ai-providers" replace /> },
   { path: '/auth-files', element: <AuthFilesPage /> },
@@ -28,6 +30,12 @@ const createMainRoutes = (supportsPlugin: boolean) => [
   { path: '/auth-files/oauth-model-alias', element: <AuthFilesOAuthModelAliasEditPage /> },
   { path: '/oauth', element: <OAuthPage /> },
   { path: '/quota', element: <QuotaPage /> },
+  ...(SAAS_BLUEPRINT_DEMO_ENABLED
+    ? [{
+        path: '/saas-demo',
+        element: <SaasDemoRoute />,
+      }]
+    : []),
   ...(supportsPlugin
     ? [
         { path: '/plugin-pages/:pluginId/:menuIndex', element: <PluginResourcePage /> },

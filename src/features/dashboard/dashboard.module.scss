@@ -447,6 +447,104 @@
   color: var(--text-tertiary);
 }
 
+
+/* ---------- Core / CPA Policy operations at a glance ---------- */
+.opsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: $spacing-md;
+
+  @media (max-width: 900px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.opsCard {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+  min-width: 0;
+  min-height: 176px;
+  padding: $spacing-lg;
+  border-radius: 16px;
+  border: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--bg-primary) 86%, transparent);
+}
+
+.opsTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
+}
+
+.opsCardTitle {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.opsStatus {
+  --ops-color: var(--text-quaternary);
+
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.opsGood {
+  --ops-color: var(--viz-success);
+}
+
+.opsWarn {
+  --ops-color: var(--amber-color);
+}
+
+.opsNeutral {
+  --ops-color: var(--text-quaternary);
+}
+
+.opsDot {
+  display: inline-block;
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ops-color);
+}
+
+.opsDescription {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.opsLinks {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: $spacing-md;
+  margin-top: auto;
+  padding-top: $spacing-xs;
+}
+
+.opsScope {
+  margin: -4px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-tertiary);
+}
+
 /* ---------- 通用区块 ---------- */
 
 .section {

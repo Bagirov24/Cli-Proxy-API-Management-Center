@@ -1,0 +1,1370 @@
+name: SaaS Staging RLS Contract (ephemeral PostgreSQL)
+
+on:
+  pull_request:
+    paths:
+      - 'staging/saas-rls/**'
+      - 'tests/sql/saas_rls_v1.test.sql'
+      - 'tests/sql/saas_rls_signed_scope.test.sql'
+      - 'tests/sql/saas_scoped_queries.test.sql'
+      - 'tests/sql/saas_driver_fixture.test.sql'
+      - 'tests/sql/saas_m1_project_metadata.test.sql'
+      - 'tests/sql/saas_m1_pg_driver_role.test.sql'
+      - 'tests/sql/saas_m1_project_atomic_audit.test.sql'
+      - 'tests/sql/saas_m1_physical_disconnect.test.sql'
+      - 'tests/sql/saas_m1_unknown_commit_readonly_review.test.sql'
+      - 'tests/sql/saas_m1_attempt_bound_audit.test.sql'
+      - 'tests/sql/saas_m1_http_signed_pg_e2e.test.sql'
+      - 'tests/sql/saas_m1_project_session_epoch.test.sql'
+      - 'tests/sql/saas_m1l_synthetic_oidc_pg_e2e.test.sql'
+      - 'tests/sql/saas_m1m_pkce_code_pg_e2e.test.sql'
+      - 'tests/sql/saas_m1n_pinned_https_idp_pg_e2e.test.sql'
+      - 'tests/sql/saas_m1o_explicit_https_trust_epoch_pg_e2e.test.sql'
+      - 'tests/sql/saas_m1p_bound_login_context_pg_e2e.test.sql'
+      - 'tests/sql/saas_m1q_nonce_id_token_pg_e2e.test.sql'
+      - 'tests/sql/saas_m1_project_authorization_fence.test.sql'
+      - 'tests/sql/saas_e2e_grants_fixture.test.sql'
+      - 'tests/sql/saas_authorization_coverage.test.sql'
+      - 'tests/sql/saas_authorization_expiry.test.sql'
+      - 'tests/sql/saas_actor_session_revision.test.sql'
+      - 'tests/sql/saas_publication_outbox.test.sql'
+      - 'tests/sql/saas_token_fingerprint_scope.test.sql'
+      - 'tests/sql/saas_issuer_session_provisioning.test.sql'
+      - 'tests/sql/saas_local_audit_reconciliation.test.sql'
+      - 'tests/sql/saas_synthetic_delivery_intent_ack.test.sql'
+      - 'tests/sql/saas_synthetic_receiver_ledger.test.sql'
+      - 'tests/sql/saas_synthetic_producer_operations.test.sql'
+      - 'tests/sql/saas_synthetic_operation_issuance.test.sql'
+      - 'tests/sql/saas_synthetic_operation_abuse_limits.test.sql'
+      - 'tests/sql/saas_synthetic_retention_legacy_hardstop.test.sql'
+      - 'scripts/saas-staging/**'
+      - 'src/features/saasBlueprint/controlApi/server/signedSqlBoundary.ts'
+      - 'src/features/saasBlueprint/controlApi/server/trustedSqlReadBoundary.ts'
+      - 'src/features/saasBlueprint/controlApi/server/tenantProjectsReadHttpHandler.ts'
+      - 'src/features/saasBlueprint/controlApi/server/tenantProjectsWriteHttpHandler.ts'
+      - 'tests/saasTenantProjectsWriteHttpHandler.test.ts'
+      - 'tests/saasTenantProjectsReadHttpHandler.test.ts'
+      - 'src/features/saasBlueprint/controlApi/server/pgDurableIdentitySessionAuthority.ts'
+      - 'tests/saasPgDurableIdentitySessionAuthority.test.ts'
+      - 'src/features/saasBlueprint/controlApi/server/syntheticCommittedIntent.ts'
+      - 'src/features/saasBlueprint/controlApi/server/authorizationRevision.ts'
+      - 'src/features/saasBlueprint/controlApi/server/signedPgAuthorizationRevision.ts'
+      - 'src/features/saasBlueprint/controlApi/server/securityAudit.ts'
+      - 'tests/saasSecurityAuditContract.test.ts'
+      - 'tests/saasTrustedSqlReadBoundary.test.ts'
+      - 'docs/saas/**'
+      - '.github/workflows/saas-staging-rls-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tenant-rls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16.6
+        env:
+          POSTGRES_DB: saas_ephemeral_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_ephemeral_test_only
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d saas_ephemeral_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGDATABASE: saas_ephemeral_test
+      PGPASSWORD: ci_ephemeral_test_only
+      PGCONNECT_TIMEOUT: '5'
+
+    steps:
+      - name: Checkout isolated feature branch
+        uses: actions/checkout@v4
+
+      - name: Ensure PostgreSQL client is installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq postgresql-client
+          fi
+          psql --version
+
+      - name: Verify legacy tenant RLS and signed transaction-scope hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e .env.production
+          test ! -e /data/auths
+          # This accesses only the GitHub Actions ephemeral PostgreSQL service.
+          # No Railway integration, CPA keys, OAuth, Core or network egress.
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/saas_rls_v1.test.sql \
+            > /tmp/saas-rls-acceptance.log 2>&1 || {
+              tail -n 120 /tmp/saas-rls-acceptance.log
+              exit 1
+            }
+          tail -n 15 /tmp/saas-rls-acceptance.log
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/saas_rls_signed_scope.test.sql \
+            > /tmp/saas-rls-signed-scope.log 2>&1 || {
+              tail -n 120 /tmp/saas-rls-signed-scope.log
+              exit 1
+            }
+          tail -n 15 /tmp/saas-rls-signed-scope.log
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/saas_scoped_queries.test.sql \
+            > /tmp/saas-sql-boundary.log 2>&1 || {
+              tail -n 120 /tmp/saas-sql-boundary.log
+              exit 1
+            }
+          tail -n 15 /tmp/saas-sql-boundary.log
+
+
+      - name: Install pinned Bun for ephemeral native PostgreSQL driver
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Seed and exercise non-superuser Bun driver on ephemeral PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Fresh random password per CI job, never stored in the repo or logs.
+          runner_password="$(openssl rand -hex 24)"
+          scope_key="$(psql -X -A -t -v ON_ERROR_STOP=1 -c \
+            "SELECT encode(secret,'hex') FROM saas_rls_private.scope_signers WHERE key_id='ci-pilot'")"
+          if [[ ! "$runner_password" =~ ^[0-9a-f]{48}$ ]] ||
+             [[ ! "$scope_key" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Invalid ephemeral test-only bootstrap inputs"
+            exit 1
+          fi
+          # psql -v parameter is quoted inside SQL as a literal (not interpolated
+          # into identifiers or SQL syntax).
+          psql -X -v ON_ERROR_STOP=1 -v ephemeral_password="$runner_password" \
+            -f tests/sql/saas_driver_fixture.test.sql \
+            > /tmp/saas-driver-fixture.log 2>&1 || {
+              tail -n 70 /tmp/saas-driver-fixture.log
+              exit 1
+            }
+          tail -n 6 /tmp/saas-driver-fixture.log
+          # CI-only signed tenant/membership/role gate, never Railway.
+          # Explicit custom GUC is local to this single psql invocation.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/003_explicit_read_gate_pilot.sql \
+            > /tmp/saas-read-gate.log 2>&1 || {
+              tail -n 70 /tmp/saas-read-gate.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-read-gate.log
+          timeout --signal=TERM --kill-after=5s 90s env \
+            SAAS_EPHEMERAL_DRIVER_CI=true SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-bun-postgres.mjs
+          # All changes below target ONLY the disposable PostgreSQL service.
+          # After the independent 2F probes, add grants proving that Pool,
+          # Account and Egress visibility do NOT automatically inherit.
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_e2e_grants_fixture.test.sql \
+            > /tmp/saas-e2e-grants.log 2>&1 || {
+              tail -n 40 /tmp/saas-e2e-grants.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-e2e-grants.log
+          # New 2G.4d.2 private revisions are installed ONLY in ephemeral CI.
+          # Existing 2G.4c E2E mutations now exercise writer-side triggers.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/004_tenant_authorization_revisions_pilot.sql \
+            > /tmp/saas-authorization-revisions-install.log 2>&1 || {
+              tail -n 60 /tmp/saas-authorization-revisions-install.log
+              exit 1
+            }
+          tail -n 3 /tmp/saas-authorization-revisions-install.log
+          # M1a STACKED DRAFT PR ONLY: real transactional create/read/rename/
+          # soft-disable tenant project metadata in separate disposable schema.
+          # No production migration, no HTTP listener, Core/CPA, tokens,
+          # keys, JWT issuer, UUID issuance, delivery or GC.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/020_m1_project_metadata_pilot.sql \
+            > /tmp/saas-m1a-project-install.log 2>&1 || {
+              tail -n 80 /tmp/saas-m1a-project-install.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1_project_metadata.test.sql \
+            > /tmp/saas-m1a-project-acceptance.log 2>&1 || {
+              tail -n 100 /tmp/saas-m1a-project-acceptance.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-m1a-project-acceptance.log
+          # M1b STACKED DRAFT: a real Bun.SQL write pilot on this SAME
+          # temporary GitHub PostgreSQL16. Grant SET ROLE only AFTER the
+          # M1a least-privilege SQL tests have proved default denial.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1_pg_driver_role.test.sql \
+            > /tmp/saas-m1b-driver-role.log 2>&1 || {
+              tail -n 60 /tmp/saas-m1b-driver-role.log
+              exit 1
+            }
+          tail -n 3 /tmp/saas-m1b-driver-role.log
+          # M1c (stacked Draft) installs a trigger-owned, private
+          # write audit in the SAME disposable PG16 transaction. This
+          # migration is NOT permitted in production or as SQL 019.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/021_m1_project_atomic_audit_pilot.sql \
+            > /tmp/saas-m1c-audit-install.log 2>&1 || {
+              tail -n 80 /tmp/saas-m1c-audit-install.log
+              exit 1
+            }
+          tail -n 3 /tmp/saas-m1c-audit-install.log
+          timeout --signal=TERM --kill-after=5s 90s env \
+            SAAS_EPHEMERAL_M1_PG_CI=true \
+            SAAS_EPHEMERAL_M1E_DISCONNECT_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
+          # M1e: the Bun driver above really killed the reserved PG backend
+          # before COMMIT, aborted another signed write, and quarantined both
+          # disposable pools; an independent superuser checks project/audit.
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1_physical_disconnect.test.sql \
+            > /tmp/saas-m1e-physical-disconnect.log 2>&1 || {
+              tail -n 85 /tmp/saas-m1e-physical-disconnect.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-m1e-physical-disconnect.log
+          # Inspect ACTUAL native Bun.SQL COMMIT, including the lost ACK
+          # project. Audit failure must abort provisional project mutations.
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1_project_atomic_audit.test.sql \
+            > /tmp/saas-m1c-audit-acceptance.log 2>&1 || {
+              tail -n 130 /tmp/saas-m1c-audit-acceptance.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-m1c-audit-acceptance.log
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/005_metadata_revision_coverage_pilot.sql \
+            > /tmp/saas-authorization-coverage-install.log 2>&1 || {
+              tail -n 60 /tmp/saas-authorization-coverage-install.log
+              exit 1
+            }
+          tail -n 3 /tmp/saas-authorization-coverage-install.log
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/006_time_aware_revision_pilot.sql \
+            > /tmp/saas-expiry-revision-install.log 2>&1 || {
+              tail -n 65 /tmp/saas-expiry-revision-install.log
+              exit 1
+            }
+          tail -n 3 /tmp/saas-expiry-revision-install.log
+          # The E2E below requires signed FOR SHARE from the guarded 007
+          # migration BEFORE its existing cross-process PG acceptance tests.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/007_read_publication_barrier_pilot.sql \
+            > /tmp/saas-publication-before-e2e.log 2>&1 || {
+              tail -n 65 /tmp/saas-publication-before-e2e.log
+              exit 1
+            }
+          tail -n 3 /tmp/saas-publication-before-e2e.log
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/008_actor_session_epoch_pilot.sql \
+            > /tmp/saas-actor-state-install.log 2>&1 || {
+              tail -n 65 /tmp/saas-actor-state-install.log
+              exit 1
+            }
+          tail -n 3 /tmp/saas-actor-state-install.log
+          # M1d STACKED DRAFT: AFTER 007 signed FOR SHARE and 008 actor
+          # epoch install, NOT an alternative auth source or production pool.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/022_m1_project_authorization_fence_pilot.sql \
+            > /tmp/saas-m1d-fence-install.log 2>&1 || {
+              tail -n 90 /tmp/saas-m1d-fence-install.log
+              exit 1
+            }
+          tail -n 3 /tmp/saas-m1d-fence-install.log
+          # Real independent psql connections force both COMMIT orders
+          # against the existing tenant epoch lock and mandatory audit.
+          timeout --signal=TERM --kill-after=5s 48s env \
+            SAAS_EPHEMERAL_M1_FENCE_CI=true \
+            bash scripts/saas-staging/verify-m1-project-revoke-fence.sh
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1_project_authorization_fence.test.sql \
+            > /tmp/saas-m1d-fence-acceptance.log 2>&1 || {
+              tail -n 130 /tmp/saas-m1d-fence-acceptance.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-m1d-fence-acceptance.log
+          # Old SQL021 replay would have silently replaced the fenced
+          # M1d trigger. It MUST now refuse instead of downgrading it.
+          if PGOPTIONS="-c saas.staging_only=true" \
+              psql -X -v ON_ERROR_STOP=1 \
+                -f staging/saas-rls/021_m1_project_atomic_audit_pilot.sql \
+                > /tmp/saas-m1d-downgrade-denial.log 2>&1; then
+            echo "ERROR: SQL021 replay downgraded the installed M1d fence"
+            exit 1
+          fi
+          grep -F "M1c atomic audit installation refused outside disposable PG16" \
+            /tmp/saas-m1d-downgrade-denial.log >/dev/null || {
+              echo "ERROR: SQL021 failed for an unexpected reason"
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 -c \
+            "SELECT saas_rls_test.assert_true(
+              EXISTS(SELECT 1 FROM pg_trigger
+                WHERE tgrelid='saas_m1_private.projects'::regclass
+                  AND tgname='m1_project_atomic_audit'
+                  AND tgfoid='saas_m1_private.append_project_write_audit_fenced()'::regprocedure),
+              'M1d fence remains active after blocked SQL021 replay')" \
+            > /tmp/saas-m1d-after-downgrade.log 2>&1 || {
+              tail -n 40 /tmp/saas-m1d-after-downgrade.log
+              exit 1
+            }
+          echo "PASS M1d: SQL021 downgrade is rejected, SQL022 replay retains fence"
+          # M1f STACKED DRAFT: closed NOLOGIN operator-only READ ONLY
+          # snapshot of M1b/M1c/E local project+audit evidence. This
+          # NEVER settles an UNKNOWN COMMIT or authorizes automatic retry.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/023_m1_unknown_commit_readonly_review_pilot.sql \
+            > /tmp/saas-m1f-review-install.log 2>&1 || {
+              tail -n 100 /tmp/saas-m1f-review-install.log
+              exit 1
+            }
+          tail -n 3 /tmp/saas-m1f-review-install.log
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1_unknown_commit_readonly_review.test.sql \
+            > /tmp/saas-m1f-review-acceptance.log 2>&1 || {
+              tail -n 120 /tmp/saas-m1f-review-acceptance.log
+              exit 1
+            }
+          tail -n 6 /tmp/saas-m1f-review-acceptance.log
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/009_signed_publication_outbox_pilot.sql \
+            > /tmp/saas-outbox-install.log 2>&1 || {
+              tail -n 75 /tmp/saas-outbox-install.log
+              exit 1
+            }
+          tail -n 3 /tmp/saas-outbox-install.log
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/010_token_fingerprint_scope_pilot.sql \
+            > /tmp/saas-token-install.log 2>&1 || {
+              tail -n 100 /tmp/saas-token-install.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-token-install.log
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/011_issuer_subject_enrollment_pilot.sql \
+            > /tmp/saas-issuer-install.log 2>&1 || {
+              tail -n 100 /tmp/saas-issuer-install.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-issuer-install.log
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/012_committed_local_audit_reconciliation_pilot.sql \
+            > /tmp/saas-audit-reconcile-install.log 2>&1 || {
+              tail -n 110 /tmp/saas-audit-reconcile-install.log
+              exit 1
+            }
+          tail -n 3 /tmp/saas-audit-reconcile-install.log
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/013_synthetic_delivery_intent_ack_pilot.sql \
+            > /tmp/saas-synthetic-delivery-install.log 2>&1 || {
+              tail -n 100 /tmp/saas-synthetic-delivery-install.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-synthetic-delivery-install.log
+          # An independent, local receiver ledger: staging only, no HTTP.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/014_synthetic_receiver_ledger_pilot.sql \
+            > /tmp/saas-synthetic-receiver-install.log 2>&1 || {
+              tail -n 100 /tmp/saas-synthetic-receiver-install.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-synthetic-receiver-install.log
+          # 015: durable producer key bound to signed 009 and 013 in one txn.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/015_synthetic_producer_operation_pilot.sql \
+            > /tmp/saas-producer-id-install.log 2>&1 || {
+              tail -n 110 /tmp/saas-producer-id-install.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-producer-id-install.log
+          # 016: signed, time-bounded issued UUIDs and read-only recovery.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/016_synthetic_operation_issuance_pilot.sql \
+            > /tmp/saas-operation-issue-install.log 2>&1 || {
+              tail -n 120 /tmp/saas-operation-issue-install.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-operation-issue-install.log
+          # 017: rate-limited fixed issuance/status templates, no tombstone GC.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/017_synthetic_operation_abuse_controls_pilot.sql \
+            > /tmp/saas-operation-abuse-install.log 2>&1 || {
+              tail -n 120 /tmp/saas-operation-abuse-install.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-operation-abuse-install.log
+          # 018: immutable insertion caps and metered legacy SQL facades.
+          # No deletion/archiving; this is a one-off disposable PG16 only.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/018_synthetic_retention_legacy_hardstop_pilot.sql \
+            > /tmp/saas-retention-legacy-install.log 2>&1 || {
+              tail -n 135 /tmp/saas-retention-legacy-install.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-retention-legacy-install.log
+          # Synthetic RS256 keys are generated only in this Bun process.
+          # Real wire SQL uses only saas_ci_runner, never the postgres login.
+          timeout --signal=TERM --kill-after=5s 90s env \
+            SAAS_EPHEMERAL_E2E_CI=true \
+            SAAS_PROJECT_READ_HTTP_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-trusted-pg-e2e.mjs
+          # M1g STACKED DRAFT: install LAST among M1 project pilots, after
+          # M1a–M1f acceptance and other signed synthetic SQL fixtures.
+          # A second Bun process uses a new synthetic pinned RS256 identity
+          # and *server-issued* UUIDv4 set only on signed PG write sessions.
+          # Old unstamped write paths now fail closed. No release/writer API.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/024_m1_attempt_bound_project_audit_pilot.sql \
+            > /tmp/saas-m1g-attempt-install.log 2>&1 || {
+              tail -n 100 /tmp/saas-m1g-attempt-install.log
+              exit 1
+            }
+          tail -n 3 /tmp/saas-m1g-attempt-install.log
+          timeout --signal=TERM --kill-after=5s 90s env \
+            SAAS_EPHEMERAL_M1_PG_CI=true \
+            SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1_attempt_bound_audit.test.sql \
+            > /tmp/saas-m1g-attempt-acceptance.log 2>&1 || {
+              tail -n 150 /tmp/saas-m1g-attempt-acceptance.log
+              exit 1
+            }
+          tail -n 6 /tmp/saas-m1g-attempt-acceptance.log
+          # M1h runs only AFTER exact-count M1g SQL acceptance. The driver
+          # now selects a distinct third CI-only fault mode, preserving the
+          # original M1g test fixture and its mandatory four UUID bindings.
+          # This exercises a separate local NO-PG-credentials Ed25519 signer
+          # which fsyncs BEFORE signed PG writes. NOT off-host WORM.
+          timeout --signal=TERM --kill-after=5s 90s env \
+            SAAS_EPHEMERAL_M1_PG_CI=true \
+            SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
+            SAAS_EPHEMERAL_M1H_INTENT_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
+          # M1j (stacked Draft): a NEW, SEPARATE ephemeral invocation,
+          # after all M1a–M1h acceptance. Actual 127.0.0.1 HTTP request
+          # -> M1i pinned synthetic RS256/tenant RBAC -> M1h fsynced
+          # Ed25519 precommit intent -> signed M1d PG16 transaction,
+          # mandatory M1c audit and M1g UUID binding. No public listener,
+          # production creds or network partition DURING COMMIT.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          timeout --signal=TERM --kill-after=5s 90s env \
+            SAAS_EPHEMERAL_M1_PG_CI=true \
+            SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
+            SAAS_EPHEMERAL_M1_HTTP_CI=true \
+            SAAS_EPHEMERAL_M1J_HTTP_PG_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1_http_signed_pg_e2e.test.sql \
+            > /tmp/saas-m1j-real-http-pg-acceptance.log 2>&1 || {
+              tail -n 110 /tmp/saas-m1j-real-http-pg-acceptance.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-m1j-real-http-pg-acceptance.log
+          # M1k STACKED DRAFT: install SQL025 ONLY AFTER all prior signed
+          # PG16 and HTTP regressions, so old M1b–M1j fixture counts stay
+          # unchanged. FORCE RLS NOLOGIN session owner, signed session UUID
+          # and expected epoch locked FOR SHARE before project transaction.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/025_m1_project_session_epoch_gate_pilot.sql \
+            > /tmp/saas-m1k-session-install.log 2>&1 || {
+              tail -n 110 /tmp/saas-m1k-session-install.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-m1k-session-install.log
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          timeout --signal=TERM --kill-after=5s 110s env \
+            SAAS_EPHEMERAL_M1_PG_CI=true \
+            SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
+            SAAS_EPHEMERAL_M1_HTTP_CI=true \
+            SAAS_EPHEMERAL_M1K_SESSION_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1_project_session_epoch.test.sql \
+            > /tmp/saas-m1k-session-acceptance.log 2>&1 || {
+              tail -n 160 /tmp/saas-m1k-session-acceptance.log
+              exit 1
+            }
+          tail -n 6 /tmp/saas-m1k-session-acceptance.log
+          # M1l STACKED DRAFT: SIXTH separate, opt-in disposable CI invocation
+          # AFTER SQL025 + full M1k adversarial acceptance. A locally generated
+          # mock OIDC issuer serves bounded discovery/JWKS on 127.0.0.1 only.
+          # Rotate A -> A+B -> B and prove an already-authenticated A request
+          # is denied by real signed PG16 when its session is revoked before
+          # COMMIT. Same-host witness, NO production IAM or SSO.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          timeout --signal=TERM --kill-after=5s 100s env \
+            SAAS_EPHEMERAL_M1_PG_CI=true \
+            SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
+            SAAS_EPHEMERAL_M1_HTTP_CI=true \
+            SAAS_EPHEMERAL_M1L_OIDC_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1l_synthetic_oidc_pg_e2e.test.sql \
+            > /tmp/saas-m1l-oidc-pg-acceptance.log 2>&1 || {
+              tail -n 160 /tmp/saas-m1l-oidc-pg-acceptance.log
+              exit 1
+            }
+          tail -n 6 /tmp/saas-m1l-oidc-pg-acceptance.log
+          # M1m STACKED DRAFT: 7th, distinct GitHub ephemeral invocation
+          # AFTER M1l's real PG16 OIDC/JWKS acceptance. Synthetic OAuth2
+          # code + PKCE S256 / one-shot state in local mock issuer; verified
+          # access token -> server-held UUID/revision -> signed M1k PG16
+          # session gate, M1h fsync, M1c/M1g mandatory COMMIT audit.
+          # No browser redirect handler, live IdP, refresh or real PKI.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          timeout --signal=TERM --kill-after=5s 95s env \
+            SAAS_EPHEMERAL_M1_PG_CI=true \
+            SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
+            SAAS_EPHEMERAL_M1_HTTP_CI=true \
+            SAAS_EPHEMERAL_M1L_OIDC_CI=true \
+            SAAS_EPHEMERAL_M1M_PKCE_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1m_pkce_code_pg_e2e.test.sql \
+            > /tmp/saas-m1m-pkce-session-pg-acceptance.log 2>&1 || {
+              tail -n 160 /tmp/saas-m1m-pkce-session-pg-acceptance.log
+              exit 1
+            }
+          tail -n 6 /tmp/saas-m1m-pkce-session-pg-acceptance.log
+          # M1n STACKED DRAFT: EIGHTH independent disposable GitHub CI
+          # invocation AFTER entire M1a-M1m PG16 acceptance. OpenSSL mints
+          # one-day CA/leaf/rogue certs ONLY in /tmp; real 127.0.0.1 HTTPS
+          # CA chain + SAN localhost + exact SPKI pin verified BEFORE
+          # synthetic OAuth code/PKCE. NO Railway or production cert writes.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          timeout --signal=TERM --kill-after=5s 120s env \
+            SAAS_EPHEMERAL_M1_PG_CI=true \
+            SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
+            SAAS_EPHEMERAL_M1_HTTP_CI=true \
+            SAAS_EPHEMERAL_M1L_OIDC_CI=true \
+            SAAS_EPHEMERAL_M1M_PKCE_CI=true \
+            SAAS_EPHEMERAL_M1N_TLS_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1n_pinned_https_idp_pg_e2e.test.sql \
+            > /tmp/saas-m1n-pinned-https-pg-acceptance.log 2>&1 || {
+              tail -n 160 /tmp/saas-m1n-pinned-https-pg-acceptance.log
+              exit 1
+            }
+          tail -n 6 /tmp/saas-m1n-pinned-https-pg-acceptance.log
+          # M1o: ninth disposable signed PG16 proof after the unchanged M1n.
+          timeout --signal=TERM --kill-after=5s 120s env \
+            SAAS_EPHEMERAL_M1_PG_CI=true \
+            SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
+            SAAS_EPHEMERAL_M1_HTTP_CI=true \
+            SAAS_EPHEMERAL_M1L_OIDC_CI=true \
+            SAAS_EPHEMERAL_M1M_PKCE_CI=true \
+            SAAS_EPHEMERAL_M1N_TLS_CI=true \
+            SAAS_EPHEMERAL_M1O_TRUST_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1o_explicit_https_trust_epoch_pg_e2e.test.sql \
+            > /tmp/saas-m1o-explicit-trust-pg-acceptance.log 2>&1 || {
+              tail -n 160 /tmp/saas-m1o-explicit-trust-pg-acceptance.log
+              exit 1
+            }
+          tail -n 6 /tmp/saas-m1o-explicit-trust-pg-acceptance.log
+          # M1p: tenth independent disposable PG16 scenario, after M1o.
+          # HTTPS OAuth callbacks are context-bound; a cancelled verified
+          # access token must never enroll a new PG session or enable retry.
+          timeout --signal=TERM --kill-after=5s 120s env \
+            SAAS_EPHEMERAL_M1_PG_CI=true \
+            SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
+            SAAS_EPHEMERAL_M1_HTTP_CI=true \
+            SAAS_EPHEMERAL_M1L_OIDC_CI=true \
+            SAAS_EPHEMERAL_M1M_PKCE_CI=true \
+            SAAS_EPHEMERAL_M1N_TLS_CI=true \
+            SAAS_EPHEMERAL_M1O_TRUST_CI=true \
+            SAAS_EPHEMERAL_M1P_CONTEXT_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1p_bound_login_context_pg_e2e.test.sql \
+            > /tmp/saas-m1p-bound-context-pg-acceptance.log 2>&1 || {
+              tail -n 160 /tmp/saas-m1p-bound-context-pg-acceptance.log
+              exit 1
+            }
+          tail -n 6 /tmp/saas-m1p-bound-context-pg-acceptance.log
+          # M1q: eleventh strictly opt-in signed PG16 proof after all M1p.
+          # CA/SAN/SPKI-pinned HTTPS mock issuer signs a distinct RS256
+          # ID token; exact one-use per-login nonce/client audience/subject
+          # must be verified BEFORE trusted PG session registration.
+          timeout --signal=TERM --kill-after=5s 120s env \
+            SAAS_EPHEMERAL_M1_PG_CI=true \
+            SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
+            SAAS_EPHEMERAL_M1_HTTP_CI=true \
+            SAAS_EPHEMERAL_M1L_OIDC_CI=true \
+            SAAS_EPHEMERAL_M1M_PKCE_CI=true \
+            SAAS_EPHEMERAL_M1N_TLS_CI=true \
+            SAAS_EPHEMERAL_M1O_TRUST_CI=true \
+            SAAS_EPHEMERAL_M1P_CONTEXT_CI=true \
+            SAAS_EPHEMERAL_M1Q_ID_TOKEN_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_m1q_nonce_id_token_pg_e2e.test.sql \
+            > /tmp/saas-m1q-nonce-id-token-pg-acceptance.log 2>&1 || {
+              tail -n 160 /tmp/saas-m1q-nonce-id-token-pg-acceptance.log
+              exit 1
+            }
+          tail -n 6 /tmp/saas-m1q-nonce-id-token-pg-acceptance.log
+          # Backend vertical slice 02: completely independent 12th disposable
+          # native PG16 invocation after unchanged M1a..M1q acceptance.
+          # Uses the SAME fixed signed PG writer, strict CAS and mandatory
+          # audit/attempt triggers, with a NEW unmounted POST/PATCH API and
+          # a separate fsynced pre-COMMIT witness; NO retry on UNKNOWN.
+          timeout --signal=TERM --kill-after=5s 120s env \
+            SAAS_EPHEMERAL_M1_PG_CI=true \
+            SAAS_EPHEMERAL_M1G_ATTEMPT_CI=true \
+            SAAS_EPHEMERAL_M1_HTTP_CI=true \
+            SAAS_EPHEMERAL_M1J_HTTP_PG_CI=true \
+            SAAS_PROJECT_WRITE_HTTP_CI=true \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
+          unset runner_password scope_key
+
+      - name: Verify staging authorization epochs and concurrent revocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Apply twice to catch non-idempotent epoch reset on migration replay.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/004_tenant_authorization_revisions_pilot.sql \
+            > /tmp/saas-authorization-revisions-replay.log 2>&1 || {
+              tail -n 65 /tmp/saas-authorization-revisions-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_authorization_revisions.test.sql \
+            > /tmp/saas-authorization-revisions-acceptance.log 2>&1 || {
+              tail -n 100 /tmp/saas-authorization-revisions-acceptance.log
+              exit 1
+            }
+          tail -n 6 /tmp/saas-authorization-revisions-acceptance.log
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/005_metadata_revision_coverage_pilot.sql \
+            > /tmp/saas-authorization-coverage-replay.log 2>&1 || {
+              tail -n 50 /tmp/saas-authorization-coverage-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_authorization_coverage.test.sql \
+            > /tmp/saas-authorization-coverage-acceptance.log 2>&1 || {
+              tail -n 90 /tmp/saas-authorization-coverage-acceptance.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-authorization-coverage-acceptance.log
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/006_time_aware_revision_pilot.sql \
+            > /tmp/saas-expiry-revision-replay.log 2>&1 || {
+              tail -n 50 /tmp/saas-expiry-revision-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_authorization_expiry.test.sql \
+            > /tmp/saas-expiry-revision-acceptance.log 2>&1 || {
+              tail -n 90 /tmp/saas-expiry-revision-acceptance.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-expiry-revision-acceptance.log
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/007_read_publication_barrier_pilot.sql \
+            > /tmp/saas-publication-migration.log 2>&1 || {
+              tail -n 65 /tmp/saas-publication-migration.log
+              exit 1
+            }
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/007_read_publication_barrier_pilot.sql \
+            > /tmp/saas-publication-replay.log 2>&1 || {
+              tail -n 65 /tmp/saas-publication-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_publication_barrier.test.sql \
+            > /tmp/saas-publication-acceptance.log 2>&1 || {
+              tail -n 90 /tmp/saas-publication-acceptance.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-publication-acceptance.log
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_actor_session_revision.test.sql \
+            > /tmp/saas-actor-session-test.log 2>&1 || {
+              tail -n 90 /tmp/saas-actor-session-test.log
+              exit 1
+            }
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/008_actor_session_epoch_pilot.sql \
+            > /tmp/saas-actor-session-replay.log 2>&1 || {
+              tail -n 90 /tmp/saas-actor-session-replay.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-actor-session-test.log
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_publication_outbox.test.sql \
+            > /tmp/saas-outbox-test.log 2>&1 || {
+              tail -n 90 /tmp/saas-outbox-test.log
+              exit 1
+            }
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/009_signed_publication_outbox_pilot.sql \
+            > /tmp/saas-outbox-replay.log 2>&1 || {
+              tail -n 90 /tmp/saas-outbox-replay.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-outbox-test.log
+          # Replay 010 AFTER old 006, so signed token expiry remains active.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/010_token_fingerprint_scope_pilot.sql \
+            > /tmp/saas-token-replay.log 2>&1 || {
+              tail -n 100 /tmp/saas-token-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_token_fingerprint_scope.test.sql \
+            > /tmp/saas-token-test.log 2>&1 || {
+              tail -n 100 /tmp/saas-token-test.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-token-test.log
+          # Older migration 010 rewrites the signer gate: restore 011 after it.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/011_issuer_subject_enrollment_pilot.sql \
+            > /tmp/saas-issuer-replay.log 2>&1 || {
+              tail -n 110 /tmp/saas-issuer-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_issuer_session_provisioning.test.sql \
+            > /tmp/saas-issuer-acceptance.log 2>&1 || {
+              tail -n 115 /tmp/saas-issuer-acceptance.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-issuer-acceptance.log
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_local_audit_reconciliation.test.sql \
+            > /tmp/saas-audit-reconcile-test.log 2>&1 || {
+              tail -n 120 /tmp/saas-audit-reconcile-test.log
+              exit 1
+            }
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/012_committed_local_audit_reconciliation_pilot.sql \
+            > /tmp/saas-audit-reconcile-replay.log 2>&1 || {
+              tail -n 90 /tmp/saas-audit-reconcile-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 -c "SELECT saas_rls_test.assert_true(
+            (SELECT status='reconciled_local' FROM
+              saas_rls_private.local_audit_reconciliation_state
+              WHERE event_id=(SELECT event_id FROM
+              saas_rls_private.local_publication_audit_outbox
+              WHERE correlation_id='ci-reconcile-seeded')),
+            'Migration 012 replay must preserve terminal local observation')" \
+            > /tmp/saas-audit-reconcile-replay-check.log 2>&1 || {
+              tail -n 90 /tmp/saas-audit-reconcile-replay-check.log
+              exit 1
+            }
+          tail -n 4 /tmp/saas-audit-reconcile-test.log
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_synthetic_delivery_intent_ack.test.sql \
+            > /tmp/saas-synthetic-delivery-test.log 2>&1 || {
+              tail -n 130 /tmp/saas-synthetic-delivery-test.log
+              exit 1
+            }
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/013_synthetic_delivery_intent_ack_pilot.sql \
+            > /tmp/saas-synthetic-delivery-replay.log 2>&1 || {
+              tail -n 110 /tmp/saas-synthetic-delivery-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 -c "SELECT saas_rls_test.assert_true(
+            (SELECT status='mock_acked' FROM saas_rls_private.synthetic_delivery_state
+             WHERE event_id=(SELECT event_id
+               FROM saas_rls_private.local_publication_audit_outbox
+               WHERE correlation_id='ci-synthetic-ack'))
+            AND
+            (SELECT status='retry_exhausted' FROM saas_rls_private.synthetic_delivery_state
+             WHERE event_id=(SELECT event_id
+               FROM saas_rls_private.local_publication_audit_outbox
+               WHERE correlation_id='ci-synthetic-exhaust')),
+            'Migration 013 replay must preserve mock ACK and exhausted terminal state')" \
+            > /tmp/saas-synthetic-delivery-replay-check.log 2>&1 || {
+              tail -n 90 /tmp/saas-synthetic-delivery-replay-check.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-synthetic-delivery-test.log
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_synthetic_receiver_ledger.test.sql \
+            > /tmp/saas-synthetic-receiver-test.log 2>&1 || {
+              tail -n 130 /tmp/saas-synthetic-receiver-test.log
+              exit 1
+            }
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/014_synthetic_receiver_ledger_pilot.sql \
+            > /tmp/saas-synthetic-receiver-replay.log 2>&1 || {
+              tail -n 100 /tmp/saas-synthetic-receiver-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 -c "SELECT saas_rls_test.assert_true(
+            (SELECT COUNT(*)=1 FROM saas_rls_private.synthetic_receiver_effects e
+             JOIN saas_rls_private.local_publication_audit_outbox a
+               ON a.event_id=e.event_id
+             WHERE a.correlation_id='ci-receiver-durable'),
+            '014 replay must preserve durable single receiver effect')" \
+            > /tmp/saas-synthetic-receiver-replay-check.log 2>&1 || {
+              tail -n 100 /tmp/saas-synthetic-receiver-replay-check.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-synthetic-receiver-test.log
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_synthetic_producer_operations.test.sql \
+            > /tmp/saas-producer-id-test.log 2>&1 || {
+              tail -n 130 /tmp/saas-producer-id-test.log
+              exit 1
+            }
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/015_synthetic_producer_operation_pilot.sql \
+            > /tmp/saas-producer-id-replay.log 2>&1 || {
+              tail -n 110 /tmp/saas-producer-id-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 -c "SELECT saas_rls_test.assert_true(
+            (SELECT COUNT(*)=1 FROM saas_rls_private.synthetic_producer_operations
+             WHERE operation_id='11111111-1111-4111-8111-111111111111'::UUID)
+            AND (SELECT COUNT(*)=1 FROM saas_rls_private.local_publication_audit_outbox
+             WHERE correlation_id='ci-op-first'),
+            '015 migration replay must preserve the original bound operation')" \
+            > /tmp/saas-producer-id-replay-check.log 2>&1 || {
+              tail -n 100 /tmp/saas-producer-id-replay-check.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-producer-id-test.log
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_synthetic_operation_issuance.test.sql \
+            > /tmp/saas-operation-issue-test.log 2>&1 || {
+              tail -n 130 /tmp/saas-operation-issue-test.log
+              exit 1
+            }
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/016_synthetic_operation_issuance_pilot.sql \
+            > /tmp/saas-operation-issue-replay.log 2>&1 || {
+              tail -n 115 /tmp/saas-operation-issue-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 -c "SELECT saas_rls_test.assert_true(
+            (SELECT COUNT(*)=1 FROM saas_rls_private.synthetic_operation_issues
+             WHERE operation_id='44444444-4444-4444-8444-444444444444'::UUID)
+            AND (SELECT COUNT(*)=1 FROM saas_rls_private.synthetic_producer_operations
+             WHERE operation_id='44444444-4444-4444-8444-444444444444'::UUID)
+            AND (SELECT COUNT(*)=1 FROM saas_rls_private.synthetic_operation_issues
+             WHERE operation_id='55555555-5555-4555-8555-555555555555'::UUID),
+            '016 replay must preserve committed operation and expired tombstone')" \
+            > /tmp/saas-operation-issue-replay-check.log 2>&1 || {
+              tail -n 90 /tmp/saas-operation-issue-replay-check.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-operation-issue-test.log
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_synthetic_operation_abuse_limits.test.sql \
+            > /tmp/saas-operation-abuse-test.log 2>&1 || {
+              tail -n 150 /tmp/saas-operation-abuse-test.log
+              exit 1
+            }
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/017_synthetic_operation_abuse_controls_pilot.sql \
+            > /tmp/saas-operation-abuse-replay.log 2>&1 || {
+              tail -n 120 /tmp/saas-operation-abuse-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 -c "SELECT saas_rls_test.assert_true(
+            (SELECT COUNT(*)=48 FROM saas_rls_private.synthetic_operation_issues
+             WHERE tenant_id='demo-north')
+            AND (SELECT COUNT(*)=12 FROM saas_rls_private.synthetic_operation_issues
+             WHERE tenant_id='demo-orbit' AND actor_id='actor-orbit')
+            AND (SELECT COUNT(*)=2 FROM saas_rls_private.synthetic_operation_budgets
+             WHERE tenant_id='demo-orbit' AND action_kind='status'),
+            '017 replay must not purge tombstones or reset private budget rows')" \
+            > /tmp/saas-operation-abuse-replay-check.log 2>&1 || {
+              tail -n 100 /tmp/saas-operation-abuse-replay-check.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-operation-abuse-test.log
+          # Privileged replays 015-017 replaced SQL wrappers intentionally.
+          # 018 must be last; reinstall and assert its rate gates after replay.
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/018_synthetic_retention_legacy_hardstop_pilot.sql \
+            > /tmp/saas-retention-legacy-reapply.log 2>&1 || {
+              tail -n 135 /tmp/saas-retention-legacy-reapply.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 \
+            -f tests/sql/saas_synthetic_retention_legacy_hardstop.test.sql \
+            > /tmp/saas-retention-legacy-test.log 2>&1 || {
+              tail -n 155 /tmp/saas-retention-legacy-test.log
+              exit 1
+            }
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/018_synthetic_retention_legacy_hardstop_pilot.sql \
+            > /tmp/saas-retention-legacy-final-replay.log 2>&1 || {
+              tail -n 135 /tmp/saas-retention-legacy-final-replay.log
+              exit 1
+            }
+          psql -X -v ON_ERROR_STOP=1 -c "SELECT saas_rls_test.assert_true(
+            (SELECT COUNT(*)=48 FROM saas_rls_private.synthetic_operation_issues
+              WHERE tenant_id='demo-north')
+            AND (SELECT COUNT(*)=12 FROM saas_rls_private.synthetic_operation_issues
+              WHERE tenant_id='demo-orbit' AND actor_id='actor-orbit')
+            AND (SELECT used_count=32 FROM saas_rls_private.synthetic_operation_budgets
+              WHERE scope_kind='actor' AND tenant_id='demo-orbit'
+                AND actor_id='actor-orbit' AND action_kind='producer_event')
+            AND position('legacy_status' IN pg_get_functiondef(
+              'saas_rls.read_signed_synthetic_operation_status(text,text,text,text,uuid,integer)'::regprocedure))>0,
+            '018 final replay preserves UUID identity, producer limit and guarded facade')" \
+            > /tmp/saas-retention-legacy-final-check.log 2>&1 || {
+              tail -n 110 /tmp/saas-retention-legacy-final-check.log
+              exit 1
+            }
+          tail -n 6 /tmp/saas-retention-legacy-test.log
+          timeout --signal=TERM --kill-after=5s 35s env \
+            SAAS_EPHEMERAL_ABUSE_CI=true \
+            bash scripts/saas-staging/verify-operation-abuse-concurrency.sh
+          timeout --signal=TERM --kill-after=5s 35s env \
+            SAAS_EPHEMERAL_PRODUCER_CI=true \
+            bash scripts/saas-staging/verify-producer-operation-concurrency.sh
+          timeout --signal=TERM --kill-after=5s 50s env \
+            SAAS_EPHEMERAL_REVISION_CI=true \
+            bash scripts/saas-staging/verify-revision-concurrency.sh
+          timeout --signal=TERM --kill-after=5s 60s env \
+            SAAS_EPHEMERAL_PUBLICATION_CI=true \
+            bash scripts/saas-staging/verify-publication-barrier.sh
+          timeout --signal=TERM --kill-after=5s 50s env \
+            SAAS_EPHEMERAL_AUDIT_RECONCILE_CI=true \
+            bash scripts/saas-staging/verify-audit-reconciliation.sh
+      
+      - name: Verify offline signed UUID witness with crash and restored-snapshot attacks
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7j: read-only evidence projectors + independent offline
+          # Ed25519 signer/verifier. Only one synthetic test INSERT commits;
+          # no GC, deletion, export to artifacts, or production access.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 85s env \
+            SAAS_EPHEMERAL_ARCHIVE_CI=true \
+            node scripts/saas-staging/verify-archive-witness.mjs
+
+      - name: Verify persistent CI-only head against actual PostgreSQL16 backup restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7k: ONLY disposable PG16 source and two scratch restore DBs.
+          # A full pg_dump stays in job-local 0700 temp storage and is erased.
+          # Detached fsynced head is independent of the PostgreSQL dump,
+          # but NOT an externally durable cross-run witness.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          command -v pg_dump
+          command -v pg_restore
+          command -v createdb
+          command -v dropdb
+          timeout --signal=TERM --kill-after=5s 160s env \
+            SAAS_EPHEMERAL_RESTORE_CI=true \
+            node scripts/saas-staging/verify-archive-witness-restoration.mjs
+
+      - name: Verify two isolated offline witness replicas and fail-closed high-water journal
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7l: THREE temporary file trust compartments on one
+          # disposable CI host, never a production external witness.
+          # Real PG COMMIT vs lagged checkpoint, mirrored head publication,
+          # journal loss, double rollback and SIGKILL are all adversarial.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 115s env \
+            SAAS_EPHEMERAL_HIGHWATER_CI=true \
+            node scripts/saas-staging/verify-archive-witness-highwater.mjs
+
+      - name: Verify lost-commit-ack settlement against signed offline high-water
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7m: actual postgres session termination immediately
+          # after COMMIT vs before COMMIT; offline signed witness cannot
+          # access PG or authorize retried issue, event, network ACK or GC.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 105s env \
+            SAAS_EPHEMERAL_SETTLEMENT_CI=true \
+            node scripts/saas-staging/verify-archive-witness-settlement.mjs
+      
+      - name: Verify offline Unix-socket witness daemon lost ACK and crash-safe replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7n: separate process + Unix-domain socket on ONE
+          # disposable CI runner, NEVER off-host durable witness.
+          # No PG credentials enter daemon. Only synthetic UUIDs are
+          # committed through disposable postgres fixture connections.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 115s env \
+            SAAS_EPHEMERAL_IPC_WITNESS_CI=true \
+            node scripts/saas-staging/verify-archive-witness-ipc.mjs
+
+      - name: Verify least-privilege PostgreSQL projection attestation and challenge-bound witness
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7o: ephemeral ONLY. Postgres admin creates a temporary
+          # read-only projection role; the attestor cannot read tenant
+          # metadata, secrets or change UUID mappings. Offline verifier
+          # has no PG creds. All signing keys are CI-only and erased.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 90s env \
+            SAAS_EPHEMERAL_PROJECTOR_PROOF_CI=true \
+            node scripts/saas-staging/verify-archive-witness-pg-projection.mjs
+
+
+      - name: Verify PostgreSQL-attested witness append, replay and crash boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7p: separate, opt-in Unix witness proof-path.
+          # Ephemeral restricted PG projector; no production issuer, keys,
+          # Railway, external payload/recipient, GC or deployment.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 125s env \
+            SAAS_EPHEMERAL_PROJECTOR_APPEND_CI=true \
+            node scripts/saas-staging/verify-archive-witness-pg-append.mjs
+
+      - name: Verify local signed high-water IPC journal against witness crashes and rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7q: distinct test-only journal process and Ed25519
+          # key. SAME ephemeral runner/OS (never external durable authority).
+          # No production DB, actor endpoint, payload, UUID reuse or GC.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 150s env \
+            SAAS_EPHEMERAL_HIGHWATER_TEST_CI=true \
+            node scripts/saas-staging/verify-archive-witness-ipc-highwater.mjs
+
+      - name: Verify UNKNOWN PostgreSQL COMMIT observations across signed witness and journal
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Stage 2G.4d.7r: rerun isolated 7q fixture with independent
+          # synthetic UUIDs, physical pre/post-COMMIT disconnects and
+          # strict PG-credential-free offline UNKNOWN observer.
+          # No new issuer, delivery/ACK authorization, GC, or archive.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 160s env \
+            SAAS_EPHEMERAL_HIGHWATER_TEST_CI=true \
+            SAAS_EPHEMERAL_UNKNOWN_OBSERVATION_CI=true \
+            node scripts/saas-staging/verify-archive-witness-ipc-highwater.mjs
+
+      - name: Verify reviewer-pinned manual-only high-water dispute proof (one runner)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7s: separate simulated reviewer Ed25519 root and
+          # retained pin for manual-only rollback/dispute inspection.
+          # Re-run distinct physical 7r/7q UUID fixture; no rollback
+          # repair, producer retry, delivery, real operator or GC.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 170s env \
+            SAAS_EPHEMERAL_HIGHWATER_TEST_CI=true \
+            SAAS_EPHEMERAL_UNKNOWN_OBSERVATION_CI=true \
+            SAAS_EPHEMERAL_MANUAL_REVIEW_CI=true \
+            node scripts/saas-staging/verify-archive-witness-ipc-highwater.mjs
+
+      - name: Verify proposed off-host high-water receipt contract and rollback conformance
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7t: separately pinned synthetic external signer
+          # simulated on the SAME runner. Real PG16/witness/high-water,
+          # but NO remote service, WORM, producer recovery or approval.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 180s env \
+            SAAS_EPHEMERAL_HIGHWATER_TEST_CI=true \
+            SAAS_EPHEMERAL_UNKNOWN_OBSERVATION_CI=true \
+            SAAS_EPHEMERAL_MANUAL_REVIEW_CI=true \
+            SAAS_EPHEMERAL_OFFHOST_CONFORMANCE_CI=true \
+            node scripts/saas-staging/verify-archive-witness-ipc-highwater.mjs
+
+      - name: Verify synthetic dual-operator onboarding and disaster-recovery quarantine contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7u: six test-only signing roots on ONE disposable
+          # runner. Offline verifier has no SQL credentials, endpoint,
+          # recovery/issuer capability, network delivery or GC authority.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          timeout --signal=TERM --kill-after=5s 70s env \
+            SAAS_EPHEMERAL_OPERATOR_DR_TEST_CI=true \
+            node scripts/saas-staging/verify-archive-witness-operator-dr.mjs
+
+      - name: Verify bounded mutual-TLS external high-water service transport and fsync journal
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 2G.4d.7v: REAL loopback TLS1.3/mTLS network protocol and
+          # signed append-only fsync log. Still ONE ephemeral runner,
+          # NOT a separate off-host trust domain or WORM. No deployment,
+          # real certificates, production, issuer, replay, delivery or GC.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          command -v openssl >/dev/null
+          timeout --signal=TERM --kill-after=5s 90s env \
+            SAAS_EPHEMERAL_EXTERNAL_TRANSPORT_TEST_CI=true \
+            node scripts/saas-staging/verify-archive-witness-offhost-mtls.mjs
+
+      - name: Reject railway staging high-water outside explicitly pinned sandbox and block secret-free CI bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 7w: static syntax and startup fail-closed when accidentally
+          # invoked on GitHub, production, or without staging identities.
+          # No remote deployment/keys are exercised by GitHub Actions.
+          node --check scripts/saas-staging/archive-witness-railway-staging.mjs
+          if env SAAS_REMOTE_STAGING_ONLY=true \
+              SAAS_HIGHWATER_TRANSPORT_SCOPE=SYNTHETIC_NO_ISSUER \
+              RAILWAY_PROJECT_ID=dba33407-7200-40e0-a9c8-08c43d41e5e4 \
+              RAILWAY_ENVIRONMENT_NAME=production \
+              node scripts/saas-staging/archive-witness-railway-staging.mjs \
+                > /dev/null 2>&1; then
+            echo "ERROR: 7w staging authority accepted a production context" >&2
+            exit 1
+          fi
+
+      - name: Verify read-only Railway synthetic PKI expiry and signed high-water audit (7x)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # No Railway credentials, no external network or database access.
+          # Openssl fixture + ephemeral Ed25519 signed high-water in /tmp.
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGUSER}" = "postgres"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          command -v openssl >/dev/null
+          node --check scripts/saas-staging/audit-railway-highwater-readonly.mjs
+          timeout --signal=TERM --kill-after=5s 65s env \
+            SAAS_EPHEMERAL_RAILWAY_AUDIT_CI=true \
+            node scripts/saas-staging/audit-railway-highwater-readonly.mjs --selftest
+          if env SAAS_REMOTE_STAGING_ONLY=true \
+              SAAS_HIGHWATER_TRANSPORT_SCOPE=SYNTHETIC_NO_ISSUER \
+              RAILWAY_PROJECT_ID=dba33407-7200-40e0-a9c8-08c43d41e5e4 \
+              RAILWAY_ENVIRONMENT_NAME=production \
+              node scripts/saas-staging/audit-railway-highwater-readonly.mjs \
+                --railway-sandbox 5c55326f3c90215556c8bdac77ecc9c6d152cdf1e59253492a208f5e18a16411 2 \
+                  >/dev/null 2>&1; then
+            echo "ERROR: 7x read-only audit accepted production CI context" >&2
+            exit 1
+          fi
+
+      # No deploy, repository secrets, production SQL connections or credentials.
+
+      # Backend 04 is run AFTER every old SQL001..025 and M1a..M1q job.
+      # Migration 026 intentionally changes the mandatory project write
+      # trigger so existing actor-only synthetic fixtures cannot be rerun.
+      # ALL data/roles are disposable GitHub Actions PostgreSQL16 ONLY.
+      - name: Verify durable issuer actor and token-bound project session (PostgreSQL16)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test "${PGUSER}" = "postgres"
+          test ! -e .env.production
+          test ! -e /data/auths
+          PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
+            -f staging/saas-rls/026_durable_project_token_binding_pilot.sql \
+            > /tmp/saas-pg26-install.log 2>&1 || {
+              tail -n 110 /tmp/saas-pg26-install.log
+              exit 1
+            }
+          tail -n 5 /tmp/saas-pg26-install.log
+          # Distinct ephemeral NON-superuser read login and its own temporary
+          # password; no access to scope_signers, private token rows or DML.
+          identity_password="$(openssl rand -hex 24)"
+          runner_password="$(openssl rand -hex 24)"
+          scope_key="$(psql -X -A -t -v ON_ERROR_STOP=1 -c \
+            "SELECT encode(secret,'hex') FROM saas_rls_private.scope_signers WHERE key_id='ci-pilot'")"
+          [[ "$identity_password" =~ ^[0-9a-f]{48}$ ]]
+          [[ "$runner_password" =~ ^[0-9a-f]{48}$ ]]
+          [[ "$scope_key" =~ ^[0-9a-f]{64}$ ]]
+          psql -X -v ON_ERROR_STOP=1 \
+            -v identity_password="$identity_password" \
+            -v runner_password="$runner_password" \
+            > /tmp/saas-pg26-ci-roles.log 2>&1 <<'SQL'
+          CREATE ROLE saas_identity_ci LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS
+            PASSWORD :'identity_password';
+          -- PostgreSQL16: only explicit SET ROLE, never inherited privileges.
+          GRANT saas_m1_identity_resolver TO saas_identity_ci
+            WITH INHERIT FALSE, SET TRUE;
+          GRANT CONNECT ON DATABASE saas_ephemeral_test TO saas_identity_ci;
+          ALTER ROLE saas_ci_runner PASSWORD :'runner_password';
+          SQL
+          # Independently verify privileges WITHOUT giving identity role
+          # any direct SELECT on private tables or provisioning routines.
+          psql -X -v ON_ERROR_STOP=1 -c "
+            SELECT saas_rls_test.assert_true(
+              NOT has_table_privilege('saas_identity_ci',
+                'saas_rls_private.actor_token_sessions','SELECT')
+              AND NOT has_table_privilege('saas_identity_ci',
+                'saas_m1_private.project_session_token_links','SELECT')
+              AND NOT has_function_privilege('saas_identity_ci',
+                'saas_m1_api.pin_project_verified_token_session(uuid,text,text,text)',
+                'EXECUTE')
+              AND pg_has_role('saas_identity_ci',
+                'saas_m1_identity_resolver','SET')
+              AND NOT pg_has_role('saas_identity_ci',
+                'saas_m1_identity_resolver','USAGE')
+              AND NOT has_function_privilege('saas_identity_ci',
+                'saas_m1_api.resolve_verified_project_session(text,text,text)',
+                'EXECUTE'), 'private read login grant boundaries')" \
+            > /tmp/saas-pg26-role-assert.log 2>&1
+          timeout --signal=TERM --kill-after=5s 95s env \
+            SAAS_DURABLE_IDENTITY_PG_CI=true \
+            SAAS_EPHEMERAL_IDENTITY_DB_PASSWORD="$identity_password" \
+            SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
+            SAAS_EPHEMERAL_SCOPE_KEY_HEX="$scope_key" \
+            bun scripts/saas-staging/verify-durable-project-identity-pg16.mjs
+          unset identity_password runner_password scope_key

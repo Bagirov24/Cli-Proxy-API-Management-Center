@@ -36,7 +36,31 @@ function getVersion(): string {
 }
 
 // https://vitejs.dev/config/
-export default defineConfig({
+// The build flag alone must NEVER turn an ordinary/release bundle into a
+// synthetic SaaS UI. A preview is allowed only for local DEV or an explicitly
+// isolated pull-request CI job that never deploys an artifact.
+const saasDemoRequested = process.env.VITE_ENABLE_SAAS_BLUEPRINT_DEMO === 'true';
+
+export default defineConfig(({ command, mode }) => {
+  const localDevPreview = command === 'serve' && mode === 'development';
+  const isolatedPullRequestPreview =
+    command === 'build' &&
+    process.env.GITHUB_ACTIONS === 'true' &&
+    process.env.GITHUB_EVENT_NAME === 'pull_request' &&
+    process.env.SAAS_BLUEPRINT_SYNTHETIC_CI_BUILD === 'true';
+
+  if (saasDemoRequested && !localDevPreview && !isolatedPullRequestPreview) {
+    throw new Error(
+      'SAAS BLUEPRINT DEMO DENIED: opt-in is allowed only in local DEV ' +
+      'or an explicitly isolated synthetic pull-request CI build; ' +
+      'never in an ordinary production/release bundle.'
+    );
+  }
+
+  const saasDemoEnabled =
+    saasDemoRequested && (localDevPreview || isolatedPullRequestPreview);
+
+  return {
   plugins: [
     react(),
     viteSingleFile({
@@ -44,10 +68,19 @@ export default defineConfig({
     })
   ],
   define: {
-    __APP_VERSION__: JSON.stringify(getVersion())
+    __APP_VERSION__: JSON.stringify(getVersion()),
+    __SAAS_BLUEPRINT_DEMO_ENABLED__: JSON.stringify(saasDemoEnabled)
   },
   resolve: {
     alias: {
+      // The production bundle resolves this import to a zero-cost stub.
+      // Vite singlefile would otherwise inline lazy demo code, even when route is hidden.
+      '@/features/saasBlueprint/demo/SaasDemoRoute': path.resolve(
+        __dirname,
+        saasDemoEnabled
+          ? './src/features/saasBlueprint/demo/SaasDemoRoute.tsx'
+          : './src/features/saasBlueprint/demo/SaasDemoRouteDisabled.tsx'
+      ),
       '@': path.resolve(__dirname, './src')
     }
   },
@@ -74,4 +107,5 @@ export default defineConfig({
       }
     }
   }
+  };
 });

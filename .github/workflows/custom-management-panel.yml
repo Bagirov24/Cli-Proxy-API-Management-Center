@@ -1,0 +1,65 @@
+# Merge-safety: verification is allowed on source pushes; release publication
+# is deliberately NOT allowed here. The published management.html remains
+# unchanged until a separately reviewed, explicit release mechanism exists.
+# workflow_dispatch below is VERIFY-ONLY; it does not publish an artifact.
+name: Verify custom Management Center (no automatic release)
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'assets/**'
+      - 'index.html'
+      - 'logo.jpg'
+      - 'package.json'
+      - 'bun.lock'
+      - 'vite.config.ts'
+      - '.github/workflows/custom-management-panel.yml'
+  push:
+    branches:
+      - custom-no-apikey-fun
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'assets/**'
+      - 'index.html'
+      - 'logo.jpg'
+      - 'package.json'
+      - 'bun.lock'
+      - 'vite.config.ts'
+      - '.github/workflows/custom-management-panel.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: custom-management-panel-verify
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+      - name: Verify and build without publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun run verify
+          test -s dist/index.html
+          if grep -q 'saas-demo-tenant' dist/index.html; then
+            echo 'DENIED: synthetic SaaS fixture reached default Management Center build' >&2
+            exit 1
+          fi
+
+# NO GitHub Release write permission, upload, --clobber, --latest,
+# auto-deploy or downstream workflow dispatch. A future release requires
+# independent human approval and a separate release process.

@@ -1,0 +1,146 @@
+# Read-only адаптер Core metadata v1 — порт и границы (RU)
+
+**Статус: SPEC ONLY.** Здесь **нет реализованного backend adapter**,
+сетевого клиента, чтения Railway volume, обращения к production Core,
+CPA Key Policy или подключения к новым credential files. Контракт нужен,
+чтобы будущая реализация не изменила модульный монолит B и не создала
+публичный Core Management API.
+
+## 1. Назначение порта
+
+TypeScript интерфейс ReadOnlyTenantMetadataAdapter в
+src/features/saasBlueprint/controlApi/contracts.ts — граница между
+доверенным SaaS Control backend и источником metadata. Не использовать
+его в React и не импортировать Core SDK в браузер.
+
+Операция readCollection принимает AuthorizedReadScope:
+actorId, tenantId, роль и серверный correlationId. Этот scope создаётся
+**только backend** после проверки сеанса, tenant membership и RBAC.
+TypeScript-типы **не заменяют** runtime-проверки и не подтверждают
+идентичность пользователя.
+
+Адаптер должен обеспечивать:
+
+1. Предварительно проверенный tenant scope, не результат фильтрации
+   общесистемного snapshot на клиенте.
+2. Отдельные grants на pool/account/egress, включая owner/status/expiry;
+   server-side scoped queries и RLS.
+3. Удаление неизвестных полей DTO и полную redaction секретов.
+4. Явный source = core-metadata-readonly только после успешного
+   authenticated fetch; invalid или stale source = SOURCE_UNAVAILABLE,
+   **не** отображать поддельный healthy/live статус.
+5. AbortSignal, deadline, bounded pagination, rate limits, audit и
+   cancellation/tenant-switch invalidation.
+6. Отсутствие любых операций записи, OAuth-сессий, probe, reconnect,
+   VPN config и выполнения AI-запросов в этом API.
+
+## 2. Источник и допустимые поля
+
+Сначала установить на **изолированном staging** документированный
+источник каждого поля. Если его нет в закреплённом Core API, не
+читать /data/auths вручную ради заполнения UI. Отсутствие подтверждённых
+метаданных — «unknown», а не вымышленное значение.
+
+| Поле UI | Потенциальный источник | Политика |
+| --- | --- | --- |
+| Tenant/Project/Application | будущая SaaS DB metadata | Только scoped по tenant |
+| CPA Key Binding reference | официальный/документированный CPA metadata API или SaaS mapping | Только непрозрачный ID; secret не выдавать |
+| Provider account status/auth mode | разрешённая metadata view Core/CPA, после проверки контракта версии | Никаких OAuth token, refresh token и raw auth file |
+| Account pool/member IDs | SaaS mapping, отдельно авторизованные grants | Не раскрывать чужих account IDs |
+| Egress profile type/status | SaaS registry или metadata view | Sanitized label, не proxy password или private VPN config |
+| Verified outgoing IP/health | отдельная будущая staging service | Пока unknown; не проверять сеть из макета |
+| Route decision, actual account selected | instrumentation после CPA scheduler | Пока SPEC, не считать resolver настоящим enforcement |
+| Cost/tokens/latency | подписанный future usage ledger | Не смешивать estimate с live invoice |
+
+## 3. Физические границы сети
+
+- SaaS read adapter находится на backend/staging, не внутри публичного
+  inference Gateway и не в production management.html.
+- Core Management API должен остаться приватным; отдельные сервисные
+  identity, allow-listed network ingress и least-privilege read-only
+  credentials, когда будет отдельное разрешение на интеграцию.
+- Не переиспользовать operator API key в SaaS user session. Нельзя
+  передавать Management auth, OAuth files, CPA plaintext ключи или
+  секреты прокси пользователям. Не использовать production Railway
+  secret env или volume /data при проектировании.
+- Если read-only metadata interface upstream недоступен, возвращать
+  SOURCE_UNAVAILABLE без silent fallback на парсинг файлов или
+  импорта конфигурации целиком.
+
+## 4. Контракт отказов и гонок
+
+При AbortSignal.aborted прекратить работу, не добавлять устаревший
+result в UI store. Cache key должен включать actorId/tenantId/role,
+grant revision и источник metadata; отзыв membership/grant обязан
+инвалидировать старые ответы. Совпадение actorId не освобождает от
+повторной tenant-проверки.
+
+События аудита: correlationId, actorId, tenantId, action, resourceKind,
+resultCode, timestamp, источник metadata. Исключить из audit logs
+payload, request body, bearer tokens, Vault handles, upstream proxy URI
+userinfo/password, тексты ошибок из raw Core.
+
+Серверный timeout/read-source error = 503 generic, не ALLOW и не
+fallback на прямой сетевой запрос. Никакой read-only adapter не может
+самостоятельно изменить выбор Core account или маршрут egress.
+
+## 5. Первые staging acceptance gates (пока НЕ выполнялись)
+
+- Contract tests на точные поля выбранного metadata source под
+  закреплённую версию CLIProxyAPI v8.0.23 и CPA Key Policy v0.5.1.
+- Unauthorized tenant/IDOR/role denial и подтверждение RLS на уровне БД,
+  не только TypeScript проектора.
+- Тест отзыва каждой из трёх grants и invalid expiresAt.
+- Нет секретов в успешных ответах, exceptions, logs, cache и traces.
+- Cancel/race при 10 быстрых tenant-switch; нет stale cross-tenant UI.
+- Отказ source/timeout/network partition возвращает generic 503,
+  не переключает runtime на другой Core или direct egress.
+- Убедиться, что нет write endpoints, VPN routes, OAuth exchanges
+  и изменения Railway production.
+
+До этих гейтов интерфейс использует только вымышленные DEMO_SNAPSHOT
+и обязателен badge «SIMULATED». См.
+[CONTROL_API_V1.ru.md](CONTROL_API_V1.ru.md),
+[AUTHZ_RBAC_V1.ru.md](AUTHZ_RBAC_V1.ru.md).
+
+## Отдельный synthetic adapter (итерация 2B)
+
+`controlApi/server/syntheticBackend.ts` реализует **только**
+`synthetic-simulation` reader поверх локального
+`BlueprintSnapshot`, без сети и Core. HTTP handler принимает
+адаптер через порт, но не предоставляет фактический
+`core-metadata-readonly` implementation. На staging только после
+отдельного security review потребуются реальные разрешённые
+read-only API methods, SQL tenant scoping и контрактные тесты
+на закреплённых версиях Core/CPA. Синтетический reader нельзя
+подменять реальным Core Management API или открывать наружу.
+
+## Этап 2C: RLS ещё не является Core adapter
+
+SQL схема `saas_rls` не подключена к SaaS HTTP handler,
+не считывает CLIProxyAPI/CPA metadata и не содержит OAuth или
+API credentials. Она используется только в SQL integration CI для
+проверки принципов tenant isolation. Без отдельно разрешённого
+staging source и проверенного server-side tenant scope внедрять
+Core metadata adapter нельзя.
+[STAGING_POSTGRES_RLS_V1.ru.md](STAGING_POSTGRES_RLS_V1.ru.md).
+
+## Согласование прав и SQL-scope (этап 2D)
+
+Будущий read-only adapter не должен отдавать `RoutingBinding`,
+если Pool отдельно не разрешён. HTTP sanitizer отвергает
+route c `poolId: null`. Подписанный SQL scope уже тестируется
+в ephemeral PG16, но **нет** настоящего OIDC/auth connector,
+миграций SaaS DB и metadata source Core. Adapter остается SPEC.
+[SIGNED_SCOPE_RLS_V1.ru.md](SIGNED_SCOPE_RLS_V1.ru.md).
+
+## Этап 2E — нет фактического Core metadata источника
+
+Типизированный SQL read boundary разрешает только минимальные поля
+временных тестовых таблиц `saas_rls`. Он не подключает настоящий
+Core Management API и не возвращает authMode, OAuth status, billing,
+quota либо Network verification; эти поля остаются SPEC/UNKNOWN.
+Использовать синтетическую роль DB для доступа к /data, Core credentials
+или реальному inference Gateway запрещено.
+[IDENTITY_SQL_BOUNDARY_V1.ru.md](IDENTITY_SQL_BOUNDARY_V1.ru.md).
+

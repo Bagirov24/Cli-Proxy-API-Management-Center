@@ -25,7 +25,6 @@ import {
   IconSidebarOauth,
   IconSidebarPlugins,
   IconSidebarProviders,
-  IconSidebarQuickStart,
   IconSidebarQuota,
   IconSidebarStore,
   IconSidebarSystem,
@@ -40,13 +39,14 @@ import {
   useThemeStore,
 } from '@/stores';
 import { AUTH_FILES_CHANGED_EVENT } from '@/features/authFiles/authFilesEvents';
+import { SAAS_BLUEPRINT_DEMO_ENABLED } from '@/features/saasBlueprint/demo/featureFlag';
+import { getSaasDemoNavigation } from '@/features/saasBlueprint/demo/demoNavigation';
 import {
   collectPluginResourceEntries,
   PLUGIN_RESOURCES_REFRESH_EVENT,
   resolvePluginAssetURL,
   type PluginResourceEntry,
 } from '@/features/plugins/pluginResources';
-import { APIKEY_FUN_DISPLAY_NAME, hasApiKeyFunConfig } from '@/features/providers/sponsor';
 import { triggerHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { LANGUAGE_LABEL_KEYS, LANGUAGE_ORDER } from '@/utils/constants';
 import { isSupportedLanguage } from '@/utils/language';
@@ -55,7 +55,6 @@ import type { Theme } from '@/types';
 
 const sidebarIcons: Record<string, ReactNode> = {
   dashboard: <IconSidebarDashboard size={18} />,
-  quickStart: <IconSidebarQuickStart size={18} />,
   aiProviders: <IconSidebarProviders size={18} />,
   authFiles: <IconSidebarAuthFiles size={18} />,
   oauth: <IconSidebarOauth size={18} />,
@@ -95,7 +94,8 @@ const NAV_TOOLTIP_VIEWPORT_MARGIN = 8;
 
 interface SidebarNavGroup {
   id: string;
-  labelKey: string;
+  labelKey?: string;
+  label?: string;
   items: SidebarNavItem[];
 }
 
@@ -318,11 +318,11 @@ export function MainLayout() {
 
   const fetchConfig = useConfigStore((state) => state.fetchConfig);
   const clearCache = useConfigStore((state) => state.clearCache);
-  const config = useConfigStore((state) => state.config);
 
   const theme = useThemeStore((state) => state.theme);
   const setTheme = useThemeStore((state) => state.setTheme);
   const language = useLanguageStore((state) => state.language);
+  const saasDemoCopy = SAAS_BLUEPRINT_DEMO_ENABLED ? getSaasDemoNavigation(language) : null;
   const setLanguage = useLanguageStore((state) => state.setLanguage);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -342,6 +342,7 @@ export function MainLayout() {
     () => new Set()
   );
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const pluginResourcesRequestRef = useRef(0);
   const authFilesCountRequestRef = useRef(0);
   const railTooltipRef = useRef<HTMLDivElement | null>(null);
   const focusedRailItemRef = useRef<HTMLElement | null>(null);
@@ -485,6 +486,7 @@ export function MainLayout() {
   }, [fetchConfig]);
 
   const loadPluginResources = useCallback(async () => {
+    const requestID = ++pluginResourcesRequestRef.current;
     if (connectionStatus !== 'connected' || !supportsPlugin) {
       setPluginResources([]);
       return;
@@ -492,8 +494,10 @@ export function MainLayout() {
 
     try {
       const plugins = await pluginsApi.list();
+      if (requestID !== pluginResourcesRequestRef.current) return;
       setPluginResources(collectPluginResourceEntries(plugins.plugins));
     } catch {
+      if (requestID !== pluginResourcesRequestRef.current) return;
       setPluginResources([]);
     }
   }, [connectionStatus, supportsPlugin]);
@@ -525,6 +529,7 @@ export function MainLayout() {
     window.addEventListener(AUTH_FILES_CHANGED_EVENT, loadAuthFilesCount);
 
     return () => {
+      pluginResourcesRequestRef.current += 1;
       authFilesCountRequestRef.current += 1;
       window.clearTimeout(timer);
       window.removeEventListener(PLUGIN_RESOURCES_REFRESH_EVENT, loadPluginResources);
@@ -583,15 +588,6 @@ export function MainLayout() {
       })
     : [];
 
-  const isApiKeyFunConfigured = hasApiKeyFunConfig(config);
-  const quickStartNavItem: SidebarNavLinkItem = {
-    path: '/quick-start',
-    label: isApiKeyFunConfigured ? APIKEY_FUN_DISPLAY_NAME : undefined,
-    labelKey: isApiKeyFunConfigured ? undefined : 'nav.quick_start',
-    metaKey: 'nav_meta.quick_start',
-    icon: sidebarIcons.quickStart,
-  };
-
   const navGroups: SidebarNavGroup[] = [
     {
       id: 'operate',
@@ -603,9 +599,20 @@ export function MainLayout() {
           metaKey: 'nav_meta.dashboard',
           icon: sidebarIcons.dashboard,
         },
-        ...(!isApiKeyFunConfigured ? [quickStartNavItem] : []),
       ],
     },
+    ...(SAAS_BLUEPRINT_DEMO_ENABLED
+      ? [{
+          id: 'saas-demo',
+          label: saasDemoCopy?.navGroup || 'SaaS',
+          items: [{
+            path: '/saas-demo',
+            label: saasDemoCopy?.navItem || 'Clients & connections',
+            meta: saasDemoCopy?.demoBadge || 'Synthetic data',
+            icon: sidebarIcons.aiProviders,
+          }],
+        }]
+      : []),
     {
       id: 'gateway',
       labelKey: 'nav_groups.gateway',
@@ -633,7 +640,6 @@ export function MainLayout() {
           metaKey: 'nav_meta.oauth',
           icon: sidebarIcons.oauth,
         },
-        ...(isApiKeyFunConfigured ? [quickStartNavItem] : []),
       ],
     },
     {
@@ -1166,7 +1172,7 @@ export function MainLayout() {
             {navGroups.map((group, idx) => (
               <div className="nav-group" key={group.id}>
                 {showSidebarLabels ? (
-                  <div className="nav-group-label">{t(group.labelKey)}</div>
+                  <div className="nav-group-label">{group.label ?? (group.labelKey ? t(group.labelKey) : '')}</div>
                 ) : (
                   idx > 0 && <div className="nav-group-divider" aria-hidden="true" />
                 )}
