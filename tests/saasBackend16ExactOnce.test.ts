@@ -110,7 +110,7 @@ describe('Backend16.5 staging-only exact SQL0008 one-shot installer contract',()
       expect(RUNNER.indexOf(checkpoints[i])).toBeGreaterThan(RUNNER.indexOf(checkpoints[i-1]));
     expect(RUNNER.split('await migrator.query(bind(sql,{').length-1).toBe(1);
     expect(RUNNER).toContain('BACKEND16_STOP_UNKNOWN_COMMIT_RECONCILE_NEVER_RETRY');
-    expect(RUNNER).toContain('if(loginMayExist&&!sealed){try{await seal(admin);}');
+    expect(RUNNER).toContain('if(adminReady&&loginMayExist&&!sealed){');
     expect(RUNNER).toContain('ALTER ROLE saas_schema_migrator NOLOGIN PASSWORD NULL');
     expect(RUNNER).toContain('rolpassword IS NULL AS password_is_null');
     expect(RUNNER).not.toMatch(/console\.(?:error|log)\(\s*(?:err|error|exception|secret|sql)/i);
