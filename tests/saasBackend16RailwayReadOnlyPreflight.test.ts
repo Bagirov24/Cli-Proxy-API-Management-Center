@@ -34,6 +34,12 @@ test('read-only PostgreSQL transaction, exact operator expectation and no retry'
   assert.match(source,/if\(transaction&&!commitSent&&connection\)/);
   assert.match(source,/const EXPECTED='absent'/);
   assert.match(source,/saas\.b16\.reconcile_expected','absent',true/);
+  assert.match(source,/set_config\('saas\.staging_only','true',true\)/);
+  assert.ok(index("set_config('saas.staging_only','true',true)")>
+            index("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"));
+  assert.ok(index("set_config('saas.staging_only','true',true)")<
+            index('RECONCILE_DO_SQL,[]'));
+
   assert.match(source,/READONLY_ABSENT_SEALED_NEVER_AUTO_INSTALL/);
   assert.match(source,/failurePhase=phase/);
   assert.match(source,/failurePhase='CLOSE'/);
@@ -99,4 +105,16 @@ test('only reviewed SQL catalog STOP codes can reach Railway logs',()=>{
   assert.equal(actual.length,17);
   assert.ok(actual.every(v=>/^B16_READONLY_STOP_[A-Z0-9_]+$/.test(v)));
   assert.match(source,/error\.message\.match\(\/B16_READONLY_STOP_\[A-Z0-9_\]\+\//);
+});
+
+test('staging-only context label exactly matches original approved operator PGOPTIONS',()=>{
+  const runbook=readFileSync(new URL(
+    '../docs/saas/BACKEND_16_SQL0008_READONLY_RECONCILIATION.md',
+    import.meta.url),'utf8');
+  assert.ok(runbook.includes("PGOPTIONS='-c saas.staging_only=true'"));
+  const matched=source.match(/set_config\('saas\.staging_only','true',true\)/g);
+  assert.equal(matched?.length,1,
+    'one constant LOCAL tag; never derive authorization from client input');
+  assert.match(source,/current_setting\('saas\.staging_only'/);
+  assert.doesNotMatch(source,/set_config\('saas\.tenant_id'/);
 });
