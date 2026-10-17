@@ -11,6 +11,10 @@ on:
       - 'tests/saasBackend16PhysicalPgAdmission.test.ts'
       - 'src/features/saasBlueprint/controlApi/server/backend16ExactSessionSqlRead.ts'
       - 'tests/saasBackend16ExactSessionSqlRead.test.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16CiBunPhysicalPgPool.ts'
+      - 'tests/saasBackend16CiBunPhysicalPgPool.test.ts'
+      - 'scripts/saas-staging/verify-backend16-bun-physical-pid-ci.ts'
+      - 'docs/saas/BACKEND_16_7_BUN_PHYSICAL_PG_PID_CI.md'
       - 'docs/saas/BACKEND_16_EXACT_SQL_READ_PORT.md'
       - 'staging/saas-bootstrap/0008_exact_subject_session_gate.sql'
       - 'tests/sql/saas_backend16_exact_session_gate.test.sql'
@@ -37,7 +41,7 @@ jobs:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
       - name: Fail-closed HTTP and origin-injection contracts
-        run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts tests/saasBackend16PinnedSessionAuthenticator.test.ts tests/saasBackend16PhysicalPgAdmission.test.ts tests/saasBackend16ExactSessionGate.test.ts tests/saasBackend16ExactSessionSqlRead.test.ts
+        run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts tests/saasBackend16PinnedSessionAuthenticator.test.ts tests/saasBackend16PhysicalPgAdmission.test.ts tests/saasBackend16ExactSessionGate.test.ts tests/saasBackend16ExactSessionSqlRead.test.ts tests/saasBackend16CiBunPhysicalPgPool.test.ts
       - name: Validate Backend16.4 disposable PG16 runner syntax
         run: bash -n scripts/saas-staging/verify-backend16-exact-session-pg16.sh
       - name: Strict TypeScript for full source
