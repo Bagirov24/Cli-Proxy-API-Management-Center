@@ -78,6 +78,24 @@ eq authorized_a t "$(a "$(query "$tenant_a" "$session_a" "$binding_a" "$fp_a")")
 eq authorized_b t "$(b "$(query "$tenant_b" "$session_b" "$binding_b" "$fp_b")")"
 eq wrong_a_tenant f "$(a "$(query "$tenant_b" "$session_b" "$binding_b" "$fp_b")")"
 eq wrong_b_tenant f "$(b "$(query "$tenant_a" "$session_a" "$binding_a" "$fp_a")")"
+# Backend16.7: actual Bun.SQL physical per-principal LOGIN/PID read adapter.
+# Synthetic secrets are generated in this GitHub-only PG16 process and never logged.
+# Run BEFORE the revocation tests below, on exact live synthetic sessions.
+SAAS_B16_PHYSICAL_CI=true \
+SAAS_B16_CI_A_PASSWORD="$a_pw" \
+SAAS_B16_CI_B_PASSWORD="$b_pw" \
+SAAS_B16_CI_A_SUBJECT_SHA="$fp_a" \
+SAAS_B16_CI_B_SUBJECT_SHA="$fp_b" \
+SAAS_B16_CI_A_TENANT="$tenant_a" \
+SAAS_B16_CI_B_TENANT="$tenant_b" \
+SAAS_B16_CI_A_SESSION="$session_a" \
+SAAS_B16_CI_B_SESSION="$session_b" \
+SAAS_B16_CI_A_BINDING="$binding_a" \
+SAAS_B16_CI_B_BINDING="$binding_b" \
+  bun scripts/saas-staging/verify-backend16-bun-physical-pid-ci.ts \
+  > /tmp/b16-bun-physical-ci.log 2>&1 ||
+  { tail -n 24 /tmp/b16-bun-physical-ci.log >&2; fail; }
+grep -q 'PASS Backend16.7: real Bun.SQL' /tmp/b16-bun-physical-ci.log || fail
 eq wrong_session f "$(a "$(query "$tenant_a" "$session_b" "$binding_a" "$fp_a")")"
 eq wrong_binding f "$(a "$(query "$tenant_a" "$session_a" "$binding_b" "$fp_a")")"
 eq wrong_digest f "$(a "$(query "$tenant_a" "$session_a" "$binding_a" "$fp_b")")"
