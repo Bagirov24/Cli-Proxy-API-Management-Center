@@ -21,6 +21,7 @@ const OPERATOR_ID=/^[a-z][a-z0-9_-]{3,63}$/;
 const EVIDENCE_KEYS='environmentId,gate,observedAtMs,outcome,projectId,proofSha256,proofUri,repo,role,schema,signerId,sourceCommitSha,validUntilMs';
 const SIGNED_KEYS='evidence,signatureHex';
 const SIGNER_KEYS='publicKeyHex,role,signerId';
+const POLICY_KEYS='approvedSignerKeysetSha256,expectedSourceCommitSha,signers';
 
 export const BACKEND16_REQUIRED_STAGING_GATES=Object.freeze([
   'sql0008-installed-catalog-readback',
@@ -263,19 +264,53 @@ export async function verifyBackend16ReleaseEvidence(input:Readonly<{
   try{
     if(!input||!Array.isArray(input.attestations)||
        input.attestations.length!==BACKEND16_REQUIRED_STAGING_GATES.length||
+       !plainExact(input.policy,POLICY_KEYS)||
        (input.nowMs!==undefined&&typeof input.nowMs!=='function'))
       return blocked();
+
+    // Copy the complete, descriptor-validated input synchronously BEFORE
+    // the first await. A mutable external config/evidence object must not
+    // change the keyset or signed proof while WebCrypto is verifying it.
+    const rawPolicy=input.policy;
+    if(!Array.isArray(rawPolicy.signers))return blocked();
+    const signers=Object.freeze(rawPolicy.signers.map(k=>{
+      if(!plainExact(k,SIGNER_KEYS))throw Error('invalid signer');
+      return Object.freeze({
+        role:k.role,signerId:k.signerId,publicKeyHex:k.publicKeyHex,
+      });
+    }));
+    const policy:Backend16ReleaseEvidencePolicy=Object.freeze({
+      expectedSourceCommitSha:rawPolicy.expectedSourceCommitSha,
+      approvedSignerKeysetSha256:rawPolicy.approvedSignerKeysetSha256,
+      signers,
+    });
+    const attestations=Object.freeze(input.attestations.map(item=>{
+      if(!plainExact(item,SIGNED_KEYS)||
+         !plainExact(item.evidence,EVIDENCE_KEYS))
+        throw Error('invalid signed evidence');
+      const e=item.evidence;
+      const evidence:Backend16ReleaseEvidence=Object.freeze({
+        schema:e.schema,gate:e.gate,role:e.role,signerId:e.signerId,
+        repo:e.repo,projectId:e.projectId,environmentId:e.environmentId,
+        sourceCommitSha:e.sourceCommitSha,observedAtMs:e.observedAtMs,
+        validUntilMs:e.validUntilMs,outcome:e.outcome,
+        proofUri:e.proofUri,proofSha256:e.proofSha256,
+      });
+      return Object.freeze({
+        evidence,signatureHex:item.signatureHex,
+      });
+    }));
     const now=(input.nowMs??Date.now)();
     if(!Number.isSafeInteger(now)||now<=0)return blocked();
-    const keyset=await trustedKeyset(input.policy);
+    const keyset=await trustedKeyset(policy);
     if(!keyset)return blocked();
     const accepted=new Map<Backend16StagingGate,Backend16ReleaseEvidence>();
-    for(const item of input.attestations){
+    for(const item of attestations){
       if(!plainExact(item,SIGNED_KEYS)||
          !item.evidence||
          typeof item.signatureHex!=='string'||
          !ED25519_SIGNATURE.test(item.signatureHex)||
-         !validEvidence(item.evidence,input.policy.expectedSourceCommitSha,now)||
+         !validEvidence(item.evidence,policy.expectedSourceCommitSha,now)||
          accepted.has(item.evidence.gate))return blocked();
       const signer=keyset.get(item.evidence.role);
       if(!signer||signer.signerId!==item.evidence.signerId)return blocked();
