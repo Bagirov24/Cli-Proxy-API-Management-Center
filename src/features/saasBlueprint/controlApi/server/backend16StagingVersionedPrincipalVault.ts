@@ -21,7 +21,7 @@ const RESERVED=new Set([
   'saas_runtime_writer',
 ]);
 const MAX_PRINCIPALS=128;
-const MIN_LEASE_MS=1000;
+const MIN_LEASE_MS=60_000;
 const MAX_LEASE_MS=5*60_000;
 const FETCH_TIMEOUT_MS=4500;
 const ENTRY_KEYS='pgLogin,secretId,version';
