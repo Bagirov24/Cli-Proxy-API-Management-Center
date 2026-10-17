@@ -73,3 +73,42 @@ redacted positive/negative log marker, and live PostgreSQL+volume state.
 Do not record DATABASE_URL, passwords, full native stack traces or tokens.
 
 **This phase is catalog inspection, not a completed staging migration.**
+
+
+## Actual permanent staging observation — 2026-10-17
+
+This is an **observed read-only snapshot**, not authorization for a migration replay.
+The operator first confirmed that the deployed Function's 16,946 UTF-8
+characters exactly matched this PR's immutable source at
+`f2c7dbaa6ccb1dcc37cfe2a452cf6aa0c6866fd3`.
+All six exact-head CI checks for that commit were SUCCESS.
+
+| Evidence | Exact observed value |
+|---|---|
+| Railway project | `a9703851-6eb1-406c-bb15-7d3a89359fb7` |
+| Railway environment | `staging / b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b` |
+| Read-only Function | `saas-b16-0008-readonly-preflight / ff2df1d3-3bca-483c-bc2a-0edea01dd3f1` |
+| Explicit-enable patch | `ec492782-7e5a-4c9e-b428-339ec6f5629c` — Function-only, no Postgres or volume patch |
+| Executed deployment | `07102072-18c4-49e6-887f-66b9a06da5a5` |
+| Deployment status | `SUCCESS`, 2026-10-17 18:17 UTC |
+| Read-only result | `PASS_BACKEND16_SQL0008_READONLY_ABSENT_SEALED_NEVER_AUTO_INSTALL` |
+| Post-check disable patch | `ce57f842-65d6-4d33-a725-aa97bdd97174` — only Function kill switch |
+| Disabled deployment | `5870d840-94b1-4e98-bcf1-cd66d23af957`, terminal `SUCCESS` |
+| Disabled runtime marker | `B16_READONLY_PREFLIGHT_DISABLED_NO_DATABASE` |
+| Postgres service | `37f8f166-75a6-4617-b243-8e681181c16d`, prior deployment `SUCCESS`, data volume still mounted |
+| Pending Railway changes | None |
+
+The 18:17 UTC catalog probe verified seven receipts, exact hashes/authors
+and SQL0007 provenance, absence of the SQL0008 receipt and function, sealed
+NOLOGIN/PASSWORD NULL migrator, FORCE RLS, ACL and synthetic-empty dataset.
+Because the query was in `REPEATABLE READ READ ONLY`, it did **not**
+install SQL0008 or modify PostgreSQL application data, schema or roles.
+The 18:18 UTC redeployment put the probe back in its disabled/no-database state.
+
+**Still blocked:** `saas-b16-0008-once` remains an independent disabled
+placeholder. Its live Railway config does not show
+`deploy.restartPolicyType=NEVER`. Prior attempts to set this through tooling
+were blocked; do not bypass that policy using another API, CLI or deployment
+path. A fresh read-only observation is needed before any subsequently
+approved one-shot SQL0008 application. The positive ABSENT receipt must never
+be interpreted as permission to replay a possible unknown COMMIT.
