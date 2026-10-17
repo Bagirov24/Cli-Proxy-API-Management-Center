@@ -75,3 +75,49 @@ plan. This may restart PostgreSQL and is **not** authorized by this probe.
 
 References: PostgreSQL Frontend/Backend Protocol SSLRequest and TLS
 handshake, and Node TLS certificate SAN identity check.
+
+
+## Observed private staging result — 2026-10-17 UTC
+
+This is a **public-certificate, no-credentials** observation of a private
+network peer, not proof that a trusted PostgreSQL server was reached.
+
+| Field | Observed evidence |
+| --- | --- |
+| GitHub source HEAD | `8bf3dcfae5413cb369ac69fa63f4eaeaa32f5a31` |
+| Source blob SHA | `b8a32714e7025d350bd3c00d3c994f0ae374b159` |
+| Exact-head CI | 6/6 SUCCESS |
+| Staging-only patch | `03139592-d502-43af-8cba-d96339ea435e` (no Postgres/volume modifications) |
+| Probe service | `25c0e001-40a6-4b69-a1c7-94be39a872c1` |
+| Certificate observation deployment | `08cdd4e2-93eb-4d0d-940b-8530c9a04153`, SUCCESS |
+| Leaf DER SHA256 | `de0dfc96c1a6daee914b30f4b7e7453a74d641df34ca52e22976b919a4687948` |
+| Issuer DER SHA256 | `807ddbbe843a01e4495860c24c8477ad288b7c8acacccc7c8fa435857a6f22d2` |
+| Private host / DNS SAN | `postgres.railway.internal`, SAN present and **matched** |
+| Leaf validity | Valid at observation; expires `2029-01-13T09:42:26Z` |
+| Leaf is CA | `false` |
+| TLS | `TLSv1.3` |
+| Certificate chain authenticated | **NO** (`unverifiedChain=true`) |
+| PostgreSQL StartupMessage/password/SQL | **NONE** (`noCredentialsOrSql=true`) |
+| Disable deployment | `e51a3878-8919-4f5f-8089-7b719ecbe09b`, SUCCESS |
+| Disable evidence | Explicit-enable changed to false; startup emitted `B16_TLS_PEER_PROBE_REFUSED_NO_DATABASE_AUTH`; `restartPolicyType=NEVER` |
+| Remaining Railway patch | None |
+
+The no-credential probe itself printed
+`B16_TLS_PEER_OBSERVED_CERTIFICATE_ONLY_NO_SQL` followed by
+`B16_TLS_PEER_HOST_AND_VALIDITY_OBSERVED_CA_UNAPPROVED`. It returned
+public digests, DNS SAN and clock evidence. This **refutes the working
+hypothesis that the observed leaf omitted the private hostname SAN**,
+but not the possibility of a forged or misconfigured TLS peer.
+
+The disable deployment intentionally fails closed with a generic refusal
+before opening a socket; the Railway deployment record reports SUCCESS,
+which is not proof that a normal application server started. No recurring
+cron, listener, credentials or permission to retry exists.
+
+**Next release gate:** an independent operator obtains the actual trusted
+root CA (not merely this untrusted peer's claimed issuer), compares its
+DER fingerprint with independently approved trust records, proves the
+issued chain and private DNS SAN using `verify-full`, archives certificate
+rotation/expiration controls, and validates a real least-privileged
+PostgreSQL LOGIN. The certificate observation alone cannot authorize a
+production connection. SQL0008 and off-host audit remain separate gates.
