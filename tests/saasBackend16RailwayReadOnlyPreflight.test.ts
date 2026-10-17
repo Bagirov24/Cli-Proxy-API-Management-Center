@@ -29,12 +29,18 @@ test('read-only PostgreSQL transaction, exact operator expectation and no retry'
             index("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"));
   assert.ok(index("connection.unsafe('COMMIT',[])")>index('RECONCILE_DO_SQL,[]'));
   assert.ok(index('console.info(MARKER)')>index("connection.unsafe('COMMIT',[])"));
-  assert.ok(index('if(!closed||EXPECTED')>index("connection.unsafe('COMMIT',[])"));
+  assert.ok(index('if(failed||!closed||EXPECTED')>index("connection.unsafe('COMMIT',[])"));
   assert.match(source,/commitSent=true/);
   assert.match(source,/if\(transaction&&!commitSent&&connection\)/);
   assert.match(source,/const EXPECTED='absent'/);
   assert.match(source,/saas\.b16\.reconcile_expected','absent',true/);
   assert.match(source,/READONLY_ABSENT_SEALED_NEVER_AUTO_INSTALL/);
+  assert.match(source,/failurePhase=phase/);
+  assert.match(source,/failurePhase='CLOSE'/);
+  assert.match(source,/B16_READONLY_PREFLIGHT_STOP_PHASE_/);
+  assert.match(source,/if\(failed\|\|!closed\|\|EXPECTED!=='absent'\)/);
+  assert.doesNotMatch(source,/throw Error\('B16_READONLY_PREFLIGHT_FAILED/);
+
   assert.doesNotMatch(source,/retry\s*\(/);
   assert.doesNotMatch(source,/Bun\.serve|createServer|listen\(/);
 });
