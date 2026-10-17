@@ -57,7 +57,7 @@ describe('Backend16.4 SQL0008 exact bound session gate (NO staging writes)',()=>
       'saas_ephemeral_test','saas_staging_ci','saas_b14_person',
       'saas_b16_person_b','B16_EXACT_LOCK_HELD','lock_timeout=150ms',
       'pg_backend_pid()::int','no_early_revoke','old_pair_denied',
-      'old_session_stale','b_wrong_tenant','replay-or-db-denied',
+      'old_session_stale','wrong_b_tenant','replay-or-db-denied',
       'PASS Backend16.4:',
     ])expect(DRIVER).toContain(marker);
     expect(DRIVER).not.toContain('postgres.railway.internal');
