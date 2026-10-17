@@ -127,7 +127,8 @@ SAAS_B16_CI_A_SESSION="$session_a" \
 SAAS_B16_CI_B_SESSION="$session_b" \
 SAAS_B16_CI_A_BINDING="$binding_a" \
 SAAS_B16_CI_B_BINDING="$binding_b" \
-  bun scripts/saas-staging/verify-backend16-bun-physical-pid-ci.ts \
+  timeout --signal=TERM --kill-after=3s 110s \
+    bun scripts/saas-staging/verify-backend16-bun-physical-pid-ci.ts \
   > /tmp/b16-bun-physical-ci.log 2>&1 ||
   { tail -n 24 /tmp/b16-bun-physical-ci.log >&2; fail; }
 grep -q 'PASS Backend16.7: real Bun.SQL' /tmp/b16-bun-physical-ci.log || fail
