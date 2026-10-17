@@ -131,19 +131,19 @@ test('real RS256 at+jwt produces only pinned immutable enrolled session metadata
   const result=await authenticate(jwt,signal());
   assert.equal(called.keys.length,1,'signed JWT never reached session lookup');
   assert.ok(returned,'current session authority failed to return its snapshot');
-  const key=called.keys[0], returned=snapshot(key);
+  const key=called.keys[0], fixtureSnapshot=snapshot(key);
   const fixtureConditions={
-    issuer:returned.issuer===key.issuer,
-    subject:returned.subjectFingerprintSha256===key.subjectFingerprintSha256,
-    bearer:returned.tokenFingerprintSha256===key.tokenFingerprintSha256,
-    subjectHex:/^[a-f0-9]{64}$/.test(returned.subjectFingerprintSha256),
-    bearerHex:/^[a-f0-9]{64}$/.test(returned.tokenFingerprintSha256),
-    login:/^[a-z][a-z0-9_]{2,62}$/.test(returned.pgLogin),
-    loginReserved:!returned.pgLogin.startsWith('pg_'),
-    session:/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(returned.sessionId),
-    binding:/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(returned.bindingId),
-    validExpiry:returned.sessionExpiresAtMs>NOW*1000 &&
-      returned.sessionExpiresAtMs<=NOW*1000+15*60_000,
+    issuer:fixtureSnapshot.issuer===key.issuer,
+    subject:fixtureSnapshot.subjectFingerprintSha256===key.subjectFingerprintSha256,
+    bearer:fixtureSnapshot.tokenFingerprintSha256===key.tokenFingerprintSha256,
+    subjectHex:/^[a-f0-9]{64}$/.test(fixtureSnapshot.subjectFingerprintSha256),
+    bearerHex:/^[a-f0-9]{64}$/.test(fixtureSnapshot.tokenFingerprintSha256),
+    login:/^[a-z][a-z0-9_]{2,62}$/.test(fixtureSnapshot.pgLogin),
+    loginReserved:!fixtureSnapshot.pgLogin.startsWith('pg_'),
+    session:/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(fixtureSnapshot.sessionId),
+    binding:/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(fixtureSnapshot.bindingId),
+    validExpiry:fixtureSnapshot.sessionExpiresAtMs>NOW*1000 &&
+      fixtureSnapshot.sessionExpiresAtMs<=NOW*1000+15*60_000,
     tokenExpiry:NEXT*1000>NOW*1000 &&
       NEXT*1000<=NOW*1000+15*60_000,
   };
