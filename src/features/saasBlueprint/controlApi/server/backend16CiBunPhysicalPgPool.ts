@@ -59,7 +59,9 @@ export type Backend16CiCredentialProvider=(
 export function createBackend16CiBunPhysicalPgPool(
   credentialProvider:Backend16CiCredentialProvider,
 ):Backend16PhysicalPgPool & {shutdown:()=>Promise<void>} {
-  const env=process.env;
+  const env=(globalThis as unknown as {process?:{
+    env:Record<string,string|undefined>;
+  }}).process?.env??{};
   if(typeof credentialProvider!=='function'||
      env.GITHUB_ACTIONS!=='true' ||
      env.SAAS_B16_EPHEMERAL_CI!=='true' ||
@@ -75,6 +77,7 @@ export function createBackend16CiBunPhysicalPgPool(
   }).Bun;
   if(typeof BunRuntime?.SQL!=='function')
     throw new Error('Backend16 Bun.SQL runtime missing');
+  const NativeSQLCtor=BunRuntime.SQL;
 
   let quarantined=false,slots=0;
   const active=new Set<NativeSQL>();
@@ -108,7 +111,7 @@ export function createBackend16CiBunPhysicalPgPool(
            typeof credentials.password!=='string'||
            !PASSWORD.test(credentials.password))
           throw new Error('Backend16 physical credential mapping refused');
-        native=new BunRuntime.SQL({
+        native=new NativeSQLCtor({
           adapter:'postgres',hostname:HOST,port:5432,database:DB,
           username:credentials.username,password:credentials.password,
           max:1,connectionTimeout:4,idleTimeout:0,prepare:false,
