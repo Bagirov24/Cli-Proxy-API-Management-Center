@@ -122,10 +122,15 @@ test('operator JWKS signature and subject fingerprint pass their standalone gate
 });
 
 test('real RS256 at+jwt produces only pinned immutable enrolled session metadata',async()=>{
-  const {authenticate,called}=await fixture();
+  let returned:Backend16CurrentSessionSnapshot|null=null;
+  const {authenticate,called}=await fixture(async key=>{
+    returned=snapshot(key);
+    return returned;
+  });
   const jwt=await token();
   const result=await authenticate(jwt,signal());
   assert.equal(called.keys.length,1,'signed JWT never reached session lookup');
+  assert.ok(returned,'current session authority failed to return its snapshot');
   const key=called.keys[0], returned=snapshot(key);
   const fixtureConditions={
     issuer:returned.issuer===key.issuer,
