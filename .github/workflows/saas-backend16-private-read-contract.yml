@@ -9,6 +9,11 @@ on:
       - 'tests/saasBackend16PinnedSessionAuthenticator.test.ts'
       - 'src/features/saasBlueprint/controlApi/server/backend16PhysicalPgAdmission.ts'
       - 'tests/saasBackend16PhysicalPgAdmission.test.ts'
+      - 'staging/saas-bootstrap/0008_exact_subject_session_gate.sql'
+      - 'tests/sql/saas_backend16_exact_session_gate.test.sql'
+      - 'tests/saasBackend16ExactSessionGate.test.ts'
+      - 'scripts/saas-staging/verify-backend16-exact-session-pg16.sh'
+      - 'docs/saas/BACKEND_16_SQL0008_EXACT_SESSION.md'
       - 'docs/saas/BACKEND_16_PHYSICAL_PG_ADMISSION.md'
       - 'docs/saas/BACKEND_16_PINNED_SESSION_AUTH.md'
       - 'docs/saas/BACKEND_16_PRIVATE_READ_BOUNDARY.md'
@@ -29,6 +34,8 @@ jobs:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
       - name: Fail-closed HTTP and origin-injection contracts
-        run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts tests/saasBackend16PinnedSessionAuthenticator.test.ts tests/saasBackend16PhysicalPgAdmission.test.ts
+        run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts tests/saasBackend16PinnedSessionAuthenticator.test.ts tests/saasBackend16PhysicalPgAdmission.test.ts tests/saasBackend16ExactSessionGate.test.ts
+      - name: Validate Backend16.4 disposable PG16 runner syntax
+        run: bash -n scripts/saas-staging/verify-backend16-exact-session-pg16.sh
       - name: Strict TypeScript for full source
         run: bun run type-check
