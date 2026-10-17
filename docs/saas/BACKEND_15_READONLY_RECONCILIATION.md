@@ -15,7 +15,7 @@ The source is scripts/saas-staging/backend15-readonly-reconcile.ts. It sets Post
 
 ## What it independently verifies
 
-1. Actual PG16, exact staging DB, authenticated postgres operator, read-only transaction and no standby; the saas_schema_migrator role is already NOLOGIN with rolpassword IS NULL and no dangerous privileges.
+1. Actual PG16, exact staging DB, authenticated postgres operator, read-only transaction and no standby; the saas_schema_migrator role is already NOLOGIN with rolpassword IS NULL and no dangerous privileges. Both runtime template roles must remain NOLOGIN, NOINHERIT, passwordless, and without SUPERUSER/BYPASSRLS/CREATEROLE/CREATEDB/REPLICATION.
 2. No unexpected saas_* roles or role memberships. All six earlier migration ledger rows and hashes exactly match; if 0007 is recorded, its SHA-256 and source commit must match the reviewed SQL:
    - 0007 SHA-256: 1fa9bf930e0977e11e7e920a6daa69265f8863e90b85e190bfecea3b5249e6f0
    - source commit: 6cc4a76a0b3144380ccc95f0ca1c275ae312cae3.
