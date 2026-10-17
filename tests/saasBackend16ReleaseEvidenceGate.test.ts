@@ -270,6 +270,35 @@ test('rejects accessor-bearing, extra-field and prototype attacker objects',asyn
   assert.equal((await verify(h)).result,'BLOCKED');
 });
 
+test('operator key and proof mutations after invocation cannot race WebCrypto awaits',async()=>{
+  const f=await fixture();
+  const result=verify(f);
+  // The result must describe the entire exact signed input as it existed
+  // synchronously at the time verification was invoked, not a later
+  // attacker mutation scheduled before subtle.importKey/verify resolves.
+  (f.policy.signers[1] as {publicKeyHex:string}).publicKeyHex='0'.repeat(64);
+  (f.attestations[0].evidence as {proofSha256:string}).proofSha256='0'.repeat(64);
+  assert.equal((await result).result,'READY_FOR_INDEPENDENT_REVIEW');
+
+  const g=await fixture();
+  const observed=await verifyBackend16ReleaseEvidence({
+    policy:g.policy,attestations:g.attestations,
+    nowMs:()=>{
+      (g.policy.signers[0] as {publicKeyHex:string}).publicKeyHex='0'.repeat(64);
+      (g.attestations[0].evidence as {proofSha256:string}).proofSha256='0'.repeat(64);
+      return NOW;
+    },
+  });
+  assert.equal(observed.result,'READY_FOR_INDEPENDENT_REVIEW',
+    'untrusted clock callback cannot mutate an already snapshotted proof');
+
+  const tampered=await fixture();
+  (tampered.attestations[0].evidence as {proofSha256:string}).proofSha256=
+    '0'.repeat(64);
+  assert.equal((await verify(tampered)).result,'BLOCKED',
+    'a forged field PRESENT before invocation is never signed');
+});
+
 test('invalid key crypto, invalid clocks and absent operator policy always block',async()=>{
   const x=await fixture();
   x.policy={...x.policy,signers:x.policy.signers.map((k,i)=>i===0?
