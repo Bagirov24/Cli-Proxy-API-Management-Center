@@ -62,7 +62,8 @@ test('positive exact decision requires tenant/projects then COMMIT',()=>{
 });
 test('no production login, arbitrary SQL, HTTP, retry or migration capability',()=>{
   for(const value of [
-    'RAILWAY_PROJECT_ID','RAILWAY_ENVIRONMENT_ID','RAILWAY_SERVICE_ID',
+    'RAILWAY_PROJECT_ID','RAILWAY_ENVIRONMENT_ID',
+    'RAILWAY_ENVIRONMENT_NAME','RAILWAY_SERVICE_ID',
     'SAAS_B16_STAGING_0008_INDEPENDENT_READBACK',
     'SAAS_B16_STAGING_PRIVATE_ONLY',
     "const HOST='postgres.railway.internal'",
@@ -71,6 +72,7 @@ test('no production login, arbitrary SQL, HTTP, retry or migration capability',(
     'vault.readPrincipal(login,signal)',
     'credentials.username!==login',
     'quarantine(','stopped=true','AbortSignal.timeout(6000)',
+    'query creation failed',
     "query.cancel()","db.close({timeout:0})",
   ])assert.ok(source.includes(value),value);
   assert.doesNotMatch(source,/Bun\.serve|createServer|\.listen\(|DATABASE_PUBLIC_URL/);
