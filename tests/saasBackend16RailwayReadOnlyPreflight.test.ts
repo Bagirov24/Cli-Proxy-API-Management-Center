@@ -28,7 +28,7 @@ test('read-only PostgreSQL transaction, exact operator expectation and no retry'
             index("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"));
   assert.ok(index("connection.unsafe('COMMIT',[])")>index('RECONCILE_DO_SQL,[]'));
   assert.ok(index('console.info(MARKER)')>index("connection.unsafe('COMMIT',[])"));
-  assert.ok(index('if(!committed||!closed')>index("connection.unsafe('COMMIT',[])"));
+  assert.ok(index('if(!closed||EXPECTED')>index("connection.unsafe('COMMIT',[])"));
   assert.match(source,/commitSent=true/);
   assert.match(source,/if\(transaction&&!commitSent&&connection\)/);
   assert.match(source,/const EXPECTED='absent'/);
