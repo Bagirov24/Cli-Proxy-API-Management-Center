@@ -42,7 +42,8 @@ describe('Backend16.8 independent SQL0008 READ ONLY reconciler',()=>{
     expect(SQL).toContain('\\if :{?b16_expected_state}');
     expect(SQL).toContain('SELECT 1 / 0;');
     expect(SQL).toContain("wanted NOT IN ('absent','installed')");
-    expect(SQL).toContain("CASE wanted WHEN 'absent' THEN 7 ELSE 8 END");
+    expect(SQL).toContain("(CASE WHEN wanted='absent' THEN 7 ELSE 8 END)");
+    expect(SQL).toContain("(CASE WHEN wanted='absent' THEN 0 ELSE 1 END)");
     expect(SQL).toContain("'PASS_BACKEND16_SQL0008_READONLY_ABSENT_SEALED_NEVER_AUTO_INSTALL'");
     expect(SQL).toContain("'PASS_BACKEND16_SQL0008_READONLY_INSTALLED_SEALED'");
     expect(SQL).toContain('B16_READONLY_STOP_PARTIAL_SQL0008');
