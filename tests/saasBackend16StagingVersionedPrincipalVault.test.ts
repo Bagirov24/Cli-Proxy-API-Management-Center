@@ -96,6 +96,9 @@ test('snapshot cannot substitute a different LOGIN, version or leaked extra prop
     {...expires(),role:'superuser'},
     {...expires(),password:'weak'},
     {...expires(),password:'bad\npass'},
+    Object.defineProperty({...expires()},'password',{
+      enumerable:true,get(){return PASS;},
+    }),
     {...expires(),expiresAtMs:NOW-1000},
     {...expires(),expiresAtMs:NOW+500},
     {...expires(),expiresAtMs:NOW+300_001},
