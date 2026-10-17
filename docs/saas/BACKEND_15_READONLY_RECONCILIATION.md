@@ -19,8 +19,8 @@ The source is scripts/saas-staging/backend15-readonly-reconcile.ts. It sets Post
 2. No unexpected saas_* roles or role memberships. All six earlier migration ledger rows and hashes exactly match; if 0007 is recorded, its SHA-256 and source commit must match the reviewed SQL:
    - 0007 SHA-256: 1fa9bf930e0977e11e7e920a6daa69265f8863e90b85e190bfecea3b5249e6f0
    - source commit: 6cc4a76a0b3144380ccc95f0ca1c275ae312cae3.
-3. Tenant, project, grant, grant-audit, session and session-audit rows remain empty. FORCE RLS and both read policies survive. All five Backend14 triggers remain installed; authenticated reader/writer retain intended base SELECT but have no identity-schema USAGE.
-4. All saas_identity table/function ACL are owner-only, preventing accidental PUBLIC or other user privilege grants.
+3. Tenant, project, grant, grant-audit, session and session-audit rows remain empty. FORCE RLS and both read policies survive. All five Backend14 triggers remain installed; authenticated reader/writer retain intended base SELECT, have **no INSERT/UPDATE/DELETE/TRUNCATE privileges** on tenants/projects, and no identity-schema USAGE.
+4. All saas_identity table/function ACL are owner-only. Tenant and ACL tables have no unexpected grants to PUBLIC or unrelated roles; this prevents privilege drift even where the nominal runtime roles are unchanged.
 5. Before 0007: subject-binding tables/functions must all be absent and only six receipts exist. After 0007: both private tables, both operator binding functions, three unique indexes, five B15 audit/blocking triggers, the revoke constraint, definer/invoker function ownership and the identity-bound RLS predicate must all be present; binding and audit tables empty, no runtime SELECT/EXECUTE on these private objects.
 
 ## Outcomes
