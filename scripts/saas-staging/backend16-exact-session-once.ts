@@ -160,7 +160,8 @@ async function catalog(admin:PgClient,post:boolean){
         "('saas_identity.audit_subject_binding_transition()'::regprocedure,"+
         "'saas_acl.can_read_tenant(uuid)'::regprocedure) "+
         "AND prosecdef AND provolatile='v' AND "+
-        "pg_catalog.pg_get_userbyid(proowner)='saas_schema_migrator') AS original_definers,"+
+        "pg_catalog.pg_get_userbyid(proowner)='saas_schema_migrator' "+
+        "AND proconfig @> ARRAY['search_path=pg_catalog, pg_temp']) AS original_definers,"+
       "(SELECT pg_catalog.pg_get_functiondef('saas_acl.can_read_tenant(uuid)'::regprocedure) "+
         "LIKE '%saas_identity.subject_bindings%') AS original_binding_fence,"+
       "(SELECT count(*)::int FROM pg_catalog.pg_proc WHERE oid IN "+
@@ -200,12 +201,21 @@ async function catalog(admin:PgClient,post:boolean){
       "pg_catalog.has_table_privilege('saas_runtime_reader','saas_data.tenants','SELECT') AS reader_tenants,"+
       "pg_catalog.has_table_privilege('saas_runtime_writer','saas_data.projects','SELECT') AS writer_projects,"+
       "pg_catalog.has_table_privilege('saas_runtime_reader','saas_data.tenants','INSERT, UPDATE, DELETE, TRUNCATE') AS reader_write,"+
-      "pg_catalog.has_table_privilege('saas_runtime_writer','saas_data.projects','INSERT, UPDATE, DELETE, TRUNCATE') AS writer_write"
+      "pg_catalog.has_table_privilege('saas_runtime_writer','saas_data.projects','INSERT, UPDATE, DELETE, TRUNCATE') AS writer_write,"+
+      "(SELECT count(*)::int FROM pg_catalog.pg_class c CROSS JOIN LATERAL "+
+        "pg_catalog.aclexplode(coalesce(c.relacl,pg_catalog.acldefault('r',c.relowner))) a "+
+        "WHERE c.oid IN ('saas_data.tenants'::regclass,'saas_data.projects'::regclass,"+
+          "'saas_acl.principal_tenants'::regclass,'saas_acl.principal_access_audit'::regclass,"+
+          "'saas_identity.principal_sessions'::regclass,'saas_identity.session_events'::regclass,"+
+          "'saas_identity.subject_bindings'::regclass,'saas_identity.subject_binding_events'::regclass) "+
+        "AND a.grantee NOT IN (SELECT oid FROM pg_catalog.pg_roles WHERE rolname IN "+
+          "('saas_schema_migrator','saas_runtime_reader','saas_runtime_writer'))) AS unexpected_grants"
   );
   const p=perms.rows[0];
   if(perms.rows.length!==1||p.reader_private_schema||p.writer_private_schema||
      p.reader_sessions||p.writer_bindings||p.reader_events||p.writer_events||
-     !p.reader_tenants||!p.writer_projects||p.reader_write||p.writer_write)
+     !p.reader_tenants||!p.writer_projects||p.reader_write||p.writer_write||
+     +p.unexpected_grants!==0)
     refuse();
   if(post){
     const f2=await admin.query(
