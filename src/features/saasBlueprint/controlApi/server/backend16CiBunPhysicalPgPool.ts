@@ -129,6 +129,10 @@ export function createBackend16CiBunPhysicalPgPool(
         slots--;
         throw new Error('Backend16 disposable connection acquisition failed');
       }
+      if(!native||!reserved){
+        quarantine('acquire-uncertain');
+        throw new Error('Backend16 native reservation unavailable');
+      }
       const db=native;
       const connection=reserved;
       let closed=false;
