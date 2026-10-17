@@ -126,7 +126,8 @@ async function preflight(admin:InstanceType<typeof pg.Client>) {
   );
   if(receipts.rows.length!==PREVIOUS.length ||
      !receipts.rows.every((v,i)=>v.migration_id===PREVIOUS[i][0]&&
-       v.source_sha256===PREVIOUS[i][1]&&v.applied_by==='saas_schema_migrator'))refuse();
+       v.source_sha256===PREVIOUS[i][1]&&
+       v.applied_by===(i===2?'postgres':'saas_schema_migrator')))refuse();
 
   const structure=await admin.query(
     "SELECT "+
@@ -199,7 +200,8 @@ async function readBack(admin:InstanceType<typeof pg.Client>) {
   );
   if(receipts.rows.length!==7 ||
      !receipts.rows.slice(0,6).every((v,i)=>v.migration_id===PREVIOUS[i][0]&&
-       v.source_sha256===PREVIOUS[i][1]&&v.applied_by==='saas_schema_migrator')||
+       v.source_sha256===PREVIOUS[i][1]&&
+       v.applied_by===(i===2?'postgres':'saas_schema_migrator'))||
      receipts.rows[6].migration_id!=='0007_operator_subject_binding_fence'||
      receipts.rows[6].source_sha256!==SQL_SHA||
      receipts.rows[6].source_commit!==COMMIT||

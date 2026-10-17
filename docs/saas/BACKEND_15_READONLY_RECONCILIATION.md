@@ -16,7 +16,7 @@ The source is scripts/saas-staging/backend15-readonly-reconcile.ts. It sets Post
 ## What it independently verifies
 
 1. Actual PG16, exact staging DB, authenticated postgres operator, read-only transaction and no standby; the saas_schema_migrator role is already NOLOGIN with rolpassword IS NULL and no dangerous privileges. Both runtime template roles must remain NOLOGIN, NOINHERIT, passwordless, and without SUPERUSER/BYPASSRLS/CREATEROLE/CREATEDB/REPLICATION.
-2. No unexpected saas_* roles or role memberships. All six earlier migration ledger rows and hashes exactly match; if 0007 is recorded, its SHA-256 and source commit must match the reviewed SQL:
+2. No unexpected saas_* roles or role memberships. SQL0003 is an operator-authored role-creation migration (`applied_by=postgres`); SQL0001, SQL0002, and SQL0004–0006 must be authored by `saas_schema_migrator`. The classifier checks this mixed history exactly. All six earlier migration ledger rows and hashes exactly match; if 0007 is recorded, its SHA-256 and source commit must match the reviewed SQL:
    - 0007 SHA-256: 1fa9bf930e0977e11e7e920a6daa69265f8863e90b85e190bfecea3b5249e6f0
    - source commit: 6cc4a76a0b3144380ccc95f0ca1c275ae312cae3.
 3. Tenant, project, grant, grant-audit, session and session-audit rows remain empty. FORCE RLS and both read policies survive. All five Backend14 triggers remain installed; authenticated reader/writer retain intended base SELECT, have **no INSERT/UPDATE/DELETE/TRUNCATE privileges** on tenants/projects, and no identity-schema USAGE.
@@ -40,3 +40,11 @@ Run: bun test tests/saasBackend15ReadOnlyReconcile.test.ts
 The suite tests both clean states and missing receipts, wrong SHA/source commit, partially present objects, leaked migrator LOGIN/password, non-PG16 or wrong DB, altered role memberships, tenant data, lost FORCE RLS, audit trigger drift and private ACL grants. The suite is isolated from Railway: it uses pure snapshots and does not connect to PostgreSQL.
 
 The immutable installer from PR #44 remains the only allowed one-shot executor after all migration deployment gates. If its restartPolicyType=NEVER cannot be verified, **do not accept the staging patch or enable SQL0007**. Any recovery action affecting the database must undergo a separate manual review and is out of scope for this read-only utility.
+
+## Independent real PostgreSQL16 acceptance
+
+The additional `SaaS Backend15 Readonly Catalog PG16` workflow creates a **new disposable PostgreSQL16 service in GitHub Actions**, with a local-only `127.0.0.1:5432/saas_staging` database and throwaway database credentials. It executes the pinned bootstrap SQL0000–0006 on this CI instance, seals the migrator, and runs the actual `collect()` query sequence in a `REPEATABLE READ READ ONLY` transaction. The expected verdict is `ABSENT`.
+
+In the **same disposable CI instance**, it explicitly enables the throwaway migrator for one SQL0007 execution, then reseals it to `NOLOGIN PASSWORD NULL`. A second independent read-only catalog query must classify the actual resulting state as `INSTALLED`, with all seven expected receipts, private ACLs, trigger list and binding fences. This is an integration test for the real diagnostic SQL, not a Railway staging application, customer data test, production deployment or permission to replay a migration.
+
+The workflow and test harness refuse a Railway environment, production context and public DB connections. The CI fixture names its database `saas_staging` only to exercise the exact production-shaped guard against an ephemeral local PostgreSQL service; it never uses Railway networking. The positive evidence is limited to disposable CI, never a claim about the persistent Railway staging database.

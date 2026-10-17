@@ -31,9 +31,9 @@ function fixture():Snapshot{
       db:'saas_staging',login:'postgres',ver:160008,read_only:'on',
       replica:false,superuser:true,sealed:true,new_roles:0,memberships:0,safe_runtime_roles:2
     },
-    receipts:previous.map(([migration_id,source_sha256])=>({
+    receipts:previous.map(([migration_id,source_sha256],i)=>({
       migration_id,source_sha256,source_commit:'0'.repeat(40),
-      applied_by:'saas_schema_migrator'
+      applied_by:i===2?'postgres':'saas_schema_migrator'
     })),
     baseline:{
       tenants:0,projects:0,grants:0,grant_audit:0,sessions:0,session_events:0,
@@ -65,6 +65,18 @@ describe('Backend15 readonly catalog reconciliation (NO migrations, NO Railway)'
  });
  test('classifies full seven-receipt identity fence as INSTALLED',()=>{
    expect(classifyBackend15Snapshot(applied())).toBe('installed');
+ });
+ test('0003 operator DDL receipt belongs to postgres, unlike migrator DDL',()=>{
+   const clean=fixture();
+   expect(clean.receipts[2].applied_by).toBe('postgres');
+   expect(classifyBackend15Snapshot(clean)).toBe('absent');
+   for(let i=0;i<6;i++){
+     const bad=fixture();
+     bad.receipts[i].applied_by=i===2?'saas_schema_migrator':'postgres';
+     expect(classifyBackend15Snapshot(bad)).toBe('stop');
+   }
+   const installed=applied();
+   expect(classifyBackend15Snapshot(installed)).toBe('installed');
  });
  test('refuses replay ambiguity, missing receipts and hash mismatch',()=>{
    const x=fixture();x.receipts.pop();

@@ -52,6 +52,7 @@ describe('Backend15 private immutable 0007 one-shot staging installer',()=>{
      'rolpassword IS NULL','loginMayExist&&!sealed',
      'BACKEND15_STOP_UNKNOWN_COMMIT_RECONCILE_NEVER_RETRY'])
        expect(source).toContain(required);
+   expect(source.split("v.applied_by===(i===2?'postgres':'saas_schema_migrator')").length-1).toBe(2);
    expect(source).not.toMatch(/console\.(?:error|log)\(\s*(?:err|error|exception)/i);
  });
 });

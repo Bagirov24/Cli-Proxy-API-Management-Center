@@ -1,0 +1,180 @@
+name: SaaS Backend15 Readonly Catalog PG16
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/saas-staging/backend15-readonly-reconcile.ts'
+      - 'scripts/saas-staging/verify-backend15-readonly-ephemeral-pg16.ts'
+      - 'staging/saas-bootstrap/**'
+      - '.github/workflows/saas-backend15-readonly-pg16.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  readonly-real-pg16:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16.6
+        env:
+          POSTGRES_DB: saas_staging
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_backend15_ephemeral_only
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d saas_staging"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGDATABASE: saas_staging
+      PGPASSWORD: ci_backend15_ephemeral_only
+      PGCONNECT_TIMEOUT: '5'
+      SAAS_B15_RECONCILE_EPHEMERAL_CI: 'true'
+
+    steps:
+      - name: Checkout reviewed feature branch
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq postgresql-client
+          fi
+          psql --version
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install test-only pg driver (not committed)
+        run: bun add --no-save pg@8.16.3
+
+      - name: Bootstrap EXACT immutable 0001-0006 into disposable localhost PG16
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_ACTIONS" == true && "$SAAS_B15_RECONCILE_EPHEMERAL_CI" == true ]]
+          [[ "$PGHOST" == 127.0.0.1 && "$PGPORT" == 5432 &&
+             "$PGUSER" == postgres && "$PGDATABASE" == saas_staging ]]
+          if env | grep -Eq '^RAILWAY_(PROJECT_ID|SERVICE_ID|ENVIRONMENT_ID)='; then
+            echo 'Refused Railway environment' >&2
+            exit 1
+          fi
+          [[ "$(printenv NODE_ENV || true)" != production ]]
+          test ! -e .env.production
+          sha() { sha256sum "staging/saas-bootstrap/$1" | cut -d ' ' -f1; }
+          s1="$(sha 0001_ledger_only.sql)"
+          s2="$(sha 0002_tenant_projects_baseline.sql)"
+          s3="$(sha 0003_operator_runtime_roles.sql)"
+          s4="$(sha 0004_principal_bound_read_rls.sql)"
+          s5="$(sha 0005_principal_lifecycle_revocation_fence.sql)"
+          s6="$(sha 0006_principal_session_fence.sql)"
+          s7="$(sha 0007_operator_subject_binding_fence.sql)"
+          test "$s1" = '7ee1feb3316f87b18be2d79d51fbbaeb9d8354dc200c8785b991300ee1c51279'
+          test "$s2" = '80acdac5c7a97257bb8819d752baf52acd091d21ca28a433d448f5a9cb1c129f'
+          test "$s3" = '8bd26bb1e798e1196f64546a0bfd554cfe46c6a5cd9d4414d369bc1cbf98124e'
+          test "$s4" = '4084aba0f461ac1e0da4faf00d630485ba86953d7e63648df8d5468c8ec21980'
+          test "$s5" = 'b37eb4d07125766be98f69b93cb6a5f4ee16298d09e0ab4c118c63c2ba7d2556'
+          test "$s6" = 'b811c33822be02ad515d3ff2678ca7a58cfe7e90dff34c138ce6ace9468a0505'
+          test "$s7" = '1fa9bf930e0977e11e7e920a6daa69265f8863e90b85e190bfecea3b5249e6f0'
+          [[ "$GITHUB_SHA" =~ ^[a-f0-9]{40}$ ]]
+          pw="$(openssl rand -hex 32)"
+          [[ "$pw" =~ ^[a-f0-9]{64}$ ]]
+          apply() {
+            file="$1"; shift
+            PGUSER=saas_schema_migrator PGPASSWORD="$pw" PGOPTIONS='-c saas.staging_only=true' \
+              psql -X -v ON_ERROR_STOP=1 -d saas_staging "$@" \
+              -f "staging/saas-bootstrap/$file" >/tmp/b15-pg16-fixture.log 2>&1 || {
+                echo "Refused ephemeral fixture: $file" >&2
+                exit 1
+              }
+          }
+          PGOPTIONS='-c saas.staging_only=true' \
+            psql -X -v ON_ERROR_STOP=1 -d saas_staging \
+              -v migration_password="$pw" \
+              -f staging/saas-bootstrap/0000_operator_migrator_role.sql \
+              >/tmp/b15-pg16-fixture.log 2>&1 || { echo 'Ephemeral 0000 failed' >&2; exit 1; }
+          apply 0001_ledger_only.sql -v bootstrap_sha256="$s1" -v source_commit="$GITHUB_SHA"
+          apply 0002_tenant_projects_baseline.sql -v expected_0001_sha256="$s1" \
+            -v migration_sha256="$s2" -v source_commit="$GITHUB_SHA"
+          PGOPTIONS='-c saas.staging_only=true' \
+            psql -X -v ON_ERROR_STOP=1 -d saas_staging \
+              -v migration_sha256="$s3" -v source_commit="$GITHUB_SHA" \
+              -f staging/saas-bootstrap/0003_operator_runtime_roles.sql \
+              >/tmp/b15-pg16-fixture.log 2>&1 || { echo 'Ephemeral 0003 failed' >&2; exit 1; }
+          apply 0004_principal_bound_read_rls.sql -v expected_0003_sha256="$s3" \
+            -v migration_sha256="$s4" -v source_commit="$GITHUB_SHA"
+          apply 0005_principal_lifecycle_revocation_fence.sql -v expected_0004_sha256="$s4" \
+            -v migration_sha256="$s5" -v source_commit="$GITHUB_SHA"
+          apply 0006_principal_session_fence.sql -v expected_0005_sha256="$s5" \
+            -v migration_sha256="$s6" -v source_commit="$GITHUB_SHA"
+          PGOPTIONS='-c saas.staging_only=true' \
+            psql -X -v ON_ERROR_STOP=1 -d saas_staging \
+            >/tmp/b15-pg16-fixture.log 2>&1 <<'SQL'
+          ALTER ROLE saas_schema_migrator NOLOGIN PASSWORD NULL;
+          SQL
+          echo 'PASS ephemeral PG16 clean SQL0001-0006, migrator sealed'
+
+      - name: Verify REAL six-receipt PostgreSQL catalog is ABSENT
+        shell: bash
+        env:
+          SAAS_B15_RECONCILE_EXPECTED: absent
+        run: |
+          set -euo pipefail
+          bun scripts/saas-staging/verify-backend15-readonly-ephemeral-pg16.ts
+
+      - name: Apply SQL0007 ONCE and reseal in disposable GitHub PG16
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_ACTIONS" == true && "$PGHOST" == 127.0.0.1 &&
+             "$PGPORT" == 5432 && "$PGDATABASE" == saas_staging ]]
+          if env | grep -Eq '^RAILWAY_(PROJECT_ID|SERVICE_ID)='; then
+            echo 'Refused Railway environment' >&2
+            exit 1
+          fi
+          pw="$(openssl rand -hex 32)"
+          [[ "$pw" =~ ^[a-f0-9]{64}$ ]]
+          PGOPTIONS='-c saas.staging_only=true' \
+            psql -X -v ON_ERROR_STOP=1 -d saas_staging \
+              -v migration_password="$pw" \
+              >/tmp/b15-pg16-fixture.log 2>&1 <<'SQL'
+          ALTER ROLE saas_schema_migrator LOGIN PASSWORD :'migration_password';
+          SQL
+          PGUSER=saas_schema_migrator PGPASSWORD="$pw" PGOPTIONS='-c saas.staging_only=true' \
+            psql -X -v ON_ERROR_STOP=1 -d saas_staging \
+              -v expected_0006_sha256='b811c33822be02ad515d3ff2678ca7a58cfe7e90dff34c138ce6ace9468a0505' \
+              -v migration_sha256='1fa9bf930e0977e11e7e920a6daa69265f8863e90b85e190bfecea3b5249e6f0' \
+              -v source_commit='6cc4a76a0b3144380ccc95f0ca1c275ae312cae3' \
+              -f staging/saas-bootstrap/0007_operator_subject_binding_fence.sql \
+              >/tmp/b15-pg16-fixture.log 2>&1 || {
+                echo 'Ephemeral SQL0007 refused; NEVER retry' >&2
+                exit 1
+              }
+          PGOPTIONS='-c saas.staging_only=true' \
+            psql -X -v ON_ERROR_STOP=1 -d saas_staging \
+              >/tmp/b15-pg16-fixture.log 2>&1 <<'SQL'
+          ALTER ROLE saas_schema_migrator NOLOGIN PASSWORD NULL;
+          SQL
+          unset pw
+          echo 'PASS ephemeral SQL0007 committed once and migrator resealed'
+
+      - name: Verify REAL seven-receipt PostgreSQL catalog is INSTALLED
+        shell: bash
+        env:
+          SAAS_B15_RECONCILE_EXPECTED: installed
+        run: |
+          set -euo pipefail
+          bun scripts/saas-staging/verify-backend15-readonly-ephemeral-pg16.ts

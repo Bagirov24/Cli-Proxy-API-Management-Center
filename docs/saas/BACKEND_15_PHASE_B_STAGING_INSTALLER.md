@@ -38,3 +38,5 @@ After explicit positive Railway deployment and read-back evidence, save the Func
 ## Tests
 
 \`bun test tests/saasBackend15PrivateOnce.test.ts\` is a no-Railway contract test. The pre-existing disposable GitHub Actions PostgreSQL16 suite already exercises migration \`0007\` and subject-binding RLS/revoke behavior; no test touches permanent Railway staging. This phase does not complete OIDC login or trusted tenant provisioning; that requires later security gates.
+
+**Migration receipt author attestation:** SQL0003 creates the NOLOGIN runtime roles, so it is deliberately executed by the PostgreSQL `postgres` operator and its ledger `applied_by` is `postgres`. SQL0001, SQL0002 and SQL0004–0006 (plus SQL0007 when installed) must instead be authored by `saas_schema_migrator`. This exception is explicitly enforced in both preflight and read-back. Any other authorship is STOP, not a reason to retry.
