@@ -63,7 +63,7 @@ BEGIN
   IF n<>2 THEN RAISE EXCEPTION 'B16_READONLY_STOP_TEMPLATE_ROLES'; END IF;
 
   IF (SELECT count(*)::int FROM saas_bootstrap.schema_migrations)
-     <> CASE wanted WHEN 'absent' THEN 7 ELSE 8 END
+     <> (CASE WHEN wanted='absent' THEN 7 ELSE 8 END)
   THEN RAISE EXCEPTION 'B16_READONLY_STOP_RECEIPT_COUNT'; END IF;
 
   WITH expected(id,sha,author) AS (
@@ -84,7 +84,7 @@ BEGIN
      OR m.applied_by IS DISTINCT FROM e.author;
   -- An INSTALLED state has one additional, independently validated SQL0008
   -- receipt, so the FULL JOIN mismatch count is exactly one in that state.
-  IF n<>CASE wanted WHEN 'absent' THEN 0 ELSE 1 END THEN
+  IF n<>(CASE WHEN wanted='absent' THEN 0 ELSE 1 END) THEN
     RAISE EXCEPTION 'B16_READONLY_STOP_PREVIOUS_RECEIPTS';
   END IF;
 
