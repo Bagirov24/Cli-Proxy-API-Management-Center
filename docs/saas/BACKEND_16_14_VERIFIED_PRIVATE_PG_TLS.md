@@ -67,16 +67,19 @@ build artifacts, Railway variables or logs; the test erases temporary
 files after completion. A loopback fake PostgreSQL server accepts only
 the literal eight-byte SSLRequest and then upgrades to a real TLS socket.
 
-The test verifies a valid signed leaf using a pinned synthetic root and
+The Node 24 transport test verifies a valid signed leaf using a pinned synthetic root and
 denies a different root, wrong hostname SAN, **CN-only certificate**,
 plaintext `N` SSL rejection, a hung server after abort, unbranded CA
 objects and malformed local ports. TLS SNI remains the exact private
 hostname even when the TCP socket is loopback.
 
-The isolated acceptance runner executes as a standalone Bun script, not
-an auto-discovered `*.test.ts` in the combined test runner, so its
-OpenSSL generation and real TLS handshake cannot block unrelated unit
-registration. The disposable CI entrypoint requires GitHub Actions and three
+The isolated acceptance runner executes under **Node 24** with
+TypeScript stripping rather than Bun's auto-discovered `*.test.ts` process.
+The real loopback OpenSSL/TLS chain test therefore validates the Node TLS
+transport and security invariant; a separate Bun bundling check validates
+that the same source builds for Bun. **This is not evidence of a real Bun
+TLS handshake on Railway**. That runtime-specific live verification remains
+mandatory before approving the Bun staging driver. The disposable CI entrypoint requires GitHub Actions and three
 positive CI-only environment gates, and refuses all Railway IDs.
 It is not a staging fallback. CI root keys are not approved real roots.
 
