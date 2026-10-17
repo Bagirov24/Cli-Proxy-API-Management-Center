@@ -11,6 +11,7 @@ on:
       - 'tests/sql/saas_backend12_principal_rls.test.sql'
       - 'tests/sql/saas_backend13_principal_lifecycle.test.sql'
       - 'tests/sql/saas_backend14_session_fence.test.sql'
+      - 'tests/sql/saas_backend15_subject_binding.test.sql'
       - 'tests/sql/saas_rls_v1.test.sql'
       - 'tests/sql/saas_rls_signed_scope.test.sql'
       - 'tests/sql/saas_scoped_queries.test.sql'
@@ -1582,6 +1583,12 @@ jobs:
           SAAS_B14_EPHEMERAL_CI=true \
           SAAS_B14_EPHEMERAL_MIGRATOR_PASSWORD="$migrator_password" \
             bash scripts/saas-staging/verify-backend14-session-pg16.sh
+          # Backend15: new operator fingerprint gate; real PG16 auth and
+          # concurrent revoke tests are only in disposable GitHub Actions.
+          bash -n scripts/saas-staging/verify-backend15-subject-binding-pg16.sh
+          SAAS_B15_EPHEMERAL_CI=true \
+          SAAS_B15_EPHEMERAL_MIGRATOR_PASSWORD="$migrator_password" \
+            bash scripts/saas-staging/verify-backend15-subject-binding-pg16.sh
           echo 'PASS Backend10: PG16 tenant/project deny-all RLS, no runtime grants, denied replay/pilot, isolated restore'
           unset migrator_password
           echo 'PASS Backend08: signed migration receipt, no replay, separate CI dump-restore'
@@ -1645,3 +1652,13 @@ jobs:
           test "${PGDATABASE}" = "saas_ephemeral_test"
           test ! -e .env.production
           bun test tests/saasBackend14PrivateSessionOnce.test.ts
+
+      - name: Backend15 server-only subject fingerprint and operator RLS contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          bun test tests/saasBackend15SubjectBinding.test.ts
