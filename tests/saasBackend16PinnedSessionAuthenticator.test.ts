@@ -177,14 +177,9 @@ test('untrusted DB session fields cannot substitute for the verified bearer',asy
   for(const fields of cases) {
     const {authenticate}=await fixture(async key=>snapshot(key,fields));
     const result=await authenticate(await token(),signal());
-    // The adapter cannot attest PG role membership or superuser flags by name;
-    // it only rejects known dangerous roles. Runtime read port must attest
-    // physical session_user and deny elevated / BYPASSRLS roles.
-    if(fields.pgLogin==='pg_superuser'){
-      assert.equal(result?.pgLogin,'pg_superuser');
-    }else{
-      assert.equal(result,null,JSON.stringify(fields));
-    }
+    // The physical PG adapter must ALSO attest real session_user and role
+    // flags. This string guard only rejects known dangerous role namespaces.
+    assert.equal(result,null,JSON.stringify(fields));
   }
 });
 
