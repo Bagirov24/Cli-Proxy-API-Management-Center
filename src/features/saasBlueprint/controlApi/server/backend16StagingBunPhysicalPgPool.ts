@@ -100,13 +100,13 @@ export function createBackend16StagingSqlSequence(){
 type Backend16BunPgProfile=Readonly<{
   hostname:string;
   database:string;
-  tls:'verify-full'|'disable';
+  tls?:'verify-full';
 }>;
 const STAGING_PROFILE:Backend16BunPgProfile=Object.freeze({
   hostname:HOST,database:DATABASE,tls:'verify-full',
 });
 const DISPOSABLE_CI_PROFILE:Backend16BunPgProfile=Object.freeze({
-  hostname:'127.0.0.1',database:'saas_staging_ci',tls:'disable',
+  hostname:'127.0.0.1',database:'saas_staging_ci',
 });
 const runtimeEnv=()=>(globalThis as unknown as {
   process?:{env:Record<string,string|undefined>};
@@ -207,7 +207,8 @@ function buildBackend16StagingPhysicalPgPool(
           adapter:'postgres',hostname:profile.hostname,port:5432,
           database:profile.database,
           username:credentials.username,password:credentials.password,
-          tls:profile.tls,max:1,connectionTimeout:4,idleTimeout:0,
+          ...(profile.tls?{tls:profile.tls}:{}),
+          max:1,connectionTimeout:4,idleTimeout:0,
           prepare:false,
         });
         active.add(native);
