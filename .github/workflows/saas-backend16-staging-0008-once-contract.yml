@@ -1,0 +1,31 @@
+name: SaaS Backend16 SQL0008 One-shot Contract
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/saas-staging/backend16-exact-session-once.ts'
+      - 'tests/saasBackend16ExactOnce.test.ts'
+      - 'staging/saas-bootstrap/0008_exact_subject_session_gate.sql'
+      - 'docs/saas/BACKEND_16_PHASE_C_STAGING_0008_ONESHOT.md'
+      - '.github/workflows/saas-backend16-staging-0008-once-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  immutable-installer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Validate exact SHA, source-commit, isolation and unknown COMMIT gates
+        run: bun test tests/saasBackend16ExactOnce.test.ts tests/saasBackend16ExactSessionGate.test.ts
+      - name: Typecheck repository after installer addition
+        run: bun run type-check
+      - name: Verify PostgreSQL16 isolated disposable acceptance syntax
+        run: bash -n scripts/saas-staging/verify-backend16-exact-session-pg16.sh
