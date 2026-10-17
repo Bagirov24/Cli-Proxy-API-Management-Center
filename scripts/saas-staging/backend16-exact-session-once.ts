@@ -41,7 +41,7 @@ function environment():URL {
      e.RAILWAY_SERVICE_ID===DB_SERVICE ||
      e.SAAS_B16_APPLY_EXPLICIT_ENABLE!=='true' ||
      e.SAAS_B16_ACCEPT_DISPOSABLE_STAGING!=='true' ||
-     e.GITHUB_ACTIONS==='true' || e.NODE_ENV==='production')refuse();
+     e.GITHUB_ACTIONS==='true')refuse();
   const raw=e.STAGING_POSTGRES_PRIVATE_URL;
   if(typeof raw!=='string'||raw.length<35||raw.length>1024)refuse();
   let url:URL;
