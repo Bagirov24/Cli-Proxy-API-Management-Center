@@ -30,6 +30,9 @@ describe('Backend15 private immutable 0007 one-shot staging installer',()=>{
      'b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b',
      '37f8f166-75a6-4617-b243-8e681181c16d'])expect(source).toContain(id);
    expect(source).toContain("RUNNER='saas-b15-binding-once'");
+   expect(source).toContain("RUNNER_SERVICE_ID='8ab01c09-d9c3-4a48-af49-73f43dab579c'");
+   expect(source).toContain("e.RAILWAY_SERVICE_ID!==RUNNER_SERVICE_ID");
+   expect(source).not.toContain("!/^[0-9a-f-]{36}$/.test(e.RAILWAY_SERVICE_ID)");
    expect(source).toContain("e.SAAS_B15_APPLY_EXPLICIT_ENABLE!=='true'");
    expect(source).toContain("e.SAAS_B15_ACCEPT_DISPOSABLE_STAGING!=='true'");
    expect(source).toContain("u.hostname!=='postgres.railway.internal'");

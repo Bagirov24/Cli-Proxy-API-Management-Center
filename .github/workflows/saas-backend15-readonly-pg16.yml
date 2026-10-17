@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'scripts/saas-staging/backend15-readonly-reconcile.ts'
+      - 'scripts/saas-staging/backend15-subject-binding-once.ts'
+      - 'tests/saasBackend15PrivateOnce.test.ts'
       - 'scripts/saas-staging/verify-backend15-readonly-ephemeral-pg16.ts'
       - 'staging/saas-bootstrap/**'
       - '.github/workflows/saas-backend15-readonly-pg16.yml'
