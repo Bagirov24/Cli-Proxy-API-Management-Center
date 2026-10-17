@@ -77,6 +77,7 @@ function validPrincipal(p:unknown,now:number):p is VerifiedPrincipal{
     !RESERVED.has(x.pgLogin)&&!x.pgLogin.startsWith('pg_') &&
     typeof x.sessionId==='string'&&UUID.test(x.sessionId) &&
     typeof x.bindingId==='string'&&UUID.test(x.bindingId) &&
+    typeof x.sessionExpiresAtMs==='number' &&
     Number.isSafeInteger(x.sessionExpiresAtMs) &&
     x.sessionExpiresAtMs>now&&x.sessionExpiresAtMs<=now+900_000;
 }
