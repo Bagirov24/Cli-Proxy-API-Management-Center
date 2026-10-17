@@ -4,6 +4,9 @@ on:
     paths:
       - 'scripts/saas-staging/backend15-subject-binding-once.ts'
       - 'tests/saasBackend15PrivateOnce.test.ts'
+      - 'scripts/saas-staging/backend15-readonly-reconcile.ts'
+      - 'tests/saasBackend15ReadOnlyReconcile.test.ts'
+      - 'docs/saas/BACKEND_15_READONLY_RECONCILIATION.md'
       - '.github/workflows/saas-staging-rls-ci.yml'
   workflow_dispatch:
 jobs:
@@ -12,4 +15,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-      - run: bun test tests/saasBackend15PrivateOnce.test.ts
+      - run: bun test tests/saasBackend15PrivateOnce.test.ts tests/saasBackend15ReadOnlyReconcile.test.ts
