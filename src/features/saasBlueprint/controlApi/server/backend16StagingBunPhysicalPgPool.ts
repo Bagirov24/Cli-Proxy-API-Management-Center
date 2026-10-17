@@ -107,7 +107,7 @@ export function createBackend16StagingBunPhysicalPgPool(
      env.RAILWAY_PROJECT_ID!==PROJECT||
      env.RAILWAY_ENVIRONMENT_ID!==ENVIRONMENT||
      env.RAILWAY_SERVICE_ID!==SERVICE||
-     env.RAILWAY_ENVIRONMENT!=='staging'||
+     env.RAILWAY_ENVIRONMENT_NAME!=='staging'||
      env.SAAS_B16_STAGING_0008_INDEPENDENT_READBACK!=='true'||
      env.SAAS_B16_STAGING_PRIVATE_ONLY!=='true'||
      env.GITHUB_ACTIONS==='true'||
@@ -199,7 +199,13 @@ export function createBackend16StagingBunPhysicalPgPool(
             throw new Error('Backend16 staging SQL refused');
           }
           busy=true;
-          const query=connection.unsafe(sql,[...params]);
+          let query:NativeQuery;
+          try{query=connection.unsafe(sql,[...params]);}
+          catch{
+            busy=false;
+            quarantine('query-uncertain');
+            throw new Error('Backend16 staging physical query creation failed');
+          }
           const signal=AbortSignal.any([
             request,AbortSignal.timeout(6000),
           ]);
