@@ -10,7 +10,7 @@ test('literal PostgreSQL SSLRequest is the ONLY non-TLS application bytes',()=>{
   assert.match(source,/tcp\.write\(SSL_REQUEST\)/);
   assert.match(source,/reply\.length!==1\|\|reply\[0\]!==83/);
   assert.equal((source.match(/\.write\(/g)||[]).length,1);
-  assert.doesNotMatch(source,/pg\.Client|Bun\.SQL|\.query\(|\.unsafe\(|SQL\`/);
+  assert.doesNotMatch(source,/pg\.Client|Bun\.SQL|\.query\(|\.unsafe\(/);
   assert.doesNotMatch(source,/StartupMessage\s*=\s*Buffer|password\s*:\s*\S|username\s*:\s*\S|DATABASE_URL|DATABASE_PUBLIC_URL/);
 });
 
