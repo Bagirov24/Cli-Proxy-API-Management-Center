@@ -19,6 +19,10 @@ on:
       - 'tests/saasBackend16StagingPgTlsTrust.test.ts'
       - 'src/features/saasBlueprint/controlApi/server/backend16StagingVersionedPrincipalVault.ts'
       - 'tests/saasBackend16StagingVersionedPrincipalVault.test.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16PrivateMtlsVersionedSecretReader.ts'
+      - 'tests/saasBackend16PrivateMtlsVersionedSecretReader.test.ts'
+      - 'scripts/saas-staging/verify-backend16-mtls-secret-broker-ci.ts'
+      - 'docs/saas/BACKEND_16_15_PRIVATE_MTLS_SECRET_BROKER.md'
       - 'docs/saas/BACKEND_16_11_VERSIONED_PRINCIPAL_VAULT.md'
       - 'tests/fixtures/backend16-synthetic-root-ca.pem'
       - 'docs/saas/BACKEND_16_10_OPERATOR_PINNED_PG_TLS.md'
@@ -48,12 +52,19 @@ jobs:
     timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
       - name: Fail-closed HTTP and origin-injection contracts
-        run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts tests/saasBackend16PinnedSessionAuthenticator.test.ts tests/saasBackend16PhysicalPgAdmission.test.ts tests/saasBackend16ExactSessionGate.test.ts tests/saasBackend16ExactSessionSqlRead.test.ts tests/saasBackend16CiBunPhysicalPgPool.test.ts tests/saasBackend16StagingBunPhysicalPgPool.test.ts tests/saasBackend16StagingPgTlsTrust.test.ts tests/saasBackend16StagingVersionedPrincipalVault.test.ts tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts
+        run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts tests/saasBackend16PinnedSessionAuthenticator.test.ts tests/saasBackend16PhysicalPgAdmission.test.ts tests/saasBackend16ExactSessionGate.test.ts tests/saasBackend16ExactSessionSqlRead.test.ts tests/saasBackend16CiBunPhysicalPgPool.test.ts tests/saasBackend16StagingBunPhysicalPgPool.test.ts tests/saasBackend16StagingPgTlsTrust.test.ts tests/saasBackend16StagingVersionedPrincipalVault.test.ts tests/saasBackend16PrivateMtlsVersionedSecretReader.test.ts tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts
+      - name: Real disposable Node24 mutual TLS versioned secret service acceptance
+        run: node --experimental-strip-types scripts/saas-staging/verify-backend16-mtls-secret-broker-ci.ts
+      - name: Bun build of broker mTLS transport module
+        run: bun build --target=bun src/features/saasBlueprint/controlApi/server/backend16PrivateMtlsVersionedSecretReader.ts --outdir /tmp/b16-mtls-secret-transport
       - name: Validate Backend16.4 disposable PG16 runner syntax
         run: bash -n scripts/saas-staging/verify-backend16-exact-session-pg16.sh
       - name: Strict TypeScript for full source
