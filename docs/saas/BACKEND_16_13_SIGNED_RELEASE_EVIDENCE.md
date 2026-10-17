@@ -54,6 +54,11 @@ not change signed bytes. External records must contain exactly the known
 properties, be plain records with no getters or extra keys, use the
 approved role and signer ID and have a valid Ed25519 signature over
 all properties.
+The verifier also makes a **synchronous immutable snapshot** of the
+operator keyset and all evidence records before invoking any asynchronous
+WebCrypto call or test clock callback. Mutating a supplied JavaScript
+object while signatures are checked cannot change the reviewed subject.
+Concurrent key/proof replacement is covered by a regression test.
 
 ## Evidence sequence and expiry
 
