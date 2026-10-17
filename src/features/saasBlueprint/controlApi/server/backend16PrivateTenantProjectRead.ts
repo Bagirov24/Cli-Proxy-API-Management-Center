@@ -8,8 +8,10 @@
  * In particular, a JWT fingerprint or client tenant ID is NOT authorization.
  * The database port must select and authenticate a distinct physical PG LOGIN
  * for the verified subject; recheck current grant/session/subject binding in
- * one READ ONLY transaction while holding the required FOR SHARE locks and
- * respecting FORCE RLS. No SET ROLE or client-controlled GUC impersonation.
+ * one bounded READ COMMITTED transaction using server-owned SELECTs and
+ * required FOR SHARE locks. PostgreSQL READ ONLY forbids those row locks;
+ * enforce least-privilege/no-DML through roles and driver allowlists instead.
+ * FORCE RLS remains mandatory. No SET ROLE or client-controlled GUC.
  */
 
 export type VerifiedPrincipal = Readonly<{
