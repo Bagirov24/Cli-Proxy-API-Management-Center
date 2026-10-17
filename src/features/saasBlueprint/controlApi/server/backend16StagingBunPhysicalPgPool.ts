@@ -1,0 +1,265 @@
+/**
+ * Backend16.9: staging-only candidate for real Bun.SQL physical PostgreSQL
+ * connections. NOT mounted, NOT a credential vault, NOT production-approved.
+ *
+ * Only an operator-owned, server-side vault may resolve each exact LOGIN.
+ * A fresh max:1 native pool is reserved for each request and closed before the
+ * caller can publish a response. No SET ROLE, client credentials, dynamic SQL,
+ * reusable connection, automatic retry, HTTP listener or migration privileges.
+ *
+ * Deployment MUST remain blocked until SQL0008 is independently reconciled as
+ * installed, private TLS identity is reviewed, and the staging audit/authority
+ * gates are complete. The runtime opt-in flags are defense in depth, not proof.
+ */
+import type {
+  Backend16PhysicalPgConnection, Backend16PhysicalPgPool, Backend16PgRow,
+} from './backend16PhysicalPgAdmission';
+import {BACKEND16_EXACT_READ_SQL as SQL}
+  from './backend16ExactSessionSqlRead';
+
+type NativeRow=Record<string,unknown>;
+type NativeQuery={execute():PromiseLike<NativeRow[]>;cancel():void};
+type NativeReserved={
+  unsafe(sql:string,params?:string[]):NativeQuery;
+  release():void;
+};
+type NativeSQL={
+  reserve(options?:{signal:AbortSignal}):Promise<NativeReserved>;
+  close(options?:{timeout:number}):Promise<void>;
+};
+type NativeCtor=new(options:Readonly<Record<string,unknown>>)=>NativeSQL;
+
+export interface Backend16StagingPrincipalVault {
+  /** Must resolve ONLY the exact server-authorized LOGIN, never client data. */
+  readPrincipal(login:string,signal:AbortSignal):Promise<
+    Readonly<{username:string;password:string}>
+  >;
+}
+
+const PROJECT='a9703851-6eb1-406c-bb15-7d3a89359fb7';
+const ENVIRONMENT='b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b';
+const SERVICE='a0ff5420-95e8-4fab-88f6-623f75dd03c6';
+const HOST='postgres.railway.internal';
+const DATABASE='saas_staging';
+const MAX_ACTIVE=4;
+const LOGIN=/^[a-z][a-z0-9_]{2,62}$/;
+const PASSWORD=/^[\x21-\x7e]{32,256}$/;
+const FORBIDDEN=new Set([
+  'postgres','saas_schema_migrator','saas_runtime_reader',
+  'saas_runtime_writer',
+]);
+const PARAM_COUNTS=new Map<string,number>([
+  [SQL.begin,0],[SQL.statementTimeout,0],[SQL.lockTimeout,0],
+  [SQL.identity,0],[SQL.exact,4],[SQL.tenant,1],
+  [SQL.projects,1],[SQL.commit,0],
+]);
+type Step=keyof typeof SQL|'done';
+
+/**
+ * Pure request-local state machine; exported to test its exact protocol
+ * without creating Railway connections or accepting test credentials.
+ * The adapter independently verifies physical session_user / PID and rows.
+ */
+export function createBackend16StagingSqlSequence(){
+  let step:Step='begin';
+  return Object.freeze({
+    check(sql:string,params:readonly string[]):void{
+      if(step==='done'||sql!==SQL[step]||
+         !Array.isArray(params)||params.length!==PARAM_COUNTS.get(sql)||
+         params.some(p=>typeof p!=='string'||p.length>256))
+        throw new Error('Backend16 staging SQL protocol refused');
+    },
+    completed(sql:string,rows:readonly Backend16PgRow[]):void{
+      if(step==='done'||sql!==SQL[step]||!Array.isArray(rows))
+        throw new Error('Backend16 staging SQL result refused');
+      if(step==='exact'){
+        if(rows.length!==1||Object.keys(rows[0]??{}).join(',')!=='allowed'||
+           typeof rows[0].allowed!=='boolean')
+          throw new Error('Backend16 staging exact gate refused');
+        step=rows[0].allowed===true?'tenant':'commit';
+        return;
+      }
+      const next:Partial<Record<Step,Step>>={
+        begin:'statementTimeout',statementTimeout:'lockTimeout',
+        lockTimeout:'identity',identity:'exact',
+        tenant:'projects',projects:'commit',commit:'done',
+      };
+      const nextStep=next[step];
+      if(!nextStep)throw new Error('Backend16 staging SQL transition refused');
+      step=nextStep;
+    },
+    finished():boolean{return step==='done';},
+  });
+}
+
+/**
+ * Injecting a vault interface does NOT implement a trusted vault. Production
+ * and real staging deployment remain prohibited until a separately audited
+ * server-only resolver and release gates exist. No secret ever enters logs.
+ */
+export function createBackend16StagingBunPhysicalPgPool(
+  vault:Backend16StagingPrincipalVault,
+):Backend16PhysicalPgPool & {shutdown():Promise<void>} {
+  const env=(globalThis as unknown as {
+    process?:{env:Record<string,string|undefined>};
+  }).process?.env??{};
+  if(!vault||typeof vault.readPrincipal!=='function'||
+     env.RAILWAY_PROJECT_ID!==PROJECT||
+     env.RAILWAY_ENVIRONMENT_ID!==ENVIRONMENT||
+     env.RAILWAY_SERVICE_ID!==SERVICE||
+     env.RAILWAY_ENVIRONMENT!=='staging'||
+     env.SAAS_B16_STAGING_0008_INDEPENDENT_READBACK!=='true'||
+     env.SAAS_B16_STAGING_PRIVATE_ONLY!=='true'||
+     env.GITHUB_ACTIONS==='true'||
+     env.SAAS_B16_EPHEMERAL_CI==='true')
+    throw new Error('Backend16 staging driver release gates not met');
+  const Ctor=(globalThis as unknown as {Bun?:{SQL?:NativeCtor}}).Bun?.SQL;
+  if(typeof Ctor!=='function')
+    throw new Error('Backend16 staging Bun.SQL unavailable');
+
+  let stopped=false;
+  let slots=0;
+  const active=new Set<NativeSQL>();
+  const closeImmediately=(native:NativeSQL):void=>{
+    try{void native.close({timeout:0}).catch(()=>{/* fail closed */});}
+    catch{/* fail closed */}
+  };
+  const quarantine:Backend16PhysicalPgPool['quarantine']=(_reason)=>{
+    stopped=true; // synchronous barrier, before any asynchronous close
+    for(const native of active)closeImmediately(native);
+  };
+  const assertAvailable=(signal:AbortSignal):void=>{
+    if(stopped||signal.aborted)
+      throw new Error('Backend16 staging physical backend unavailable');
+  };
+
+  return Object.freeze({
+    quarantine,
+    async acquirePrincipal(login:string,requestSignal:AbortSignal):
+      Promise<Backend16PhysicalPgConnection> {
+      if(!requestSignal||requestSignal.aborted||stopped||
+         typeof login!=='string'||!LOGIN.test(login)||
+         FORBIDDEN.has(login)||login.startsWith('pg_')||
+         slots>=MAX_ACTIVE)
+        throw new Error('Backend16 staging physical LOGIN refused');
+      slots++;
+      const signal=AbortSignal.any([
+        requestSignal,AbortSignal.timeout(6500),
+      ]);
+      let native:NativeSQL|undefined;
+      let reserved:NativeReserved|undefined;
+      try{
+        const credentials=await vault.readPrincipal(login,signal);
+        assertAvailable(signal);
+        if(!credentials||credentials.username!==login||
+           typeof credentials.password!=='string'||
+           !PASSWORD.test(credentials.password))
+          throw new Error('Backend16 staging vault mapping refused');
+        native=new Ctor({
+          adapter:'postgres',hostname:HOST,port:5432,database:DATABASE,
+          username:credentials.username,password:credentials.password,
+          tls:'verify-full',max:1,connectionTimeout:4,idleTimeout:0,
+          prepare:false,
+        });
+        active.add(native);
+        reserved=await native.reserve({signal});
+        assertAvailable(signal);
+        // Same reserved physical LOGIN, never a user-supplied tenant GUC.
+        await reserved.unsafe(
+          "SELECT pg_catalog.set_config('saas.staging_only','true',false)",[],
+        ).execute();
+        assertAvailable(signal);
+      }catch{
+        quarantine('acquire-uncertain');
+        if(native){
+          closeImmediately(native);
+          active.delete(native);
+        }
+        slots--;
+        throw new Error('Backend16 staging physical acquisition failed');
+      }
+      if(!native||!reserved){
+        quarantine('acquire-uncertain');
+        throw new Error('Backend16 staging native reservation missing');
+      }
+      const db=native;
+      const connection=reserved;
+      const sequence=createBackend16StagingSqlSequence();
+      let closed=false;
+      let busy=false;
+      return Object.freeze({
+        async query(sql:string,params:readonly string[],request:AbortSignal){
+          if(!request||closed||busy||stopped||request.aborted){
+            quarantine('query-uncertain');
+            throw new Error('Backend16 staging physical query unavailable');
+          }
+          try{sequence.check(sql,params);}
+          catch{
+            quarantine('query-uncertain');
+            throw new Error('Backend16 staging SQL refused');
+          }
+          busy=true;
+          const query=connection.unsafe(sql,[...params]);
+          const signal=AbortSignal.any([
+            request,AbortSignal.timeout(6000),
+          ]);
+          let aborted=false;
+          const cancel=()=>{
+            aborted=true;
+            quarantine('query-uncertain');
+            try{query.cancel();}catch{/* destroy native pool regardless */}
+          };
+          signal.addEventListener('abort',cancel,{once:true});
+          if(signal.aborted)cancel();
+          try{
+            if(aborted)throw new Error('Backend16 staging query aborted');
+            const result=await query.execute();
+            if(aborted||stopped||signal.aborted||!Array.isArray(result))
+              throw new Error('Backend16 staging query uncertain');
+            sequence.completed(sql,result);
+            return {rows:result as readonly Backend16PgRow[]};
+          }catch{
+            quarantine('query-uncertain');
+            throw new Error('Backend16 staging physical SQL failed');
+          }finally{
+            signal.removeEventListener('abort',cancel);
+            busy=false;
+          }
+        },
+        async release(discard:boolean){
+          if(closed){
+            quarantine('release-uncertain');
+            throw new Error('Backend16 staging duplicate release');
+          }
+          closed=true;
+          if(!discard&&!sequence.finished()){
+            quarantine('release-uncertain');
+            discard=true;
+          }
+          try{
+            if(discard||stopped){
+              await db.close({timeout:0});
+              try{connection.release();}catch{/* destroyed backend */}
+            }else{
+              connection.release();
+              await db.close({timeout:0});
+            }
+          }catch{
+            quarantine('release-uncertain');
+            throw new Error('Backend16 staging physical close uncertain');
+          }finally{
+            active.delete(db);
+            slots--;
+          }
+          if(discard||stopped)
+            throw new Error('Backend16 staging physical backend discarded');
+        },
+      });
+    },
+    async shutdown():Promise<void>{
+      quarantine('release-uncertain');
+      await Promise.allSettled([...active].map(db=>db.close({timeout:0})));
+      active.clear();
+    },
+  });
+}
