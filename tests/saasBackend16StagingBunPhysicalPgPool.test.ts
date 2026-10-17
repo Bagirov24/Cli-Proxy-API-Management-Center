@@ -143,3 +143,27 @@ test('hung vault cannot hang physical acquisition after abort',()=>{
     'await hungVaultPool.shutdown()',
   ])assert.ok(pgRunner.includes(marker),marker);
 });
+
+test('discard releases exclusively owned reservation before closing native PG pool',()=>{
+  const discard=source.slice(
+    source.indexOf('if(discard||stopped){'),
+    source.indexOf('}else{',source.indexOf('if(discard||stopped){')),
+  );
+  assert.match(discard,/connection\.release\(\)/);
+  assert.match(discard,/await db\.close\(\{timeout:0\}\)/);
+  assert.ok(discard.indexOf('connection.release()')<
+    discard.indexOf('await db.close({timeout:0})'),
+    'Bun.SQL close must not await an unreleased reserved physical client');
+  assert.ok(source.includes('if(reserved){try{reserved.release();}'));
+  const e2e=readFileSync(new URL(
+    '../scripts/saas-staging/verify-backend16-bun-physical-pid-ci.ts',
+    import.meta.url),'utf8');
+  const shell=readFileSync(new URL(
+    '../scripts/saas-staging/verify-backend16-exact-session-pg16.sh',
+    import.meta.url),'utf8');
+  assert.ok(e2e.includes('B16_CI_PHASE_10_STAGE_DISCARD'));
+  assert.ok(e2e.includes('await gone(stagePid as number)'));
+  assert.ok(e2e.includes("stagingRead(a,ta,fresh())"),
+    'discard must not poison otherwise healthy independent requests');
+  assert.match(shell,/timeout --signal=TERM --kill-after=3s 110s/);
+});
