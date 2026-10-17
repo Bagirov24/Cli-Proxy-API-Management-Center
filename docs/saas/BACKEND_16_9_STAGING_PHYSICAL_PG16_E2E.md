@@ -99,3 +99,28 @@ cancellation: it rejects rather than waiting indefinitely. This **does not**
 prove a real external vault is reliable or does not retain late-arriving
 secrets. Treat vault implementation, rotation, independent physical-login
 attestation, TLS identity and durable audit as separate production gates.
+
+## Bun.SQL reservation discard regression (2026-10-17)
+
+The combined `tenant-rls` GitHub job previously reached Backend16 after
+Backend12–15 were successful, but hung until its 10-/25-minute job cap.
+A subsequent **110-second watchdog with redacted phase markers** narrowed
+the actual hang to `B16_CI_PHASE_10_STAGE_DISCARD`: attempting to await
+`db.close({timeout:0})` **before releasing the native `sql.reserve()`
+handle** during an unfinished read transaction.
+
+Backend16.9 now releases its exclusive reservation first and immediately
+closes that **request-private** `max:1` native pool. Since no other caller
+can access that particular pool or reserved handle, the release cannot
+make an uncommitted read transaction available to another request. The
+outer adapter still withholds every DTO until the backend close and
+acknowledged transaction commit are complete. An uncertain release or
+close poisons the shared admission gate and refuses publication; no
+transaction replay occurs.
+
+The disposable PG16 E2E verifies both the discarded PID's removal from
+`pg_stat_activity` and subsequent authorized access via a **new**
+distinct physical connection. This code remains **UNMOUNTED** and
+requires exact-head PostgreSQL16 CI SUCCESS plus security review before
+any merge, and operator TLS/vault/audit/session approval before staging.
+This fix never interacts with permanent Railway PostgreSQL or Core.
