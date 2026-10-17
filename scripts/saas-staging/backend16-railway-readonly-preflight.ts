@@ -57,6 +57,11 @@ try{
   await connection.unsafe('SET LOCAL search_path = pg_catalog, pg_temp',[]).execute();
   await connection.unsafe("SET LOCAL statement_timeout = '15000ms'",[]).execute();
   await connection.unsafe("SET LOCAL lock_timeout = '3000ms'",[]).execute();
+  // Match the audited psql operator invocation's
+  // PGOPTIONS='-c saas.staging_only=true'. A LOCAL, immutable scope tag,
+  // never a database role, tenant claim, grant, schema mutation or proof.
+  // Private host+DB+Railway IDs and catalog guards are separately pinned.
+  await connection.unsafe("SELECT pg_catalog.set_config('saas.staging_only','true',true)",[]).execute();
   await connection.unsafe("SELECT pg_catalog.set_config('saas.b16.reconcile_expected','absent',true)",[]).execute();
   phase='CATALOG';
   await connection.unsafe(RECONCILE_DO_SQL,[]).execute();
