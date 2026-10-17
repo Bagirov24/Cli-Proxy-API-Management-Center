@@ -12,6 +12,8 @@ on:
       - 'tests/sql/saas_backend13_principal_lifecycle.test.sql'
       - 'tests/sql/saas_backend14_session_fence.test.sql'
       - 'tests/sql/saas_backend15_subject_binding.test.sql'
+      - 'tests/sql/saas_backend16_exact_session_gate.test.sql'
+      - 'tests/saasBackend16ExactSessionGate.test.ts'
       - 'tests/sql/saas_rls_v1.test.sql'
       - 'tests/sql/saas_rls_signed_scope.test.sql'
       - 'tests/sql/saas_scoped_queries.test.sql'
@@ -1591,6 +1593,12 @@ jobs:
           SAAS_B15_EPHEMERAL_CI=true \
           SAAS_B15_EPHEMERAL_MIGRATOR_PASSWORD="$migrator_password" \
             bash scripts/saas-staging/verify-backend15-subject-binding-pg16.sh
+          # Backend16.4: isolated real PG16 exact subject/session/binding and
+          # physical per-LOGIN revocation race, after Backend15 fixture cleanup.
+          bash -n scripts/saas-staging/verify-backend16-exact-session-pg16.sh
+          SAAS_B16_EPHEMERAL_CI=true \
+          SAAS_B16_EPHEMERAL_MIGRATOR_PASSWORD="$migrator_password" \
+            bash scripts/saas-staging/verify-backend16-exact-session-pg16.sh
           echo 'PASS Backend10: PG16 tenant/project deny-all RLS, no runtime grants, denied replay/pilot, isolated restore'
           unset migrator_password
           echo 'PASS Backend08: signed migration receipt, no replay, separate CI dump-restore'
