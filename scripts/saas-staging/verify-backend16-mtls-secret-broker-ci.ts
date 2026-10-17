@@ -4,12 +4,13 @@
  * No real LOGINs or credentials; all private keys are deleted at end.
  */
 import assert from 'node:assert/strict';
-import {execFileSync} from 'node:child_process';
+import {execFileSync,spawn} from 'node:child_process';
 import {createHash,X509Certificate} from 'node:crypto';
 import {mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {createServer} from 'node:https';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {
   createBackend16DisposableCiMtlsSecretReader,
   createBackend16StagingMtlsSecretReader,
@@ -87,6 +88,41 @@ function secret(version=VERSION,expiry=Date.now()+120_000){
 }
 type Behaviour='pass'|'wrong-version'|'expired'|'extra'|'duplicate'|
   'redirect'|'absent'|'oversize'|'hang';
+async function runBunClient(port:number):Promise<void>{
+  const target=fileURLToPath(new URL(
+    './verify-backend16-bun-mtls-secret-client-ci.ts',import.meta.url));
+  const args=[
+    target,String(port),join(dir,'root.pem'),
+    join(dir,'client.pem'),join(dir,'client.key'),
+  ];
+  const child=spawn('bun',args,{
+    env:process.env,stdio:['ignore','pipe','pipe'],
+  });
+  let marker=false;
+  child.stdout.on('data',(part:Uint8Array)=>{
+    if(Buffer.from(part).toString('utf8').includes(
+      'B16_MTLS_BROKER_BUN_CLIENT_PASS'))marker=true;
+  });
+  // Suppress child TLS diagnostics, which may include sensitive metadata
+  // in real integrations. CI reports a generic failed test only.
+  child.stderr.on('data',()=>{});
+  await new Promise<void>((resolve,reject)=>{
+    const timeout=setTimeout(()=>{
+      child.kill('SIGKILL');
+      reject(new Error('B16 Bun mTLS acceptance deadline exceeded'));
+    },12_000);
+    child.once('error',()=>{
+      clearTimeout(timeout);
+      reject(new Error('B16 Bun mTLS child unavailable'));
+    });
+    child.once('exit',(code)=>{
+      clearTimeout(timeout);
+      if(code===0&&marker)resolve();
+      else reject(new Error('B16 Bun mTLS acceptance failed'));
+    });
+  });
+}
+
 async function broker(
   rootPem:string,serverCert:{pem:string;key:string},
   requiredClient:string,
@@ -179,6 +215,12 @@ try{
       clientAuthorized:true,
     });
     console.info('B16_MTLS_BROKER_CI_AUTHORIZED_PASS');
+    good.choose('pass');
+    const beforeBun=good.calls();
+    await runBunClient(good.port);
+    assert.equal(good.calls(),beforeBun+1,
+      'actual Bun client must perform one independent mTLS GET');
+    console.info('B16_MTLS_BROKER_CI_BUN_CLIENT_PASS');
 
     good.choose('absent');
     await assert.rejects(vault.readPrincipal(A,new AbortController().signal));
