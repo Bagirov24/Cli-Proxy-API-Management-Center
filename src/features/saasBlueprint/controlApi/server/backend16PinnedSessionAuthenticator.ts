@@ -20,7 +20,7 @@ import type {Backend16PrivateReadPorts, VerifiedPrincipal}
 
 const SHA256 = /^[a-f0-9]{64}$/;
 const LOGIN = /^[a-z][a-z0-9_]{2,62}$/;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const JWT = /^[A-Za-z0-9_-]{1,2048}\.[A-Za-z0-9_-]{1,4096}\.[A-Za-z0-9_-]{1,2048}$/;
 const FORBIDDEN_LOGINS = new Set([
   'postgres','saas_schema_migrator','saas_runtime_reader','saas_runtime_writer',
@@ -71,46 +71,25 @@ export interface Backend16PinnedSessionOptions {
 function positiveNow(now: unknown): now is number {
   return typeof now === 'number' && Number.isSafeInteger(now) && now > 0;
 }
-/**
- * Internal structural reason tags, never exposed in an HTTP response.
- * These check SHAPE ONLY and do not prove that a PostgreSQL role is trusted.
- */
-export function backend16SessionShapeErrors(
-  snapshot: Backend16CurrentSessionSnapshot | null,
-  key: Backend16PinnedSessionLookupKey,
-  now: number,
-): readonly string[] {
-  if(!snapshot) return Object.freeze(['absent']);
-  const errors:string[]=[];
-  if(!positiveNow(now)) errors.push('clock');
-  if(snapshot.issuer!==key.issuer) errors.push('issuer');
-  if(snapshot.subjectFingerprintSha256!==key.subjectFingerprintSha256)
-    errors.push('subject');
-  if(snapshot.tokenFingerprintSha256!==key.tokenFingerprintSha256)
-    errors.push('bearer');
-  if(!SHA256.test(snapshot.subjectFingerprintSha256)) errors.push('subject-format');
-  if(!SHA256.test(snapshot.tokenFingerprintSha256)) errors.push('bearer-format');
-  if(typeof snapshot.pgLogin!=='string'||!LOGIN.test(snapshot.pgLogin))
-    errors.push('login-format');
-  if(FORBIDDEN_LOGINS.has(snapshot.pgLogin)||snapshot.pgLogin.startsWith('pg_'))
-    errors.push('login-reserved');
-  if(typeof snapshot.sessionId!=='string'||!UUID.test(snapshot.sessionId))
-    errors.push('session-id');
-  if(typeof snapshot.bindingId!=='string'||!UUID.test(snapshot.bindingId))
-    errors.push('binding-id');
-  if(!Number.isSafeInteger(snapshot.sessionExpiresAtMs))
-    errors.push('session-time-type');
-  if(positiveNow(now) && (snapshot.sessionExpiresAtMs<=now ||
-     snapshot.sessionExpiresAtMs>now+MAX_SESSION_MS)) errors.push('session-time-range');
-  return Object.freeze(errors);
-}
-/** Structural matching only; no proof of real DB authorization. */
+/** Structural matching only; no proof that a PG connection is authenticated. */
 export function backend16SessionSnapshotMatches(
   snapshot: Backend16CurrentSessionSnapshot | null,
   key: Backend16PinnedSessionLookupKey,
   now: number,
 ): snapshot is Backend16CurrentSessionSnapshot {
-  return backend16SessionShapeErrors(snapshot,key,now).length===0;
+  if (!snapshot || !positiveNow(now) || snapshot.issuer !== key.issuer ||
+      snapshot.subjectFingerprintSha256 !== key.subjectFingerprintSha256 ||
+      snapshot.tokenFingerprintSha256 !== key.tokenFingerprintSha256 ||
+      !SHA256.test(snapshot.subjectFingerprintSha256) ||
+      !SHA256.test(snapshot.tokenFingerprintSha256) ||
+      typeof snapshot.pgLogin !== 'string' || !LOGIN.test(snapshot.pgLogin) ||
+      FORBIDDEN_LOGINS.has(snapshot.pgLogin) || snapshot.pgLogin.startsWith('pg_') ||
+      typeof snapshot.sessionId !== 'string' || !UUID.test(snapshot.sessionId) ||
+      typeof snapshot.bindingId !== 'string' || !UUID.test(snapshot.bindingId) ||
+      !Number.isSafeInteger(snapshot.sessionExpiresAtMs) ||
+      snapshot.sessionExpiresAtMs <= now ||
+      snapshot.sessionExpiresAtMs > now + MAX_SESSION_MS) return false;
+  return true;
 }
 
 async function sha256(value: string): Promise<string> {
