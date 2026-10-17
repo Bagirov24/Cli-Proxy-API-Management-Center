@@ -48,6 +48,9 @@ jobs:
     timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
@@ -57,7 +60,7 @@ jobs:
       - name: Validate Backend16.4 disposable PG16 runner syntax
         run: bash -n scripts/saas-staging/verify-backend16-exact-session-pg16.sh
       - name: Real loopback verified-full PostgreSQL TLS (isolated Bun test process)
-        run: bun scripts/saas-staging/verify-backend16-verified-private-pg-tls-ci.ts
+        run: node --experimental-strip-types scripts/saas-staging/verify-backend16-verified-private-pg-tls-ci.ts
       - name: Bundle no-credential PostgreSQL verify-full handshake
         run: bun build --target=bun src/features/saasBlueprint/controlApi/server/backend16VerifiedPrivatePgTls.ts --outdir /tmp/b16-pg-verify-full
       - name: Strict TypeScript for full source
