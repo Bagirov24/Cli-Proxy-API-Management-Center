@@ -60,7 +60,7 @@ authorization.
 
 ## Disposable CI acceptance
 
-`tests/saasBackend16VerifiedPrivatePgTls.test.ts` generates RSA private
+`scripts/saas-staging/verify-backend16-verified-private-pg-tls-ci.ts` generates RSA private
 keys and temporary certificates in an ephemeral local test directory,
 using OpenSSL from the GitHub runner. Private keys never go into Git,
 build artifacts, Railway variables or logs; the test erases temporary
@@ -73,7 +73,10 @@ plaintext `N` SSL rejection, a hung server after abort, unbranded CA
 objects and malformed local ports. TLS SNI remains the exact private
 hostname even when the TCP socket is loopback.
 
-The disposable CI entrypoint requires GitHub Actions and three
+The isolated acceptance runner executes as a standalone Bun script, not
+an auto-discovered `*.test.ts` in the combined test runner, so its
+OpenSSL generation and real TLS handshake cannot block unrelated unit
+registration. The disposable CI entrypoint requires GitHub Actions and three
 positive CI-only environment gates, and refuses all Railway IDs.
 It is not a staging fallback. CI root keys are not approved real roots.
 
