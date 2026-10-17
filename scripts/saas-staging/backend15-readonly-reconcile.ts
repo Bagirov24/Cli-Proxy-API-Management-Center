@@ -116,7 +116,7 @@ function environment():URL {
   return url;
 }
 
-async function collect(client:{query:(sql:string)=>Promise<{rows:any[]}>}):Promise<Snapshot>{
+export async function collect(client:{query:(sql:string)=>Promise<{rows:any[]}>}):Promise<Snapshot>{
   const metadata=(await client.query(
     "SELECT current_database() AS db,session_user AS login,"+
     "current_setting('server_version_num')::int AS ver,"+
