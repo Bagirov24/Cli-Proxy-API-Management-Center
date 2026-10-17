@@ -18,7 +18,7 @@ exact-context constructors:
 |---|---|---|
 | Host | `postgres.railway.internal` | `127.0.0.1` |
 | Database | `saas_staging` | `saas_staging_ci` |
-| TLS | `verify-full` | `disable`, loopback only |
+| TLS | `verify-full` | Bun.SQL default (no TLS override), loopback only |
 | Operator gate | Exact Railway project/environment/service and explicit flags | `GITHUB_ACTIONS=true`, disposable PG16 marker, precise PGHOST/PGPORT/PGDATABASE and fixed synthetic PG password |
 | Credentials | Injected operator-owned per-LOGIN vault interface | Two synthetic passworded PostgreSQL logins |
 | Network | Staging-private ONLY (not mounted) | Ephemeral runner-local PG16 ONLY |
