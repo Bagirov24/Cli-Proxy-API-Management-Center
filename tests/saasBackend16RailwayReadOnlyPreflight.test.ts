@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
 
 const source=readFileSync(new URL(
   '../scripts/saas-staging/backend16-railway-readonly-preflight.ts',
@@ -53,4 +54,26 @@ test('context pins private PostgreSQL16 with no public proxy, credentials or log
   const withoutDo=source.replace(/^const RECONCILE_DO_SQL=.+;$/m,'');
   assert.doesNotMatch(withoutDo,/\b(?:ALTER\s+ROLE|CREATE\s+ROLE|DROP\s+ROLE|CREATE\s+TABLE|INSERT\s+INTO|DELETE\s+FROM)\b/i);
   assert.doesNotMatch(source,/console\.(?:log|info|error)\s*\(\s*(?:password|uri|e\.)/);
+});
+
+// Real Bun process: an unenabled Railway Function must exit cleanly without
+// probing the private database, leaking credentials, or emitting PASS.
+test('disabled Railway staging read-only Function exits without DB or retries',()=>{
+  const file=new URL('../scripts/saas-staging/backend16-railway-readonly-preflight.ts',
+    import.meta.url);
+  const env:NodeJS.ProcessEnv={
+    RAILWAY_PROJECT_ID:'a9703851-6eb1-406c-bb15-7d3a89359fb7',
+    RAILWAY_ENVIRONMENT_ID:'b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b',
+    RAILWAY_ENVIRONMENT_NAME:'staging',
+    RAILWAY_SERVICE_NAME:'saas-b16-0008-readonly-preflight',
+    SAAS_B16_READONLY_PREFLIGHT_EXPLICIT_ENABLE:'false',
+    GITHUB_ACTIONS:'false',
+  };
+  const child=spawnSync(process.execPath,[file.pathname],{
+    encoding:'utf8',timeout:8000,env,
+  });
+  assert.equal(child.status,0,String(child.stderr).slice(-500));
+  assert.match(child.stdout,/B16_READONLY_PREFLIGHT_DISABLED_NO_DATABASE/);
+  assert.doesNotMatch(child.stdout,/PASS_BACKEND16/);
+  assert.doesNotMatch(child.stdout+child.stderr,/password|DATABASE_URL|PGPASSWORD/i);
 });
