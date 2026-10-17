@@ -305,11 +305,13 @@ async function run(){
     await seal(admin);sealed=true;
     console.info(SUCCESS);
   }finally{
-    if(migratorReady){try{await migrator.end();}catch{/* NO retry */}}
-    if(adminReady){
-      if(loginMayExist&&!sealed){try{await seal(admin);}catch{/* MANUAL seal */}}
-      try{await admin.end();}catch{/* NO retry */}
+    // Seal FIRST on the independent operator connection: an uncertain
+    // migrator query/end must not delay best-effort NOLOGIN re-sealing.
+    if(adminReady&&loginMayExist&&!sealed){
+      try{await seal(admin);}catch{/* MANUAL seal and reconciliation */}
     }
+    if(migratorReady){try{await migrator.end();}catch{/* NO retry */}}
+    if(adminReady){try{await admin.end();}catch{/* NO retry */}}
   }
 }
 try{await run();}
