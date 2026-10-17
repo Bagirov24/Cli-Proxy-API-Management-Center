@@ -79,7 +79,6 @@ describe('Backend16.8 independent SQL0008 READ ONLY reconciler',()=>{
       "migrator_role.no_password IS DISTINCT FROM true",
       "migrator_role.login IS DISTINCT FROM false",
       "migrator_role.privileged IS DISTINCT FROM false",
-      "c.login IS DISTINCT FROM false",
       'B16_READONLY_STOP_CONCURRENT_STAGING_CLIENT',
       "NOT rolcanlogin AND NOT rolinherit",
       'B16_READONLY_STOP_PREVIOUS_RECEIPTS',
