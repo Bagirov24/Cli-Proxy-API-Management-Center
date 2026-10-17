@@ -10,6 +10,7 @@ const PROJECT='a9703851-6eb1-406c-bb15-7d3a89359fb7';
 const ENV='b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b';
 const DB_SERVICE='37f8f166-75a6-4617-b243-8e681181c16d';
 const RUNNER='saas-b15-binding-once';
+const RUNNER_SERVICE_ID='8ab01c09-d9c3-4a48-af49-73f43dab579c';
 const COMMIT='6cc4a76a0b3144380ccc95f0ca1c275ae312cae3';
 const SQL_FILE='0007_operator_subject_binding_fence.sql';
 const SQL_SHA='1fa9bf930e0977e11e7e920a6daa69265f8863e90b85e190bfecea3b5249e6f0';
@@ -33,8 +34,7 @@ function environment():URL {
      e.RAILWAY_ENVIRONMENT_ID!==ENV ||
      e.RAILWAY_ENVIRONMENT_NAME!=='staging' ||
      e.RAILWAY_SERVICE_NAME!==RUNNER ||
-     !e.RAILWAY_SERVICE_ID ||
-     !/^[0-9a-f-]{36}$/.test(e.RAILWAY_SERVICE_ID) ||
+     e.RAILWAY_SERVICE_ID!==RUNNER_SERVICE_ID ||
      e.RAILWAY_SERVICE_ID===DB_SERVICE ||
      e.SAAS_B15_APPLY_EXPLICIT_ENABLE!=='true' ||
      e.SAAS_B15_ACCEPT_DISPOSABLE_STAGING!=='true' ||
