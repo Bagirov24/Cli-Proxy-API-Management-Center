@@ -6,7 +6,7 @@
 \if :{?b16_expected_state}
 \else
   \echo BACKEND16_READONLY_RECONCILE_STOP_MISSING_EXPECTATION
-  \quit 2
+  SELECT 1 / 0; -- ON_ERROR_STOP rejects an unscoped read-only check
 \endif
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SET LOCAL search_path = pg_catalog, pg_temp;
