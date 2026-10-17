@@ -112,6 +112,25 @@ async function fakePgTls(
 
 const refused=/Backend16 pinned private PostgreSQL TLS verification refused/;
 
+test('verified TLS source has no PostgreSQL credentials, SQL or unsafe fallback',()=>{
+  assert.match(source,/socket\.write\(SSL_REQUEST\)/);
+  assert.match(source,/response\.length!==1\|\|response\[0\]!==83/);
+  assert.match(source,/rejectUnauthorized:true/);
+  assert.match(source,/checkServerIdentity:/);
+  assert.match(source,/checkHost\(\s*HOST,\{subject:'never'\}\)/);
+  assert.match(source,/verified\.authorized!==true/);
+  assert.match(source,/!validTrust\(trust\)/);
+  assert.match(source,/env\.RAILWAY_ENVIRONMENT_NAME!=='staging'/);
+  assert.match(source,/env\.SAAS_B16_VERIFIED_TLS_EXPLICIT_ENABLE!=='true'/);
+  assert.match(source,/env\.GITHUB_ACTIONS!=='true'/);
+  assert.match(source,/productionAuthorized:false/);
+  assert.doesNotMatch(source,
+    /rejectUnauthorized:false|tls:'require'|tls:'disable'|tls:'prefer'/);
+  assert.doesNotMatch(source,
+    /Bun\.serve|createServer\(|\.listen\(|DATABASE_URL|DATABASE_PUBLIC_URL|password:|SET ROLE|ALTER ROLE|CREATE ROLE|INSERT INTO|UPDATE saas_|DELETE FROM|\\.query\(/);
+  assert.equal((source.match(/\.write\(/g)||[]).length,1);
+});
+
 test('real disposable PostgreSQL SSLRequest and verify-full leaf+CA chain',async()=>{
   const dir=mkdtempSync(join(tmpdir(),'b16-verifyfull-'));
   const names=[
@@ -206,21 +225,3 @@ test('real disposable PostgreSQL SSLRequest and verify-full leaf+CA chain',async
   }
 });
 
-test('verified TLS source has no PostgreSQL credentials, SQL or unsafe fallback',()=>{
-  assert.match(source,/socket\.write\(SSL_REQUEST\)/);
-  assert.match(source,/response\.length!==1\|\|response\[0\]!==83/);
-  assert.match(source,/rejectUnauthorized:true/);
-  assert.match(source,/checkServerIdentity:/);
-  assert.match(source,/checkHost\(\s*HOST,\{subject:'never'\}\)/);
-  assert.match(source,/verified\.authorized!==true/);
-  assert.match(source,/!validTrust\(trust\)/);
-  assert.match(source,/env\.RAILWAY_ENVIRONMENT_NAME!=='staging'/);
-  assert.match(source,/env\.SAAS_B16_VERIFIED_TLS_EXPLICIT_ENABLE!=='true'/);
-  assert.match(source,/env\.GITHUB_ACTIONS!=='true'/);
-  assert.match(source,/productionAuthorized:false/);
-  assert.doesNotMatch(source,
-    /rejectUnauthorized:false|tls:'require'|tls:'disable'|tls:'prefer'/);
-  assert.doesNotMatch(source,
-    /Bun\.serve|createServer\(|\.listen\(|DATABASE_URL|DATABASE_PUBLIC_URL|password:|SET ROLE|ALTER ROLE|CREATE ROLE|INSERT INTO|UPDATE saas_|DELETE FROM|\\.query\(/);
-  assert.equal((source.match(/\.write\(/g)||[]).length,1);
-});
