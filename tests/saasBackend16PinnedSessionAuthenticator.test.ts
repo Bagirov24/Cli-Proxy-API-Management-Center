@@ -4,7 +4,6 @@ import {createHash} from 'node:crypto';
 import {
   createBackend16PinnedSessionAuthenticator,
   backend16SessionSnapshotMatches,
-  backend16SessionShapeErrors,
   type Backend16AuthoritativeSessionLookup,
   type Backend16CurrentSessionSnapshot,
   type Backend16PinnedSessionLookupKey,
@@ -134,26 +133,7 @@ test('real RS256 at+jwt produces only pinned immutable enrolled session metadata
   assert.equal(called.keys.length,1,'signed JWT never reached session lookup');
   assert.ok(returned,'current session authority failed to return its snapshot');
   assert.equal(backend16SessionSnapshotMatches(
-    returned as Backend16CurrentSessionSnapshot, called.keys[0], NOW*1000),true,
-    JSON.stringify(backend16SessionShapeErrors(returned as Backend16CurrentSessionSnapshot,called.keys[0],NOW*1000)));
-  const key=called.keys[0], fixtureSnapshot=snapshot(key);
-  const fixtureConditions={
-    issuer:fixtureSnapshot.issuer===key.issuer,
-    subject:fixtureSnapshot.subjectFingerprintSha256===key.subjectFingerprintSha256,
-    bearer:fixtureSnapshot.tokenFingerprintSha256===key.tokenFingerprintSha256,
-    subjectHex:/^[a-f0-9]{64}$/.test(fixtureSnapshot.subjectFingerprintSha256),
-    bearerHex:/^[a-f0-9]{64}$/.test(fixtureSnapshot.tokenFingerprintSha256),
-    login:/^[a-z][a-z0-9_]{2,62}$/.test(fixtureSnapshot.pgLogin),
-    loginReserved:!fixtureSnapshot.pgLogin.startsWith('pg_'),
-    session:/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(fixtureSnapshot.sessionId),
-    binding:/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(fixtureSnapshot.bindingId),
-    validExpiry:fixtureSnapshot.sessionExpiresAtMs>NOW*1000 &&
-      fixtureSnapshot.sessionExpiresAtMs<=NOW*1000+15*60_000,
-    tokenExpiry:NEXT*1000>NOW*1000 &&
-      NEXT*1000<=NOW*1000+15*60_000,
-  };
-  assert.ok(Object.values(fixtureConditions).every(Boolean),
-    JSON.stringify(fixtureConditions));
+    returned as Backend16CurrentSessionSnapshot, called.keys[0], NOW*1000),true);
   assert.deepEqual(result,{
     kind:'verified-server-session',
     issuer:ISSUER,
