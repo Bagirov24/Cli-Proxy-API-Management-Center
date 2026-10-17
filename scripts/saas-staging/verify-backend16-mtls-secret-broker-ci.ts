@@ -223,8 +223,10 @@ try{
     console.info('B16_MTLS_BROKER_CI_BUN_CLIENT_PASS');
 
     good.choose('absent');
+    const beforeRevoke=good.calls();
     await assert.rejects(vault.readPrincipal(A,new AbortController().signal));
-    assert.equal(good.calls(),2,'revocation must not use cache or retry');
+    assert.equal(good.calls(),beforeRevoke+1,
+      'revocation must make exactly one fresh request, with no cache or retry');
     for(const variant of [
       'wrong-version','expired','extra','duplicate',
       'redirect','oversize',
