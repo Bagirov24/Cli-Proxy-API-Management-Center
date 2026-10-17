@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {
   createBackend16PinnedSessionAuthenticator,
   backend16SessionSnapshotMatches,
+  backend16SessionShapeErrors,
   type Backend16AuthoritativeSessionLookup,
   type Backend16CurrentSessionSnapshot,
   type Backend16PinnedSessionLookupKey,
@@ -134,7 +135,7 @@ test('real RS256 at+jwt produces only pinned immutable enrolled session metadata
   assert.ok(returned,'current session authority failed to return its snapshot');
   assert.equal(backend16SessionSnapshotMatches(
     returned as Backend16CurrentSessionSnapshot, called.keys[0], NOW*1000),true,
-    'operator session response failed structural snapshot check');
+    JSON.stringify(backend16SessionShapeErrors(returned as Backend16CurrentSessionSnapshot,called.keys[0],NOW*1000)));
   const key=called.keys[0], fixtureSnapshot=snapshot(key);
   const fixtureConditions={
     issuer:fixtureSnapshot.issuer===key.issuer,
