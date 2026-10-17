@@ -20,7 +20,7 @@ import {
   BACKEND16_STAGING_PG_TLS_HOST as HOST,
   backend16IsApprovedStagingPgTlsTrust,
   type Backend16StagingPgTlsTrust,
-} from './backend16StagingPgTlsTrust';
+} from './backend16StagingPgTlsTrust.ts';
 
 const PROJECT='a9703851-6eb1-406c-bb15-7d3a89359fb7';
 const ENV='b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b';
