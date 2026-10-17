@@ -24,7 +24,7 @@ const pinned=(entries:readonly Backend16StagingVaultEntry[])=>({
     entries:entries.map(i=>[i.pgLogin,i.secretId,i.version]),
   })).digest('hex'),
 });
-const expires=(username=A,version=VERSION,expiry=NOW+60_000)=>
+const expires=(username=A,version=VERSION,expiry=NOW+120_000)=>
   ({username,password:PASS,version,expiresAtMs:expiry});
 const signal=()=>new AbortController().signal;
 const sourceText=readFileSync(new URL(
@@ -101,6 +101,7 @@ test('snapshot cannot substitute a different LOGIN, version or leaked extra prop
     }),
     {...expires(),expiresAtMs:NOW-1000},
     {...expires(),expiresAtMs:NOW+500},
+    {...expires(),expiresAtMs:NOW+60_000},
     {...expires(),expiresAtMs:NOW+300_001},
     {...expires(),expiresAtMs:NaN},
     null,
