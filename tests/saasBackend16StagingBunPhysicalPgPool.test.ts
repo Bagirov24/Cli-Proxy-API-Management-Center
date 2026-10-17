@@ -95,6 +95,10 @@ test('shared physical core has no public host/profile injection and pins local C
   assert.match(source,/env\.PGPASSWORD!=='ci_ephemeral_test_only'/);
   assert.match(source,/return buildBackend16StagingPhysicalPgPool\(vault,DISPOSABLE_CI_PROFILE\)/);
   assert.doesNotMatch(source,/export function buildBackend16StagingPhysicalPgPool/);
+  assert.match(source,/ci\.GITHUB_ACTIONS==='true'&&ci\.SAAS_B16_EPHEMERAL_CI==='true'/);
+  assert.match(source,/staging disposable CI stopped at '\+acquirePhase/);
+  assert.match(source,/throw new Error\('Backend16 staging physical acquisition failed'\)/);
+
 });
 
 test('real disposable PG16 runner enforces staging core and PID quarantine',()=>{
