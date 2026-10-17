@@ -79,6 +79,7 @@ describe('Backend16.5 staging-only exact SQL0008 one-shot installer contract',()
       'new_roles','memberships','forced','all_policies',
       'reader_private_schema','writer_private_schema',
       'reader_sessions','writer_bindings','reader_events',
+      'unexpected_grants','pg_catalog.aclexplode',
       'writer_events','reader_write','writer_write',
       'saas_acl.exact_subject_session_authorized(uuid,uuid,uuid,text)',
       "y.prosecdef!==true","y.provolatile!=='v'",
