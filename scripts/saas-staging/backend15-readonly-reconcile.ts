@@ -100,8 +100,8 @@ function environment():URL {
   const e=process.env;
   if(e.RAILWAY_PROJECT_ID!==PROJECT||e.RAILWAY_ENVIRONMENT_ID!==ENV||
      e.RAILWAY_ENVIRONMENT_NAME!=='staging'||
-     e.RAILWAY_SERVICE_NAME!=='saas-b15-reconcile-readonly-once'||
-     !/^[0-9a-f-]{36}$/.test(e.RAILWAY_SERVICE_ID||'')||
+     e.RAILWAY_SERVICE_NAME!=='saas-b15-reconcile-readonly-live-once'||
+     e.RAILWAY_SERVICE_ID!=='e74615ce-0da7-41fc-b580-2cabb3c712ba'||
      e.RAILWAY_SERVICE_ID===PG_SERVICE||
      e.SAAS_B15_READONLY_RECONCILE_ENABLE!=='true'||
      e.SAAS_B15_APPLY_EXPLICIT_ENABLE==='true'||

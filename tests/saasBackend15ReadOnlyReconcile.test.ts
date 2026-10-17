@@ -158,7 +158,9 @@ describe('Backend15 readonly catalog reconciliation (NO migrations, NO Railway)'
    expect(source).toContain("e.SAAS_B15_APPLY_EXPLICIT_ENABLE==='true'");
    expect(source).toContain("url.hostname!=='postgres.railway.internal'");
    expect(source).toContain("url.pathname!=='/saas_staging'");
-   expect(source).toContain("RAILWAY_SERVICE_NAME!=='saas-b15-reconcile-readonly-once'");
+   expect(source).toContain("RAILWAY_SERVICE_NAME!=='saas-b15-reconcile-readonly-live-once'");
+   expect(source).toContain("RAILWAY_SERVICE_ID!=='e74615ce-0da7-41fc-b580-2cabb3c712ba'");
+   expect(source).not.toContain("RAILWAY_SERVICE_NAME!=='saas-b15-reconcile-readonly-once'");
    expect(source).toContain("BACKEND15_READONLY_RECONCILE_STOP_MANUAL_REVIEW_NEVER_REPLAY");
    expect(source).not.toMatch(/Bun\.serve|createServer|\.listen\(|setInterval|cronSchedule|DATABASE_PUBLIC_URL/);
    expect(source).not.toMatch(/await client\.query\(['"](?:ALTER|CREATE|INSERT|UPDATE|DELETE|DROP|TRUNCATE)\b/i);
