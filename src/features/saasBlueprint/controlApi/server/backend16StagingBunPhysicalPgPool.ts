@@ -193,13 +193,16 @@ function buildBackend16StagingPhysicalPgPool(
       ]);
       let native:NativeSQL|undefined;
       let reserved:NativeReserved|undefined;
+      let acquirePhase:'VAULT'|'MAPPING'|'CONSTRUCTOR'|'RESERVE'|'MARKER'='VAULT';
       try{
         const credentials=await vault.readPrincipal(login,signal);
         assertAvailable(signal);
+        acquirePhase='MAPPING';
         if(!credentials||credentials.username!==login||
            typeof credentials.password!=='string'||
            !PASSWORD.test(credentials.password))
           throw new Error('Backend16 staging vault mapping refused');
+        acquirePhase='CONSTRUCTOR';
         native=new Ctor({
           adapter:'postgres',hostname:profile.hostname,port:5432,
           database:profile.database,
@@ -208,8 +211,10 @@ function buildBackend16StagingPhysicalPgPool(
           prepare:false,
         });
         active.add(native);
+        acquirePhase='RESERVE';
         reserved=await native.reserve({signal});
         assertAvailable(signal);
+        acquirePhase='MARKER';
         // Same reserved physical LOGIN, never a user-supplied tenant GUC.
         await reserved.unsafe(
           "SELECT pg_catalog.set_config('saas.staging_only','true',false)",[],
@@ -222,6 +227,9 @@ function buildBackend16StagingPhysicalPgPool(
           active.delete(native);
         }
         slots--;
+        const ci=runtimeEnv();
+        if(ci.GITHUB_ACTIONS==='true'&&ci.SAAS_B16_EPHEMERAL_CI==='true')
+          throw new Error('Backend16 staging disposable CI stopped at '+acquirePhase);
         throw new Error('Backend16 staging physical acquisition failed');
       }
       if(!native||!reserved){
