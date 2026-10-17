@@ -41,6 +41,13 @@ function safeSubject(value: unknown): value is string {
   for(let i=0;i<value.length;i++){
     const n=value.charCodeAt(i);
     if(n<32 || n===127) return false;
+    // Unpaired UTF-16 surrogates would become U+FFFD under TextEncoder,
+    // potentially making different subject strings hash identically.
+    if(n>=0xD800 && n<=0xDBFF){
+      const next=value.charCodeAt(i+1);
+      if(!(next>=0xDC00 && next<=0xDFFF)) return false;
+      i++;
+    } else if(n>=0xDC00 && n<=0xDFFF) return false;
   }
   return true;
 }
