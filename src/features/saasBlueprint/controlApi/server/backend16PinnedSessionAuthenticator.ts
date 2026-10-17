@@ -82,7 +82,7 @@ function currentSession(
       !SHA256.test(snapshot.subjectFingerprintSha256) ||
       !SHA256.test(snapshot.tokenFingerprintSha256) ||
       typeof snapshot.pgLogin !== 'string' || !LOGIN.test(snapshot.pgLogin) ||
-      FORBIDDEN_LOGINS.has(snapshot.pgLogin) ||
+      (FORBIDDEN_LOGINS.has(snapshot.pgLogin) || snapshot.pgLogin.startsWith('pg_')) ||
       typeof snapshot.sessionId !== 'string' || !UUID.test(snapshot.sessionId) ||
       typeof snapshot.bindingId !== 'string' || !UUID.test(snapshot.bindingId) ||
       !Number.isSafeInteger(snapshot.sessionExpiresAtMs) ||
