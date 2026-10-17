@@ -100,3 +100,20 @@ expired or after revoked operator approval.
 checks canonical pin, exact secret-ID/version/LOGIN binding, freshness
 limits, provider errors, revocation observation, caller abort while
 source is hung, and absence of HTTP/SQL/migration capabilities.
+
+## Physical PostgreSQL16 E2E (disposable GitHub Actions)
+
+The existing `verify-backend16-bun-physical-pid-ci.ts` now supplies the
+version-pinned adapter to the **same staging physical-query core** under
+the strictly local-only disposable PostgreSQL16 profile. The test's
+provider returns synthetic per-principal passwords only after matching
+the exact static secret ID and immutable version; each new PG backend
+requires an independent provider lookup. It then verifies the unchanged
+exact-session SQL0008 predicate, tenant isolation, backend PID death,
+read lock cancellation/revocation and fresh-pool recovery.
+
+This is real PostgreSQL/Bun.SQL validation of adapter *composition*,
+not proof of a live external secret manager, actual Railway certificate
+identity, permanent staging SQL0008 installation, or production
+authorization. No fixture password, database URL or IAM token is
+published by the adapter.
