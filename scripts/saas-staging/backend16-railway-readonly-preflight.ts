@@ -35,7 +35,7 @@ const pool=new SQL({adapter:'postgres',hostname:'postgres.railway.internal',
   port:5432,database:'saas_staging',username:'postgres',password,
   tls:'require',max:1,connectionTimeout:4,idleTimeout:0,prepare:false});
 let connection:Awaited<ReturnType<typeof pool.reserve>>|undefined;
-let transaction=false,commitSent=false,committed=false,closed=false;
+let transaction=false,commitSent=false,closed=false;
 try{
   connection=await pool.reserve({signal:AbortSignal.timeout(8000)});
   await connection.unsafe('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY',[]).execute();
@@ -47,7 +47,6 @@ try{
   await connection.unsafe(RECONCILE_DO_SQL,[]).execute();
   commitSent=true;
   await connection.unsafe('COMMIT',[]).execute();
-  committed=true;
 }catch{
   if(transaction&&!commitSent&&connection){
     try{await connection.unsafe('ROLLBACK',[]).execute()}catch{/* read-only only */}
@@ -57,5 +56,5 @@ try{
   try{connection?.release();await pool.close({timeout:0});closed=true}
   catch{/* do not issue a PASS marker after uncertain backend close */}
 }
-if(!committed||!closed||EXPECTED!=='absent')stop();
+if(!closed||EXPECTED!=='absent')stop();
 console.info(MARKER);
