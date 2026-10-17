@@ -75,7 +75,7 @@ export function classifyBackend15Snapshot(s:Snapshot):Verdict {
     const r=s.receipts[i];
     if(!r||r.migration_id!==PREVIOUS[i][0]||
        r.source_sha256!==PREVIOUS[i][1]||
-       r.applied_by!=='saas_schema_migrator')return 'stop';
+       r.applied_by!==(i===2?'postgres':'saas_schema_migrator'))return 'stop';
   }
   if(s.receipts.length===6){
     return !o.bindings&&!o.events&&!o.enroll&&!o.revoke&&
