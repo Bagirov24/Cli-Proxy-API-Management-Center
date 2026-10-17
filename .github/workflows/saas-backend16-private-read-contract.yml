@@ -5,6 +5,9 @@ on:
     paths:
       - 'src/features/saasBlueprint/controlApi/server/backend16PrivateTenantProjectRead.ts'
       - 'tests/saasBackend16PrivateTenantProjectRead.test.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16PinnedSessionAuthenticator.ts'
+      - 'tests/saasBackend16PinnedSessionAuthenticator.test.ts'
+      - 'docs/saas/BACKEND_16_PINNED_SESSION_AUTH.md'
       - 'docs/saas/BACKEND_16_PRIVATE_READ_BOUNDARY.md'
       - '.github/workflows/saas-backend16-private-read-contract.yml'
   workflow_dispatch:
@@ -23,6 +26,6 @@ jobs:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
       - name: Fail-closed HTTP and origin-injection contracts
-        run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts
+        run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts tests/saasBackend16PinnedSessionAuthenticator.test.ts
       - name: Strict TypeScript for full source
         run: bun run type-check
