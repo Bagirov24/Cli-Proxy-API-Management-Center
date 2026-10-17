@@ -7,6 +7,9 @@ on:
       - 'tests/saasBackend16ExactOnce.test.ts'
       - 'scripts/saas-staging/backend16-0008-readonly-reconcile.sql'
       - 'tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts'
+      - 'scripts/saas-staging/backend16-railway-readonly-preflight.ts'
+      - 'tests/saasBackend16RailwayReadOnlyPreflight.test.ts'
+      - 'docs/saas/BACKEND_16_RAILWAY_READONLY_PREFLIGHT.md'
       - 'docs/saas/BACKEND_16_SQL0008_READONLY_RECONCILIATION.md'
       - 'staging/saas-bootstrap/0008_exact_subject_session_gate.sql'
       - 'docs/saas/BACKEND_16_PHASE_C_STAGING_0008_ONESHOT.md'
@@ -27,7 +30,7 @@ jobs:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
       - name: Validate exact SHA, source-commit, isolation and unknown COMMIT gates
-        run: bun test tests/saasBackend16ExactOnce.test.ts tests/saasBackend16ExactSessionGate.test.ts tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts
+        run: bun test tests/saasBackend16ExactOnce.test.ts tests/saasBackend16ExactSessionGate.test.ts tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts tests/saasBackend16RailwayReadOnlyPreflight.test.ts
       - name: Typecheck repository after installer addition
         run: bun run type-check
       - name: Verify PostgreSQL16 isolated disposable acceptance syntax
