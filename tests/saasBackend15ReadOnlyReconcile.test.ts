@@ -29,7 +29,7 @@ function fixture():Snapshot{
   return {
     metadata:{
       db:'saas_staging',login:'postgres',ver:160008,read_only:'on',
-      replica:false,superuser:true,sealed:true,new_roles:0,memberships:0
+      replica:false,superuser:true,sealed:true,new_roles:0,memberships:0,safe_runtime_roles:2
     },
     receipts:previous.map(([migration_id,source_sha256])=>({
       migration_id,source_sha256,source_commit:'0'.repeat(40),
@@ -92,7 +92,8 @@ describe('Backend15 readonly catalog reconciliation (NO migrations, NO Railway)'
      (s:Snapshot)=>{s.metadata.superuser=false;},
      (s:Snapshot)=>{s.metadata.replica=true;},
      (s:Snapshot)=>{s.metadata.new_roles=1;},
-     (s:Snapshot)=>{s.metadata.memberships=1;}
+     (s:Snapshot)=>{s.metadata.memberships=1;},
+     (s:Snapshot)=>{s.metadata.safe_runtime_roles=1;}
    ];
    for(const modify of modifications){
      const snap=fixture();modify(snap);
