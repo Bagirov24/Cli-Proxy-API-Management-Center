@@ -1,0 +1,28 @@
+name: SaaS Backend16 Private Read Contract
+
+on:
+  pull_request:
+    paths:
+      - 'src/features/saasBlueprint/controlApi/server/backend16PrivateTenantProjectRead.ts'
+      - 'tests/saasBackend16PrivateTenantProjectRead.test.ts'
+      - 'docs/saas/BACKEND_16_PRIVATE_READ_BOUNDARY.md'
+      - '.github/workflows/saas-backend16-private-read-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  private-read-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Fail-closed HTTP and origin-injection contracts
+        run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts
+      - name: Strict TypeScript for full source
+        run: bun run type-check
