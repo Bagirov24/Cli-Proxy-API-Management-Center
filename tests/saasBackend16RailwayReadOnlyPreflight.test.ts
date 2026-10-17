@@ -61,7 +61,7 @@ test('context pins private PostgreSQL16 with no public proxy, credentials or log
 test('disabled Railway staging read-only Function exits without DB or retries',()=>{
   const file=new URL('../scripts/saas-staging/backend16-railway-readonly-preflight.ts',
     import.meta.url);
-  const env:NodeJS.ProcessEnv={
+  const env={
     RAILWAY_PROJECT_ID:'a9703851-6eb1-406c-bb15-7d3a89359fb7',
     RAILWAY_ENVIRONMENT_ID:'b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b',
     RAILWAY_ENVIRONMENT_NAME:'staging',
