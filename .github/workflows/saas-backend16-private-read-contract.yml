@@ -17,6 +17,7 @@ on:
       - 'tests/saasBackend16StagingBunPhysicalPgPool.test.ts'
       - 'scripts/saas-staging/verify-backend16-bun-physical-pid-ci.ts'
       - 'docs/saas/BACKEND_16_7_BUN_PHYSICAL_PG_PID_CI.md'
+      - 'docs/saas/BACKEND_16_9_STAGING_PHYSICAL_PG16_E2E.md'
       - 'docs/saas/BACKEND_16_EXACT_SQL_READ_PORT.md'
       - 'staging/saas-bootstrap/0008_exact_subject_session_gate.sql'
       - 'tests/sql/saas_backend16_exact_session_gate.test.sql'
