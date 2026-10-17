@@ -252,9 +252,15 @@ function buildReader(
               maxVersion:'TLSv1.3',timeout:3_900,
               checkServerIdentity:(hostname:string,peer:{raw?:Uint8Array})=>{
                 try{
-                  if(hostname!==HOST||!peer?.raw||
-                     !new X509Certificate(peer.raw).checkHost(
-                       HOST,{subject:'never'}))
+                  if(hostname!==HOST||!peer?.raw)
+                    return new Error('Backend16 broker DNS SAN refused');
+                  const serverCert=new X509Certificate(peer.raw);
+                  const dnsSans=serverCert.subjectAltName;
+                  // Require this exact host in DNS SAN, not a wildcard or
+                  // Common Name fallback, even if the CA trusts that leaf.
+                  if(typeof dnsSans!=='string'||
+                     !dnsSans.split(/,\s*/).includes('DNS:'+HOST)||
+                     !serverCert.checkHost(HOST,{subject:'never'}))
                     return new Error('Backend16 broker DNS SAN refused');
                   // Use builtin hostname verification *in addition* to
                   // mandatory DNS SAN; custom callback never bypasses it.
