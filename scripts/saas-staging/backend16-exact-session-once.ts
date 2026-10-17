@@ -219,8 +219,8 @@ async function catalog(admin:PgClient,post:boolean){
           "WHERE a.grantee NOT IN (SELECT oid FROM pg_catalog.pg_roles WHERE rolname IN "+
           "('saas_schema_migrator','saas_runtime_reader','saas_runtime_writer'))) AS unexpected_grantees,"+
         "(pg_catalog.pg_get_functiondef(p.oid) LIKE '%FOR SHARE%') AS share_locks,"+
-        "(pg_catalog.pg_get_functiondef(p.oid) LIKE '%s.session_id = p_session%') AS exact_session,"+
-        "(pg_catalog.pg_get_functiondef(p.oid) LIKE '%b.subject_fingerprint = p_subject_sha256%') AS exact_subject "+
+        "(pg_catalog.pg_get_functiondef(p.oid) LIKE '%s.session_id=p_session%') AS exact_session,"+
+        "(pg_catalog.pg_get_functiondef(p.oid) LIKE '%b.subject_fingerprint=p_subject_sha256%') AS exact_subject "+
       "FROM pg_catalog.pg_proc p WHERE p.oid="+
         "'saas_acl.exact_subject_session_authorized(uuid,uuid,uuid,text)'::regprocedure"
     );
