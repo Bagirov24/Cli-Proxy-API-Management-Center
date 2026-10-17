@@ -46,6 +46,9 @@ Backend16.9 test exercises:
    request cancellation, no publication, and backend PID disappearance.
 6. Pool quarantine with no retry, followed by success on a **new** pool for
    an independently authorized principal.
+7. An external vault that **never settles** and ignores AbortSignal is
+   cancelled by the caller; the acquire promise must reject, the pool must
+   quarantine future acquisitions, and no native backend may be created.
 
 The acceptance marker is:
 
@@ -70,3 +73,29 @@ session authority, or production readiness.
   audit must exist before mounting `/internal/saas/v1` or publishing any DTO.
 - No modification to Railway production Core/Gateway, `custom-no-apikey-fun`,
   volume `/data` or existing users/tokens is in this PR.
+
+## Production identity and TLS release barriers
+
+The physical driver intentionally retains `tls:'verify-full'` for staging.
+The currently running Railway PostgreSQL service uses
+`ghcr.io/railwayapp-templates/postgres-ssl:16`. The separate read-only
+preflight successfully used encrypted `tls:'require'`, which **does not**
+prove verified TLS identity. A stock template certificate may identify
+`localhost`, not `postgres.railway.internal`. Do not silently replace
+`verify-full` with `require` in the data-publishing driver to work around
+a hostname mismatch. Before mounting the staging driver, an operator must
+demonstrate and archive the actual server CA chain, hostname SAN and
+`verify-full` result for the pinned private hostname, or switch to an
+independently reviewed TLS provisioning approach.
+
+The preflight at 2026-10-17 18:17 UTC did prove that SQL0008 is **ABSENT**
+in permanent staging with seven receipts and a sealed migrator. This does
+not make the currently unmounted physical driver deployable: the SQL0008
+one-shot Restart Policy gate remains unverified, and there is no actual
+per-principal credential vault, token-bound authority or off-host audit.
+
+The new abort-bound acquisition handles a vault promise that ignores
+cancellation: it rejects rather than waiting indefinitely. This **does not**
+prove a real external vault is reliable or does not retain late-arriving
+secrets. Treat vault implementation, rotation, independent physical-login
+attestation, TLS identity and durable audit as separate production gates.
