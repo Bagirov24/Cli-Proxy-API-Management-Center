@@ -10,6 +10,7 @@
  * The digest belongs to a reviewed operator release policy. The CA PEM is
  * public trust material, NOT a credential; no embedded CI root is approved.
  */
+// @ts-expect-error Backend-only Bun Node API; frontend tsconfig intentionally excludes Node types.
 import {createHash, timingSafeEqual, X509Certificate} from 'node:crypto';
 
 export const BACKEND16_STAGING_PG_TLS_HOST = 'postgres.railway.internal';
@@ -54,7 +55,8 @@ export function createBackend16StagingPgTlsTrust(
   try{
     const cert=new X509Certificate(input.caPem);
     const candidate=createHash('sha256').update(cert.raw).digest();
-    const pin=Buffer.from(input.approvedCaDerSha256,'hex');
+    const pairs=input.approvedCaDerSha256.match(/[a-f0-9]{2}/g)??[];
+    const pin=Uint8Array.from(pairs,hex=>Number.parseInt(hex,16));
     const notBefore=Date.parse(cert.validFrom);
     const notAfter=Date.parse(cert.validTo);
     const key=cert.publicKey;
