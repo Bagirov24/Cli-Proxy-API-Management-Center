@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {
   createBackend16PinnedSessionAuthenticator,
+  backend16SessionSnapshotMatches,
   type Backend16AuthoritativeSessionLookup,
   type Backend16CurrentSessionSnapshot,
   type Backend16PinnedSessionLookupKey,
