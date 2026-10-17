@@ -144,7 +144,7 @@ export async function createBackend16PinnedSessionAuthenticator(
       });
       const snapshot = await authority.resolveCurrent(lookupKey, signal);
       const after = nowMs();
-      if (signal.aborted || !currentSession(snapshot, lookupKey, after) ||
+      if (signal.aborted || !backend16SessionSnapshotMatches(snapshot, lookupKey, after) ||
           tokenExpiresAtMs <= after) return null;
       // Never extend a PostgreSQL session beyond the lifetime of its bearer.
       const expires = Math.min(snapshot.sessionExpiresAtMs,tokenExpiresAtMs);
