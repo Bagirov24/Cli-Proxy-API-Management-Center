@@ -40,3 +40,11 @@ Run: bun test tests/saasBackend15ReadOnlyReconcile.test.ts
 The suite tests both clean states and missing receipts, wrong SHA/source commit, partially present objects, leaked migrator LOGIN/password, non-PG16 or wrong DB, altered role memberships, tenant data, lost FORCE RLS, audit trigger drift and private ACL grants. The suite is isolated from Railway: it uses pure snapshots and does not connect to PostgreSQL.
 
 The immutable installer from PR #44 remains the only allowed one-shot executor after all migration deployment gates. If its restartPolicyType=NEVER cannot be verified, **do not accept the staging patch or enable SQL0007**. Any recovery action affecting the database must undergo a separate manual review and is out of scope for this read-only utility.
+
+## Independent real PostgreSQL16 acceptance
+
+The additional `SaaS Backend15 Readonly Catalog PG16` workflow creates a **new disposable PostgreSQL16 service in GitHub Actions**, with a local-only `127.0.0.1:5432/saas_staging` database and throwaway database credentials. It executes the pinned bootstrap SQL0000–0006 on this CI instance, seals the migrator, and runs the actual `collect()` query sequence in a `REPEATABLE READ READ ONLY` transaction. The expected verdict is `ABSENT`.
+
+In the **same disposable CI instance**, it explicitly enables the throwaway migrator for one SQL0007 execution, then reseals it to `NOLOGIN PASSWORD NULL`. A second independent read-only catalog query must classify the actual resulting state as `INSTALLED`, with all seven expected receipts, private ACLs, trigger list and binding fences. This is an integration test for the real diagnostic SQL, not a Railway staging application, customer data test, production deployment or permission to replay a migration.
+
+The workflow and test harness refuse a Railway environment, production context and public DB connections. The CI fixture names its database `saas_staging` only to exercise the exact production-shaped guard against an ephemeral local PostgreSQL service; it never uses Railway networking. The positive evidence is limited to disposable CI, never a claim about the persistent Railway staging database.
