@@ -184,6 +184,7 @@ try{
   const unapprovedClient=leaf('other-client','root','client');
   const serverCert=leaf('broker-server','root','server',NAME);
   const wrongServer=leaf('wrong-san','root','server','wrong.railway.internal');
+  const wildcardServer=leaf('wildcard-san','root','server','*.railway.internal');
   const trust:Backend16OperatorApprovedSecretBrokerMtls={
     caPem:rootPem,
     approvedCaDerSha256:digest(rootPem),
@@ -281,6 +282,16 @@ try{
       'wrong server SAN cannot progress to HTTP credential request');
     console.info('B16_MTLS_BROKER_CI_WRONG_SERVER_SAN_DENY');
   }finally{await wrong.close();}
+  const wildcard=await broker(rootPem,wildcardServer,approvedClient);
+  try{
+    const reader=createBackend16DisposableCiMtlsSecretReader(
+      trust,wildcard.port);
+    await assert.rejects(reader.readVersion(
+      ID,VERSION,new AbortController().signal),ERROR);
+    assert.equal(wildcard.calls(),0,
+      'wildcard DNS SAN must never authenticate the exact secret broker');
+    console.info('B16_MTLS_BROKER_CI_WILDCARD_SERVER_SAN_DENY');
+  }finally{await wildcard.close();}
   console.info('PASS Backend16.15 actual mutual TLS immutable-version reader');
 }finally{
   for(const k of names){
