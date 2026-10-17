@@ -263,6 +263,9 @@ function buildBackend16StagingPhysicalPgPool(
         assertAvailable(signal);
       }catch{
         quarantine('acquire-uncertain');
+        // The exclusively reserved handle must be released before pool
+        // close so Bun.SQL cannot wait forever for its own reservation.
+        if(reserved){try{reserved.release();}catch{/* still destroy pool */}}
         if(native){
           closeImmediately(native);
           active.delete(native);
@@ -339,8 +342,14 @@ function buildBackend16StagingPhysicalPgPool(
           }
           try{
             if(discard||stopped){
+              // An independent max:1 pool belongs to THIS request only.
+              // No other client can borrow its reservation: release first,
+              // then immediately destroy the backend, even before COMMIT.
+              let refusedRelease=false;
+              try{connection.release();}catch{refusedRelease=true;}
               await db.close({timeout:0});
-              try{connection.release();}catch{/* destroyed backend */}
+              if(refusedRelease)
+                throw new Error('Backend16 staging reserved close uncertain');
             }else{
               connection.release();
               await db.close({timeout:0});
