@@ -32,8 +32,9 @@ export type Baseline={
   tenants:number;projects:number;grants:number;grant_audit:number;
   sessions:number;session_events:number;
   forced:number;read_policies:number;policies:number;b14_triggers:number;
-  reader_data:boolean;writer_data:boolean;reader_identity:boolean;writer_identity:boolean;
-  acl_fence:boolean;identity_foreign_acl:number;
+  reader_data:boolean;writer_data:boolean;reader_writes:boolean;writer_writes:boolean;
+  reader_identity:boolean;writer_identity:boolean;
+  acl_fence:boolean;identity_foreign_acl:number;data_foreign_acl:number;
 };
 export type Objects={bindings:boolean;events:boolean;enroll:boolean;revoke:boolean};
 export type Installed={
@@ -64,8 +65,10 @@ export function classifyBackend15Snapshot(s:Snapshot):Verdict {
      b.sessions!==0||b.session_events!==0||b.forced!==2||
      b.read_policies!==2||b.policies!==2||b.b14_triggers!==5||
      b.reader_data!==true||b.writer_data!==true||
+     b.reader_writes!==false||b.writer_writes!==false||
      b.reader_identity!==false||b.writer_identity!==false||
-     b.acl_fence!==true||b.identity_foreign_acl!==0)return 'stop';
+     b.acl_fence!==true||b.identity_foreign_acl!==0||
+     b.data_foreign_acl!==0)return 'stop';
   if(s.receipts.length!==6 && s.receipts.length!==7)return 'stop';
   for(let i=0;i<PREVIOUS.length;i++){
     const r=s.receipts[i];
@@ -158,6 +161,10 @@ async function collect(client:{query:(sql:string)=>Promise<{rows:any[]}>}):Promi
       "AND has_table_privilege('saas_runtime_reader','saas_data.projects','SELECT') AS reader_data,"+
     "has_table_privilege('saas_runtime_writer','saas_data.tenants','SELECT') "+
       "AND has_table_privilege('saas_runtime_writer','saas_data.projects','SELECT') AS writer_data,"+
+    "has_table_privilege('saas_runtime_reader','saas_data.tenants','INSERT, UPDATE, DELETE, TRUNCATE') "+
+      "OR has_table_privilege('saas_runtime_reader','saas_data.projects','INSERT, UPDATE, DELETE, TRUNCATE') AS reader_writes,"+
+    "has_table_privilege('saas_runtime_writer','saas_data.tenants','INSERT, UPDATE, DELETE, TRUNCATE') "+
+      "OR has_table_privilege('saas_runtime_writer','saas_data.projects','INSERT, UPDATE, DELETE, TRUNCATE') AS writer_writes,"+
     "has_schema_privilege('saas_runtime_reader','saas_identity','USAGE') AS reader_identity,"+
     "has_schema_privilege('saas_runtime_writer','saas_identity','USAGE') AS writer_identity,"+
     "(SELECT prosecdef AND provolatile='v' "+
@@ -172,7 +179,14 @@ async function collect(client:{query:(sql:string)=>Promise<{rows:any[]}>}):Promi
     "(SELECT count(*)::int FROM pg_proc p "+
       "JOIN pg_namespace n ON n.oid=p.pronamespace "+
       "CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a "+
-      "WHERE n.nspname='saas_identity' AND a.grantee<>p.proowner) AS identity_foreign_acl"
+      "WHERE n.nspname='saas_identity' AND a.grantee<>p.proowner) AS identity_foreign_acl,"+
+    "(SELECT count(*)::int FROM pg_class c "+
+      "JOIN pg_namespace n ON n.oid=c.relnamespace "+
+      "CROSS JOIN LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) a "+
+      "WHERE (n.nspname='saas_data' OR n.nspname='saas_acl') "+
+      "AND c.relkind IN ('r','p') "+
+      "AND a.grantee NOT IN (SELECT oid FROM pg_roles WHERE rolname IN "+
+      "('saas_schema_migrator','saas_runtime_reader','saas_runtime_writer'))) AS data_foreign_acl"
   )).rows[0] as Baseline;
   const objects=(await client.query(
     "SELECT "+
