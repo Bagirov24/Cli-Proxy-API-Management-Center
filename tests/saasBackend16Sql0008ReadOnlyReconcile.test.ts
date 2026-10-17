@@ -76,7 +76,9 @@ describe('Backend16.8 independent SQL0008 READ ONLY reconciler',()=>{
   test('enforces sealed migrator, RLS, identity table privacy and definer grants',()=>{
     for(const marker of [
       'B16_READONLY_STOP_MIGRATOR_NOT_SEALED',
-      "c.no_password IS DISTINCT FROM true",
+      "migrator_role.no_password IS DISTINCT FROM true",
+      "migrator_role.login IS DISTINCT FROM false",
+      "migrator_role.privileged IS DISTINCT FROM false",
       "c.login IS DISTINCT FROM false",
       'B16_READONLY_STOP_CONCURRENT_STAGING_CLIENT',
       "NOT rolcanlogin AND NOT rolinherit",
