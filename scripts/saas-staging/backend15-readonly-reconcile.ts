@@ -26,7 +26,7 @@ const PREVIOUS=[
 export type Receipt={migration_id:string;source_sha256:string;source_commit:string;applied_by:string};
 export type Metadata={
   db:string;login:string;ver:number;read_only:string;replica:boolean;superuser:boolean;
-  sealed:boolean;new_roles:number;memberships:number;
+  sealed:boolean;new_roles:number;memberships:number;safe_runtime_roles:number;
 };
 export type Baseline={
   tenants:number;projects:number;grants:number;grant_audit:number;
@@ -60,7 +60,8 @@ export function classifyBackend15Snapshot(s:Snapshot):Verdict {
   if(m.db!=='saas_staging'||m.login!=='postgres'||
      !Number.isInteger(m.ver)||m.ver<160000||m.ver>=170000||
      m.read_only!=='on'||m.replica!==false||m.superuser!==true||
-     m.sealed!==true||m.new_roles!==0||m.memberships!==0)return 'stop';
+     m.sealed!==true||m.new_roles!==0||m.memberships!==0||
+     m.safe_runtime_roles!==2)return 'stop';
   if(b.tenants!==0||b.projects!==0||b.grants!==0||b.grant_audit!==0||
      b.sessions!==0||b.session_events!==0||b.forced!==2||
      b.read_policies!==2||b.policies!==2||b.b14_triggers!==5||
@@ -127,6 +128,10 @@ async function collect(client:{query:(sql:string)=>Promise<{rows:any[]}>}):Promi
       "FROM pg_authid WHERE rolname='saas_schema_migrator') AS sealed,"+
     "(SELECT count(*)::int FROM pg_roles WHERE left(rolname,5)='saas_' "+
       "AND rolname NOT IN ('saas_schema_migrator','saas_runtime_reader','saas_runtime_writer')) AS new_roles,"+
+    "(SELECT count(*)::int FROM pg_authid WHERE rolname IN "+
+      "('saas_runtime_reader','saas_runtime_writer') AND "+
+      "NOT rolcanlogin AND NOT rolinherit AND rolpassword IS NULL "+
+      "AND NOT (rolsuper OR rolbypassrls OR rolcreaterole OR rolcreatedb OR rolreplication)) AS safe_runtime_roles,"+
     "(SELECT count(*)::int FROM pg_auth_members WHERE roleid IN "+
       "(SELECT oid FROM pg_roles WHERE left(rolname,5)='saas_') OR member IN "+
       "(SELECT oid FROM pg_roles WHERE left(rolname,5)='saas_')) AS memberships"
