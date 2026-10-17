@@ -1,0 +1,185 @@
+/**
+ * Backend16.11: UNMOUNTED version-pinned, per-physical-LOGIN credential
+ * source boundary for the staging-only Bun.SQL driver.
+ *
+ * This is a defensive adapter, NOT a secret store / live Vault, not a
+ * credential provisioning service, and not approval to deploy staging.
+ * The operator separately pins the manifest digest and supplies a trusted
+ * private-network versioned secret reader. No HTTP, DB, Railway variables,
+ * token inputs, secret enumeration, cache, retry, or logging exist here.
+ */
+import type {Backend16StagingPrincipalVault}
+  from './backend16StagingBunPhysicalPgPool';
+
+const LOGIN=/^[a-z][a-z0-9_]{2,62}$/;
+const SECRET_ID=/^b16-stg-pg-[a-z0-9_-]{16,80}$/;
+const VERSION=/^[a-f0-9]{32,64}$/;
+const SHA256=/^[a-f0-9]{64}$/;
+const PASSWORD=/^[\x21-\x7e]{32,256}$/;
+const RESERVED=new Set([
+  'postgres','saas_schema_migrator','saas_runtime_reader',
+  'saas_runtime_writer',
+]);
+const MAX_PRINCIPALS=128;
+const MIN_LEASE_MS=1000;
+const MAX_LEASE_MS=5*60_000;
+const FETCH_TIMEOUT_MS=4500;
+const ENTRY_KEYS='pgLogin,secretId,version';
+const RECORD_KEYS='expiresAtMs,password,username,version';
+
+export type Backend16StagingVaultEntry=Readonly<{
+  /** Server-reviewed physical PostgreSQL LOGIN, never supplied by HTTP. */
+  pgLogin:string;
+  /** Opaque, versioned external-secret locator selected from this manifest. */
+  secretId:string;
+  /** Exact immutable version; never "latest" or a mutable alias. */
+  version:string;
+}>;
+
+export type Backend16OperatorVaultManifest=Readonly<{
+  entries:readonly Backend16StagingVaultEntry[];
+  /** Independent operator-approved SHA256 of canonical public manifest. */
+  approvedManifestSha256:string;
+}>;
+
+export interface Backend16StagingVersionedSecretReader {
+  /**
+   * A separately authenticated secret service implementation. The runtime
+   * caller must have get-by-id+exact-version permission only, never list,
+   * create, update, delete, IAM, or arbitrary credential path capabilities.
+   */
+  readVersion(
+    secretId:string,version:string,signal:AbortSignal,
+  ):Promise<unknown>;
+}
+
+export interface Backend16StagingVersionedVaultOptions {
+  readonly manifest:Backend16OperatorVaultManifest;
+  readonly source:Backend16StagingVersionedSecretReader;
+  /** Test-only deterministic clock; actual composition uses Date.now. */
+  readonly nowMs?:()=>number;
+}
+
+function refuse():never{
+  throw new Error('Backend16 staging principal credential vault unavailable');
+}
+function goodLogin(login:string):boolean{
+  return LOGIN.test(login)&&!RESERVED.has(login)&&
+    !login.startsWith('pg_');
+}
+function clock(now:unknown):now is number{
+  return typeof now==='number'&&Number.isSafeInteger(now)&&now>0;
+}
+function exactKeys(value:unknown,keys:string):boolean{
+  return value!==null&&typeof value==='object'&&!Array.isArray(value)&&
+    Object.keys(value).sort().join(',')===keys;
+}
+function digest(bytes:Uint8Array):Promise<string>{
+  return crypto.subtle.digest('SHA-256',bytes).then(buffer=>
+    Array.from(new Uint8Array(buffer),n=>
+      n.toString(16).padStart(2,'0')).join(''));
+}
+function abortable<T>(promise:Promise<T>,signal:AbortSignal):Promise<T>{
+  if(signal.aborted)return Promise.reject(new Error('vault aborted'));
+  return new Promise<T>((resolve,reject)=>{
+    let settled=false;
+    const finish=()=>{
+      if(settled)return false;
+      settled=true;
+      signal.removeEventListener('abort',onAbort);
+      return true;
+    };
+    const onAbort=()=>{if(finish())reject(new Error('vault aborted'));};
+    signal.addEventListener('abort',onAbort,{once:true});
+    if(signal.aborted)onAbort();
+    promise.then(value=>{if(finish())resolve(value);},
+      error=>{if(finish())reject(error);});
+  });
+}
+
+/**
+ * Caller must supply TWO independently reviewed sources: the manifest and
+ * its pinned digest. Both from the same untrusted request is not approval.
+ *
+ * SHA256's preimage is exactly:
+ *   JSON.stringify({schema:'backend16-staging-vault-v1',
+ *     entries:[[login,secretId,version],...]})
+ * ordered lexicographically by pgLogin (ASCII). No passwords are in it.
+ */
+export async function createBackend16StagingVersionedPrincipalVault(
+  options:Backend16StagingVersionedVaultOptions,
+):Promise<Backend16StagingPrincipalVault>{
+  try{
+    if(!options||!options.source||
+       typeof options.source.readVersion!=='function'||
+       (options.nowMs!==undefined&&typeof options.nowMs!=='function')||
+       !options.manifest||
+       !Array.isArray(options.manifest.entries)||
+       options.manifest.entries.length<1||
+       options.manifest.entries.length>MAX_PRINCIPALS||
+       typeof options.manifest.approvedManifestSha256!=='string'||
+       !SHA256.test(options.manifest.approvedManifestSha256))refuse();
+
+    const entries:Backend16StagingVaultEntry[]=[];
+    const ids=new Set<string>();
+    let previous='';
+    for(const item of options.manifest.entries){
+      if(!exactKeys(item,ENTRY_KEYS))refuse();
+      if(typeof item.pgLogin!=='string'||!goodLogin(item.pgLogin)||
+         item.pgLogin<=previous||
+         typeof item.secretId!=='string'||!SECRET_ID.test(item.secretId)||
+         ids.has(item.secretId)||
+         typeof item.version!=='string'||!VERSION.test(item.version))refuse();
+      previous=item.pgLogin;
+      ids.add(item.secretId);
+      entries.push(Object.freeze({
+        pgLogin:item.pgLogin,secretId:item.secretId,version:item.version,
+      }));
+    }
+    const canonical=JSON.stringify({
+      schema:'backend16-staging-vault-v1',
+      entries:entries.map(item=>[item.pgLogin,item.secretId,item.version]),
+    });
+    if(await digest(new TextEncoder().encode(canonical))!==
+       options.manifest.approvedManifestSha256)refuse();
+
+    const lookup=new Map(entries.map(item=>[item.pgLogin,item] as const));
+    const source=options.source;
+    const now=options.nowMs??Date.now;
+
+    return Object.freeze({
+      async readPrincipal(login:string,requestSignal:AbortSignal){
+        try{
+          if(typeof login!=='string'||!goodLogin(login)||
+             !requestSignal||requestSignal.aborted)refuse();
+          const entry=lookup.get(login);
+          if(!entry)refuse(); // no arbitrary secret-ID lookup or fallback
+          const before=now();
+          if(!clock(before))refuse();
+          const signal=AbortSignal.any([
+            requestSignal,AbortSignal.timeout(FETCH_TIMEOUT_MS),
+          ]);
+          const raw=await abortable(Promise.resolve().then(()=>{
+            if(signal.aborted)refuse();
+            return source.readVersion(entry.secretId,entry.version,signal);
+          }),signal);
+          const after=now();
+          if(signal.aborted||!clock(after)||after<before||
+             !exactKeys(raw,RECORD_KEYS))refuse();
+          const row=raw as Record<string,unknown>;
+          if(row.username!==login||row.version!==entry.version||
+             typeof row.password!=='string'||!PASSWORD.test(row.password)||
+             !clock(row.expiresAtMs)||
+             row.expiresAtMs-after<=MIN_LEASE_MS||
+             row.expiresAtMs-after>MAX_LEASE_MS)refuse();
+
+          // Do not retain passwords, sessions, tenant IDs or provider rows in
+          // this adapter. Every acquisition fetches the exact pinned version.
+          // Password strings in JS cannot be reliably zeroized; this module
+          // is not a substitute for real vault isolation and rotation.
+          return Object.freeze({username:login,password:row.password});
+        }catch{refuse();}
+      },
+    });
+  }catch{refuse();}
+}
