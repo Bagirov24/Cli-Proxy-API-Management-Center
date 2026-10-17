@@ -9,16 +9,16 @@ import {createSecureContext,TLSSocket} from 'node:tls';
 import {
   createBackend16StagingPgTlsTrust,
   type Backend16StagingPgTlsTrust,
-} from '../src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts';
+} from '../../src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts';
 import {
   verifyBackend16DisposableCiPrivatePgTls,
   verifyBackend16StagingPrivatePgTls,
-} from '../src/features/saasBlueprint/controlApi/server/backend16VerifiedPrivatePgTls.ts';
+} from '../../src/features/saasBlueprint/controlApi/server/backend16VerifiedPrivatePgTls.ts';
 
 const HOST='postgres.railway.internal';
 const REQUEST=Buffer.from([0,0,0,8,4,210,22,47]);
 const source=readFileSync(new URL(
-  '../src/features/saasBlueprint/controlApi/server/backend16VerifiedPrivatePgTls.ts',
+  '../../src/features/saasBlueprint/controlApi/server/backend16VerifiedPrivatePgTls.ts',
   import.meta.url),'utf8');
 
 function runOpenSsl(dir:string,args:string[]):void{
