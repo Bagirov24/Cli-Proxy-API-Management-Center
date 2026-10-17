@@ -16,6 +16,26 @@ sha7="$(sha256sum staging/saas-bootstrap/0007_operator_subject_binding_fence.sql
 sha8="$(sha256sum staging/saas-bootstrap/0008_exact_subject_session_gate.sql | cut -d ' ' -f1)"
 [[ "$sha7" == 1fa9bf930e0977e11e7e920a6daa69265f8863e90b85e190bfecea3b5249e6f0 &&
    "$sha8" =~ ^[a-f0-9]{64}$ ]] || fail
+
+# CI-only: independently inspect the seven-receipt baseline through a
+# read-only REPEATABLE READ snapshot with the migrator SEALED. Re-enable it
+# after the readback solely to apply one SQL0008 transaction in ephemeral PG16.
+psql -X -v ON_ERROR_STOP=1 -d saas_staging_ci \
+  -c 'ALTER ROLE saas_schema_migrator NOLOGIN PASSWORD NULL' \
+  > /tmp/b16-preflight-ci-seal.log 2>&1 || fail
+PGOPTIONS='-c saas.staging_only=true' PGUSER=postgres \
+  psql -X -v ON_ERROR_STOP=1 -d saas_staging_ci \
+  -v b16_expected_state=absent \
+  -f scripts/saas-staging/backend16-0008-readonly-reconcile.sql \
+  > /tmp/b16-readonly-absent.log 2>&1 ||
+  { tail -n 14 /tmp/b16-readonly-absent.log >&2; fail; }
+grep -q 'PASS_BACKEND16_SQL0008_READONLY_ABSENT_SEALED_NEVER_AUTO_INSTALL' \
+  /tmp/b16-readonly-absent.log || fail
+psql -X -v ON_ERROR_STOP=1 -d saas_staging_ci \
+  -v ci_migrator_pwd="$migrator_pw" > /tmp/b16-ci-migrator-reenable.log 2>&1 <<'SQL'
+ALTER ROLE saas_schema_migrator LOGIN PASSWORD :'ci_migrator_pwd';
+SQL
+
 PGOPTIONS='-c saas.staging_only=true' PGUSER=saas_schema_migrator \
   PGPASSWORD="$migrator_pw" psql -X -v ON_ERROR_STOP=1 -d saas_staging_ci \
   -v expected_0007_sha256="$sha7" -v migration_sha256="$sha8" \
@@ -34,6 +54,21 @@ for database in saas_staging_ci saas_ephemeral_test; do
     -f staging/saas-bootstrap/0008_exact_subject_session_gate.sql \
     > /tmp/b16-replay-or-db-denied.log 2>&1; then fail; fi
 done
+
+# Seal again before independently observing the *installed* eight-receipt
+# catalog. The inspection SQL cannot apply or retry any migration.
+psql -X -v ON_ERROR_STOP=1 -d saas_staging_ci \
+  -c 'ALTER ROLE saas_schema_migrator NOLOGIN PASSWORD NULL' \
+  > /tmp/b16-postflight-ci-seal.log 2>&1 || fail
+PGOPTIONS='-c saas.staging_only=true' PGUSER=postgres \
+  psql -X -v ON_ERROR_STOP=1 -d saas_staging_ci \
+  -v b16_expected_state=installed \
+  -f scripts/saas-staging/backend16-0008-readonly-reconcile.sql \
+  > /tmp/b16-readonly-installed.log 2>&1 ||
+  { tail -n 14 /tmp/b16-readonly-installed.log >&2; fail; }
+grep -q 'PASS_BACKEND16_SQL0008_READONLY_INSTALLED_SEALED' \
+  /tmp/b16-readonly-installed.log || fail
+
 a_pw="$(openssl rand -hex 32)"
 b_pw="$(openssl rand -hex 32)"
 [[ "$a_pw" =~ ^[a-f0-9]{64}$ && "$b_pw" =~ ^[a-f0-9]{64}$ ]] || fail
