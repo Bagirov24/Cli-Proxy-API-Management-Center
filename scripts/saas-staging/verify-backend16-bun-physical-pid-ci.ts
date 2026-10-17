@@ -268,7 +268,7 @@ try{
     const abortVault=new AbortController();
     const stalled=hungVaultPool.acquirePrincipal(A,abortVault.signal);
     abortVault.abort();
-    await assert.rejects(stalled,/Backend16 staging physical acquisition failed/);
+    await assert.rejects(stalled,/Backend16 staging disposable CI stopped at VAULT/);
     await assert.rejects(hungVaultPool.acquirePrincipal(B,fresh()),
       /Backend16 staging physical LOGIN refused/);
     assert.equal(await scalar(
