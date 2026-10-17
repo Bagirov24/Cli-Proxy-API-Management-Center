@@ -22,6 +22,7 @@ on:
       - 'src/features/saasBlueprint/controlApi/server/backend16PrivateMtlsVersionedSecretReader.ts'
       - 'tests/saasBackend16PrivateMtlsVersionedSecretReader.test.ts'
       - 'scripts/saas-staging/verify-backend16-mtls-secret-broker-ci.ts'
+      - 'scripts/saas-staging/verify-backend16-bun-mtls-secret-client-ci.ts'
       - 'docs/saas/BACKEND_16_15_PRIVATE_MTLS_SECRET_BROKER.md'
       - 'docs/saas/BACKEND_16_11_VERSIONED_PRINCIPAL_VAULT.md'
       - 'tests/fixtures/backend16-synthetic-root-ca.pem'
