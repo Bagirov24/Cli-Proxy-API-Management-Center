@@ -19,7 +19,7 @@ DECLARE
   wanted text := current_setting('saas.b16.reconcile_expected',true);
   staging boolean := (current_database()='saas_staging');
   n integer;
-  c record;
+  migrator_role record;
   f record;
 BEGIN
   IF wanted NOT IN ('absent','installed')
@@ -44,13 +44,13 @@ BEGIN
   SELECT r.rolcanlogin AS login, a.rolpassword IS NULL AS no_password,
          r.rolsuper OR r.rolbypassrls OR r.rolcreaterole
           OR r.rolcreatedb OR r.rolreplication AS privileged
-    INTO c
+    INTO migrator_role
     FROM pg_catalog.pg_roles r
     JOIN pg_catalog.pg_authid a ON a.oid=r.oid
    WHERE r.rolname='saas_schema_migrator';
-  IF NOT FOUND OR c.login IS DISTINCT FROM false
-     OR c.no_password IS DISTINCT FROM true
-     OR c.privileged IS DISTINCT FROM false THEN
+  IF NOT FOUND OR migrator_role.login IS DISTINCT FROM false
+     OR migrator_role.no_password IS DISTINCT FROM true
+     OR migrator_role.privileged IS DISTINCT FROM false THEN
     RAISE EXCEPTION 'B16_READONLY_STOP_MIGRATOR_NOT_SEALED';
   END IF;
 
