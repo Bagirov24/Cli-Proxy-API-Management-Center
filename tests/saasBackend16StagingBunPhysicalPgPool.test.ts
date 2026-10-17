@@ -122,3 +122,22 @@ test('real disposable PG16 runner enforces staging core and PID quarantine',()=>
   assert.ok(script.includes(
     'bun scripts/saas-staging/verify-backend16-bun-physical-pid-ci.ts'));
 });
+
+test('hung vault cannot hang physical acquisition after abort',()=>{
+  for(const marker of [
+    'function rejectOnAbort<T>',
+    'signal.addEventListener(\'abort\',onAbort',
+    'if(signal.aborted)onAbort()',
+    'rejectOnAbort(vault.readPrincipal(login,signal),signal)',
+    'rejectOnAbort(native.reserve({signal}),signal)',
+    'rejectOnAbort(query.execute(),signal)',
+  ])assert.ok(source.includes(marker),marker);
+  const pgRunner=readFileSync(new URL(
+    '../scripts/saas-staging/verify-backend16-bun-physical-pid-ci.ts',
+    import.meta.url),'utf8');
+  for(const marker of [
+    'hungVaultPool','abortVault.abort()',
+    'await assert.rejects(stalled,',
+    'await hungVaultPool.shutdown()',
+  ])assert.ok(pgRunner.includes(marker),marker);
+});
