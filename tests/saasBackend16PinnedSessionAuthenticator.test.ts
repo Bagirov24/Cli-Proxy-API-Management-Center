@@ -255,7 +255,9 @@ test('integrates only as unmounted private handler authenticate port',async()=>{
   assert.deepEqual(await allowed.json(),{tenantId:TENANT,projectIds:[PROJECT]});
   const denied=await h(mk(OTHER,jwt));
   assert.equal(denied.status,404);
-  const corrupted=jwt.slice(0,-1)+(jwt.at(-1)==='a'?'b':'a');
+  const parts=jwt.split('.');
+  const corrupted=parts[0]+'.'+parts[1]+'.'+
+    (parts[2][0]==='a'?'b':'a')+parts[2].slice(1);
   const bad=await h(mk(TENANT,corrupted));
   assert.equal(bad.status,401);
   assert.equal(reads,2);
