@@ -71,7 +71,8 @@ export interface Backend16PinnedSessionOptions {
 function positiveNow(now: unknown): now is number {
   return typeof now === 'number' && Number.isSafeInteger(now) && now > 0;
 }
-function currentSession(
+/** Structural matching only; no proof that a PG connection is authenticated. */
+export function backend16SessionSnapshotMatches(
   snapshot: Backend16CurrentSessionSnapshot | null,
   key: Backend16PinnedSessionLookupKey,
   now: number,
