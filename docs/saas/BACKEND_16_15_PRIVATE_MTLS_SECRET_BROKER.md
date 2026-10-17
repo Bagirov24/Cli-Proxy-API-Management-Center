@@ -91,7 +91,11 @@ The CI script
 creates a CA, client leaf, and server leaf with OpenSSL in a temporary
 directory and runs a real TLS server that requires client certificates.
 It checks a positive read through **both** this transport and the
-Backend16.11 version-pinned vault adapter. It then exercises physical
+Backend16.11 version-pinned vault adapter.
+An additional child process runs the **actual Bun 1.3.14 mTLS client**
+against the Node24 private HTTPS broker using the same temporary PKI,
+without revealing certificate private keys in CI logs. This is a real
+local mTLS read, not merely a Bun bundling/TypeScript check. It then exercises physical
 revocation on the next request, wrong immutable version, expired
 credentials, extra or duplicate fields, redirect, 404, oversized body,
 hung/aborted response, invalid ID/version before network, wrong root
