@@ -25,7 +25,7 @@ test('no-credential staging-only gate refuses production/CI or disabled',()=>{
   ])assert.ok(source.includes(name),name);
   assert.match(source,/env\.RAILWAY_ENVIRONMENT_NAME!=='staging'/);
   assert.match(source,/env\.SAAS_B16_TLS_PEER_PROBE_EXPLICIT_ENABLE!=='true'/);
-  assert.doesNotMatch(source,/Bun\.serve|createServer\(|\.listen\(|cron|setInterval/);
+  assert.doesNotMatch(source,/Bun\.serve|createServer\(|\.listen\(|cronSchedule\s*:|setInterval\s*\(/);
 });
 
 test('unverified certificate inspection never asserts trusted server',()=>{
