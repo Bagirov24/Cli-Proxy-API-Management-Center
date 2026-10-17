@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {
   createBackend16StagingBunPhysicalPgPool,
   createBackend16StagingSqlSequence,
+  createBackend16StagingDisposableCiPhysicalPgPool,
 } from '../src/features/saasBlueprint/controlApi/server/backend16StagingBunPhysicalPgPool.ts';
 import {BACKEND16_EXACT_READ_SQL as SQL}
   from '../src/features/saasBlueprint/controlApi/server/backend16ExactSessionSqlRead.ts';
@@ -79,4 +80,19 @@ test('no production login, arbitrary SQL, HTTP, retry or migration capability',(
   const executable=source.replace(/\/\*[\s\S]*?\*\//g,'').replace(/\/\/[^\n]*/g,'');
   assert.doesNotMatch(executable,/\b(?:SET ROLE|CREATE ROLE|ALTER ROLE|DROP ROLE|pg_terminate_backend)\b/i);
   assert.doesNotMatch(source,/retry\s*\(/);
+});
+
+test('CI entrypoint refuses all non-disposable environments',()=>{
+  assert.throws(()=>createBackend16StagingDisposableCiPhysicalPgPool(vault),
+    /limited to disposable GitHub PG16/);
+});
+test('shared physical core has no public host/profile injection and pins local CI',()=>{
+  assert.match(source,/const DISPOSABLE_CI_PROFILE:Backend16BunPgProfile/);
+  assert.match(source,/hostname:'127\.0\.0\.1',database:'saas_staging_ci',tls:'disable'/);
+  assert.match(source,/const STAGING_PROFILE:Backend16BunPgProfile/);
+  assert.match(source,/hostname:HOST,database:DATABASE,tls:'verify-full'/);
+  assert.match(source,/env\.GITHUB_ACTIONS!=='true'/);
+  assert.match(source,/env\.PGPASSWORD!=='ci_ephemeral_test_only'/);
+  assert.match(source,/return buildBackend16StagingPhysicalPgPool\(vault,DISPOSABLE_CI_PROFILE\)/);
+  assert.doesNotMatch(source,/export function buildBackend16StagingPhysicalPgPool/);
 });
