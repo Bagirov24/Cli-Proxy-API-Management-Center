@@ -140,8 +140,10 @@ function verdict(missing:readonly Backend16StagingGate[]):
     missing:Object.freeze([...missing]),productionAuthorized:false,
   });
 }
-function bytesFromHex(hex:string):Uint8Array{
-  const b=new Uint8Array(hex.length/2);
+function bytesFromHex(hex:string):Uint8Array<ArrayBuffer>{
+  // Always allocate the exact ArrayBuffer, never a SharedArrayBuffer,
+  // to satisfy strict DOM BufferSource types and WebCrypto internals.
+  const b=new Uint8Array(new ArrayBuffer(hex.length/2));
   for(let i=0;i<b.length;i++)b[i]=Number.parseInt(hex.slice(i*2,i*2+2),16);
   return b;
 }
