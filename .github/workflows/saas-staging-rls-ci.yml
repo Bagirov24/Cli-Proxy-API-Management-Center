@@ -79,7 +79,10 @@ permissions:
 jobs:
   tenant-rls:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # This one job runs ALL isolated PG16 migration, identity and physical
+    # tests sequentially. The prior 10-minute cap canceled at Backend08/09
+    # without any failing assertion; preserve every test and fail-closed gate.
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:16.6
