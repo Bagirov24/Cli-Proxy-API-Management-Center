@@ -65,7 +65,8 @@ JavaScript strings cannot be reliably zeroized.
 
 Every outbound connection uses HTTPS, fixed private SNI, the approved
 CA, `rejectUnauthorized:true`, TLS 1.2/1.3 and strict DNS SAN
-validation without Common Name fallback. The Node standard identity
+validation requiring the **literal exact DNS SAN**, rejecting wildcard and
+Common Name fallback. The Node standard identity
 check also runs. A connection is not proof of broker IAM: **the actual
 secret service must independently enforce mutual TLS workload identity,
 read-only permissions to the exact permitted ID/version pairs, no
