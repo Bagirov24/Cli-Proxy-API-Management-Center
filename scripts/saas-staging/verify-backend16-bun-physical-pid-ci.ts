@@ -243,6 +243,25 @@ try{
     });
     assert.equal((await resumed(b,tb,fresh())).kind,'authorized');
   }finally{await cleanStaging.shutdown();}
+
+  // A compromised/blocked external vault can ignore cancellation forever.
+  // The staging physical core must settle promptly on caller abort, poison
+  // future acquisitions synchronously and never contact any PG backend.
+  const hungVaultPool=createBackend16StagingDisposableCiPhysicalPgPool({
+    readPrincipal:()=>new Promise<{username:string,password:string}>(()=>{}),
+  });
+  try{
+    const abortVault=new AbortController();
+    const stalled=hungVaultPool.acquirePrincipal(A,abortVault.signal);
+    abortVault.abort();
+    await assert.rejects(stalled,/Backend16 staging physical acquisition failed/);
+    await assert.rejects(hungVaultPool.acquirePrincipal(B,fresh()),
+      /Backend16 staging physical LOGIN refused/);
+    assert.equal(await scalar(
+      'SELECT count(*)::int FROM pg_stat_activity WHERE datname=$1 AND usename=$2',
+      ['saas_staging_ci',A]),0);
+  }finally{await hungVaultPool.shutdown();}
+
   console.info('PASS Backend16.9: staging Bun.SQL core real PG16 physical LOGIN, locked exact session, cross-tenant deny, cancel/PID death and no retry');
 
   console.info('PASS Backend16.7: real Bun.SQL two distinct PG16 LOGIN backend PIDs, exact bound read, physical discard, forced cancellation, no credential spoof');
