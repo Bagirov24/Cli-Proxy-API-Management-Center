@@ -38,8 +38,9 @@ function fixture():Snapshot{
     baseline:{
       tenants:0,projects:0,grants:0,grant_audit:0,sessions:0,session_events:0,
       forced:2,read_policies:2,policies:2,b14_triggers:5,
-      reader_data:true,writer_data:true,reader_identity:false,writer_identity:false,
-      acl_fence:true,identity_foreign_acl:0
+      reader_data:true,writer_data:true,reader_writes:false,writer_writes:false,
+      reader_identity:false,writer_identity:false,
+      acl_fence:true,identity_foreign_acl:0,data_foreign_acl:0
     },
     objects:{bindings:false,events:false,enroll:false,revoke:false},
     installed:null
@@ -110,6 +111,9 @@ describe('Backend15 readonly catalog reconciliation (NO migrations, NO Railway)'
      (s:Snapshot)=>{s.baseline.reader_identity=true;},
      (s:Snapshot)=>{s.baseline.writer_identity=true;},
      (s:Snapshot)=>{s.baseline.identity_foreign_acl=1;},
+     (s:Snapshot)=>{s.baseline.data_foreign_acl=1;},
+     (s:Snapshot)=>{s.baseline.reader_writes=true;},
+     (s:Snapshot)=>{s.baseline.writer_writes=true;},
      (s:Snapshot)=>{s.baseline.acl_fence=false;}
    ];
    for(const m of modify){const x=applied();m(x);expect(classifyBackend15Snapshot(x)).toBe('stop');}
@@ -139,7 +143,6 @@ describe('Backend15 readonly catalog reconciliation (NO migrations, NO Railway)'
    expect(source).toContain('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
    expect(source).toContain("default_transaction_read_only=on");
    expect(source).toContain("e.SAAS_B15_APPLY_EXPLICIT_ENABLE==='true'");
-   expect(source).toContain("u"); // private URL validated before connect
    expect(source).toContain("url.hostname!=='postgres.railway.internal'");
    expect(source).toContain("url.pathname!=='/saas_staging'");
    expect(source).toContain("RAILWAY_SERVICE_NAME!=='saas-b15-reconcile-readonly-once'");
