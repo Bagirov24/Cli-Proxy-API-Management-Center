@@ -12,6 +12,14 @@ attempt to deploy the separately gated one-shot installer.
   `scripts/saas-staging/backend16-0008-readonly-reconcile.sql` from main
   `0df48301c16e29a23c5df56d5ed456cb03b8ec13`.
   CI asserts exact equality. Do not edit this body as part of deployment.
+- The read-only Function sets the transaction-local, fixed
+  `saas.staging_only=true` label after `BEGIN READ ONLY`, reproducing the
+  **reviewed operator runbook** `PGOPTIONS='-c saas.staging_only=true'`.
+  This label alone is **not authorization or trusted evidence of database
+  identity**; the Railway IDs, private PostgreSQL hostname/database,
+  authenticated postgres superuser, SQL0001–0007 immutable receipt provenance,
+  force RLS, NOLOGIN seal and data emptiness are independently verified.
+  Never set `saas.tenant_id`, change roles, or rely on this GUC to grant access.
 - The Function is not the SQL0008 one-shot installer. It cannot apply any
   migration or unseal the migrator: the only transaction is
   `REPEATABLE READ READ ONLY`, with the fully reviewed SQL catalog probe.
