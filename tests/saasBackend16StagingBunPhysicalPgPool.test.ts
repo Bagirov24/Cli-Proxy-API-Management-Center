@@ -96,3 +96,23 @@ test('shared physical core has no public host/profile injection and pins local C
   assert.match(source,/return buildBackend16StagingPhysicalPgPool\(vault,DISPOSABLE_CI_PROFILE\)/);
   assert.doesNotMatch(source,/export function buildBackend16StagingPhysicalPgPool/);
 });
+
+test('real disposable PG16 runner enforces staging core and PID quarantine',()=>{
+  const e2e=readFileSync(new URL(
+    '../scripts/saas-staging/verify-backend16-bun-physical-pid-ci.ts',
+    import.meta.url),'utf8');
+  const script=readFileSync(new URL(
+    '../scripts/saas-staging/verify-backend16-exact-session-pg16.sh',
+    import.meta.url),'utf8');
+  for(const marker of [
+    'createBackend16StagingDisposableCiPhysicalPgPool',
+    'stagingPool.acquirePrincipal(A,fresh())',
+    'stagingRead(a,ta,fresh())','stagingRead(b,tb,fresh())',
+    'stagingRead(a,tb,fresh())','stagingRead(b,ta,fresh())',
+    'await gone(stagePid','await gone(waitingPid)',
+    'cancelStage.abort()','wait_event_type=',
+    'PASS Backend16.9:',"await assert.rejects(stagingRead(b,tb,fresh())",
+  ])assert.ok(e2e.includes(marker),marker);
+  assert.ok(script.includes(
+    'bun scripts/saas-staging/verify-backend16-bun-physical-pid-ci.ts'));
+});
