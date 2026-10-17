@@ -195,7 +195,7 @@ try{
     assert.equal(identity.rows[0].session_login,A);
     assert.equal(identity.rows[0].database_name,'saas_staging_ci');
     assert.ok(Number.isSafeInteger(stagePid));
-    await assert.rejects(stageConn.release(true),/discarded/);
+    await assert.rejects(async()=>{await stageConn.release(true);},/discarded/);
     await gone(stagePid as number);
 
     assert.equal((await stagingRead(a,ta,fresh())).kind,'authorized');
