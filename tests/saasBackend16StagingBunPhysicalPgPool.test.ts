@@ -88,9 +88,11 @@ test('CI entrypoint refuses all non-disposable environments',()=>{
 });
 test('shared physical core has no public host/profile injection and pins local CI',()=>{
   assert.match(source,/const DISPOSABLE_CI_PROFILE:Backend16BunPgProfile/);
-  assert.match(source,/hostname:'127\.0\.0\.1',database:'saas_staging_ci',tls:'disable'/);
+  assert.match(source,/hostname:'127\.0\.0\.1',database:'saas_staging_ci'/);
   assert.match(source,/const STAGING_PROFILE:Backend16BunPgProfile/);
   assert.match(source,/hostname:HOST,database:DATABASE,tls:'verify-full'/);
+  assert.match(source,/profile\.tls\?\{tls:profile\.tls\}:\{\}/);
+  assert.doesNotMatch(source,/database:'saas_staging_ci',tls:/);
   assert.match(source,/env\.GITHUB_ACTIONS!=='true'/);
   assert.match(source,/env\.PGPASSWORD!=='ci_ephemeral_test_only'/);
   assert.match(source,/return buildBackend16StagingPhysicalPgPool\(vault,DISPOSABLE_CI_PROFILE\)/);
