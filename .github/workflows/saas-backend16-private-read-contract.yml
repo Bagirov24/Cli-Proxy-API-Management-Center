@@ -19,6 +19,8 @@ on:
       - 'tests/saasBackend16StagingPgTlsTrust.test.ts'
       - 'src/features/saasBlueprint/controlApi/server/backend16VerifiedPrivatePgTls.ts'
       - 'scripts/saas-staging/verify-backend16-verified-private-pg-tls-ci.ts'
+      - 'scripts/saas-staging/backend16-ci-node-pg-ssl-sidecar.cjs'
+      - 'scripts/saas-staging/verify-backend16-bun-tls-client-ci.ts'
       - 'docs/saas/BACKEND_16_14_VERIFIED_PRIVATE_PG_TLS.md'
       - 'tests/fixtures/backend16-synthetic-root-ca.pem'
       - 'docs/saas/BACKEND_16_10_OPERATOR_PINNED_PG_TLS.md'
@@ -61,6 +63,8 @@ jobs:
         run: bash -n scripts/saas-staging/verify-backend16-exact-session-pg16.sh
       - name: Real loopback verified-full PostgreSQL TLS (Node24, isolated)
         run: node --experimental-strip-types scripts/saas-staging/verify-backend16-verified-private-pg-tls-ci.ts
+      - name: Actual Bun verify-full against isolated Node SSLRequest TLS server
+        run: bun scripts/saas-staging/verify-backend16-bun-tls-client-ci.ts
       - name: Bundle no-credential PostgreSQL verify-full handshake
         run: bun build --target=bun src/features/saasBlueprint/controlApi/server/backend16VerifiedPrivatePgTls.ts --outdir /tmp/b16-pg-verify-full
       - name: Strict TypeScript for full source
