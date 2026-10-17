@@ -18,7 +18,7 @@ const vault={
   },
 };
 test('staging physical driver refuses construction without exact Railway gates',()=>{
-  assert.throws(()=>createBackend16StagingBunPhysicalPgPool(vault),
+  assert.throws(()=>createBackend16StagingBunPhysicalPgPool(vault,null as never),
     /release gates not met/);
 });
 test('only strictly sequenced readAuthorized SQL; negative exact decision skips data',()=>{
@@ -69,7 +69,7 @@ test('no production login, arbitrary SQL, HTTP, retry or migration capability',(
     'SAAS_B16_STAGING_PRIVATE_ONLY',
     "const HOST='postgres.railway.internal'",
     "const DATABASE='saas_staging'",
-    "tls:'verify-full'","max:1,connectionTimeout:4",
+    'backend16IsApprovedStagingPgTlsTrust',"max:1,connectionTimeout:4",
     'vault.readPrincipal(login,signal)',
     'credentials.username!==login',
     'quarantine(','stopped=true','AbortSignal.timeout(6000)',
@@ -90,7 +90,9 @@ test('shared physical core has no public host/profile injection and pins local C
   assert.match(source,/const DISPOSABLE_CI_PROFILE:Backend16BunPgProfile/);
   assert.match(source,/hostname:'127\.0\.0\.1',database:'saas_staging_ci'/);
   assert.match(source,/const STAGING_PROFILE:Backend16BunPgProfile/);
-  assert.match(source,/hostname:HOST,database:DATABASE,tls:'verify-full'/);
+  assert.match(source,/hostname:HOST,database:DATABASE/);
+  assert.match(source,/Object.freeze\(\{\.\.\.STAGING_PROFILE,tls:tlsTrust\}\)/);
+  assert.match(source,/!backend16IsApprovedStagingPgTlsTrust\(tlsTrust\)/);
   assert.match(source,/profile\.tls\?\{tls:profile\.tls\}:\{\}/);
   assert.doesNotMatch(source,/database:'saas_staging_ci',tls:/);
   assert.match(source,/env\.GITHUB_ACTIONS!=='true'/);
