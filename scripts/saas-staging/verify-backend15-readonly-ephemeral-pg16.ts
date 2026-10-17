@@ -10,6 +10,7 @@ import pg from 'pg';
 import {classifyBackend15Snapshot,collect,type Verdict} from './backend15-readonly-reconcile';
 
 const REFUSE='BACKEND15_EPHEMERAL_READONLY_RECONCILE_FAIL_CLOSED';
+let phase='environment';
 async function run() {
   const e=process.env;
   if(e.GITHUB_ACTIONS!=='true'||e.SAAS_B15_RECONCILE_EPHEMERAL_CI!=='true'||
@@ -30,10 +31,24 @@ async function run() {
   });
   let connected=false;
   try {
+    phase='connection';
     await client.connect();connected=true;
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    phase='catalog_readonly_query';
     const state=await collect(client);
+    phase='catalog_classification';
     const verdict=classifyBackend15Snapshot(state);
+    if(verdict!==desired){
+      // Only synthetic numeric/boolean CI counters; no subjects, SQL or secrets.
+      console.error('BACKEND15_EPHEMERAL_CATALOG_MISMATCH '+JSON.stringify({
+        verdict,receipts:state.receipts.length,metadata:{
+          sealed:state.metadata.sealed,ver:state.metadata.ver,
+          safe_runtime_roles:state.metadata.safe_runtime_roles,
+          new_roles:state.metadata.new_roles,memberships:state.metadata.memberships,
+          read_only:state.metadata.read_only
+        },baseline:state.baseline,objects:state.objects
+      }));
+    }
     await client.query('COMMIT');
     if(verdict!==desired)throw Error('readonly catalog state mismatch');
     if(verdict==='absent')
@@ -45,8 +60,11 @@ async function run() {
   }
 }
 try{await run()}
-catch {
+catch (error) {
   // Do not print SQL, database connection strings, credentials or role metadata.
-  console.error(REFUSE);
+  const maybeCode=(error as {code?:unknown})?.code;
+  const sqlState=typeof maybeCode==='string' && /^[0-9A-Z]{5}$/.test(maybeCode)
+    ?maybeCode:'none';
+  console.error(REFUSE+'_'+phase+'_'+sqlState);
   process.exitCode=1;
 }
