@@ -59,7 +59,7 @@ jobs:
         run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts tests/saasBackend16PinnedSessionAuthenticator.test.ts tests/saasBackend16PhysicalPgAdmission.test.ts tests/saasBackend16ExactSessionGate.test.ts tests/saasBackend16ExactSessionSqlRead.test.ts tests/saasBackend16CiBunPhysicalPgPool.test.ts tests/saasBackend16StagingBunPhysicalPgPool.test.ts tests/saasBackend16StagingPgTlsTrust.test.ts tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts
       - name: Validate Backend16.4 disposable PG16 runner syntax
         run: bash -n scripts/saas-staging/verify-backend16-exact-session-pg16.sh
-      - name: Real loopback verified-full PostgreSQL TLS (isolated Bun test process)
+      - name: Real loopback verified-full PostgreSQL TLS (Node24, isolated)
         run: node --experimental-strip-types scripts/saas-staging/verify-backend16-verified-private-pg-tls-ci.ts
       - name: Bundle no-credential PostgreSQL verify-full handshake
         run: bun build --target=bun src/features/saasBlueprint/controlApi/server/backend16VerifiedPrivatePgTls.ts --outdir /tmp/b16-pg-verify-full
