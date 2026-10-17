@@ -65,7 +65,7 @@ function fixture(config:FixtureOptions={}){
             return await new Promise<never>(()=>{});
           if(sql===SQL.identity)
             return {rows:[{...(config.role??role),...(config.extraRole?{secret:'not-public'}:{})}]};
-          if(sql===SQL.acl)return {rows:[{allowed:config.acl??true}]};
+          if(sql===SQL.acl)return {rows:[{allowed:config.acl===undefined?true:config.acl}]};
           if(sql===SQL.tenant)return {rows:[config.tenant??{tenant_id:TENANT}]};
           return {rows:[]};
         },
@@ -107,7 +107,7 @@ test('a per-subject PG backend and SQL0007 RLS can be observed but not authorize
   const result=await f.probe(principal,TENANT,signal());
   assert.deepEqual(result,{kind:'physical-rls-observed'});
   assert.equal('projectIds' in result,false);
-  assert.equal('kind' in result && result.kind==='authorized',false);
+  assert.notEqual((result as {kind:string}).kind,'authorized');
   assert.deepEqual(f.acquired,[principal.pgLogin]);
   assert.deepEqual(f.releases,[false]);
   assert.deepEqual(f.poisoned,[]);
