@@ -38,6 +38,10 @@ test('read-only PostgreSQL transaction, exact operator expectation and no retry'
   assert.match(source,/failurePhase=phase/);
   assert.match(source,/failurePhase='CLOSE'/);
   assert.match(source,/B16_READONLY_PREFLIGHT_STOP_PHASE_/);
+  assert.match(source,/catalogStopCode=candidate/);
+  assert.match(source,/catalogStopCode\?\?'UNSPECIFIED'/);
+  assert.doesNotMatch(source,/console\.(?:error|log|warn)\(error\)/);
+
   assert.match(source,/if\(failed\|\|!closed\|\|EXPECTED!=='absent'\)/);
   assert.doesNotMatch(source,/throw Error\('B16_READONLY_PREFLIGHT_FAILED/);
 
@@ -82,4 +86,17 @@ test('disabled Railway staging read-only Function exits without DB or retries',(
   assert.match(child.stdout,/B16_READONLY_PREFLIGHT_DISABLED_NO_DATABASE/);
   assert.doesNotMatch(child.stdout,/PASS_BACKEND16/);
   assert.doesNotMatch(child.stdout+child.stderr,/password|DATABASE_URL|PGPASSWORD/i);
+});
+
+test('only reviewed SQL catalog STOP codes can reach Railway logs',()=>{
+  const capture=source.match(/^const ALLOWED_CATALOG_STOP_MARKERS=new Set\((.+)\);$/m);
+  assert.ok(capture);
+  const actual=JSON.parse(capture[1]) as string[];
+  const expected=[...new Set([...reconcile.matchAll(
+    /RAISE EXCEPTION '(B16_READONLY_STOP_[A-Z0-9_]+)'/g,
+  )].map(m=>m[1]))].sort();
+  assert.deepEqual(actual,expected);
+  assert.equal(actual.length,17);
+  assert.ok(actual.every(v=>/^B16_READONLY_STOP_[A-Z0-9_]+$/.test(v)));
+  assert.match(source,/error\.message\.match\(\/B16_READONLY_STOP_\[A-Z0-9_\]\+\//);
 });
