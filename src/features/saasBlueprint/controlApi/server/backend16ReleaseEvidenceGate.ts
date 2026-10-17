@@ -18,7 +18,7 @@ const SHA=/^[a-f0-9]{64}$/;
 const SHA_COMMIT=/^[a-f0-9]{40}$/;
 const ED25519_SIGNATURE=/^[a-f0-9]{128}$/;
 const OPERATOR_ID=/^[a-z][a-z0-9_-]{3,63}$/;
-const EVIDENCE_KEYS='environmentId,gate,observedAtMs,outcome,proofSha256,proofUri,projectId,repo,role,schema,signerId,sourceCommitSha,validUntilMs';
+const EVIDENCE_KEYS='environmentId,gate,observedAtMs,outcome,projectId,proofSha256,proofUri,repo,role,schema,signerId,sourceCommitSha,validUntilMs';
 const SIGNED_KEYS='evidence,signatureHex';
 const SIGNER_KEYS='publicKeyHex,role,signerId';
 
