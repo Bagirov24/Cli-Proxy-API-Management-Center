@@ -116,6 +116,13 @@ export function createBackend16CiBunPhysicalPgPool(
         active.add(native);
         reserved=await native.reserve({signal});
         assertActive(signal);
+        // Server-owned session marker on the SAME authenticated backend,
+        // never a client/tenant GUC and never a role impersonation.
+        await reserved.unsafe(
+          "SELECT pg_catalog.set_config('saas.staging_only','true',false)",
+          [],
+        ).execute();
+        assertActive(signal);
       }catch{
         if(native){try{await native.close({timeout:0});}catch{/* no retry */}
           active.delete(native);}
