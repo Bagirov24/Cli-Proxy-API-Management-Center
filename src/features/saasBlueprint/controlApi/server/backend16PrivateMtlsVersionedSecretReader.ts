@@ -18,9 +18,7 @@ import {request as nativeHttpsRequest} from 'node:https';
 // @ts-expect-error Backend-only Node TLS, excluded from frontend tsconfig.
 import {checkServerIdentity as nativeCheckServerIdentity} from 'node:tls';
 // @ts-expect-error Backend-only Node crypto, excluded from frontend tsconfig.
-import {
-  createHash,createPrivateKey,createPublicKey,timingSafeEqual,X509Certificate,
-} from 'node:crypto';
+import {createHash,createPrivateKey,createPublicKey,timingSafeEqual,X509Certificate} from 'node:crypto';
 import type {Backend16StagingVersionedSecretReader}
   from './backend16StagingVersionedPrincipalVault.ts';
 
