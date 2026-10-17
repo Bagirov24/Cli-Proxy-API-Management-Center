@@ -7,6 +7,8 @@ import assert from 'node:assert/strict';
 import {SQL} from 'bun';
 import {createBackend16CiBunPhysicalPgPool}
   from '../../src/features/saasBlueprint/controlApi/server/backend16CiBunPhysicalPgPool.ts';
+import {createBackend16StagingDisposableCiPhysicalPgPool}
+  from '../../src/features/saasBlueprint/controlApi/server/backend16StagingBunPhysicalPgPool.ts';
 import {createBackend16ExactSqlReadPort,BACKEND16_EXACT_READ_SQL}
   from '../../src/features/saasBlueprint/controlApi/server/backend16ExactSessionSqlRead.ts';
 import type {VerifiedPrincipal}
@@ -169,6 +171,80 @@ try{
     await assert.rejects(rejected(a,ta,fresh()),
       /Backend16 exact SQL data source unavailable/);
   }finally{await forged.shutdown();}
+  // Backend16.9: exercise THE SAME physical/query/discard core that staging
+  // uses, but under the separate local-only CI profile on disposable PG16.
+  // Host/database/TLS cannot be supplied by users, HTTP or test assertions.
+  const stagingPool=createBackend16StagingDisposableCiPhysicalPgPool({
+    readPrincipal:(login)=>credentials(login),
+  });
+  const stagingRead=createBackend16ExactSqlReadPort({
+    pool:stagingPool,expectedDatabase:'saas_staging_ci',
+  });
+  try{
+    // A real native backend is physically killed even if its transaction
+    // never reaches COMMIT, and no leaked PID survives.
+    const stageConn=await stagingPool.acquirePrincipal(A,fresh());
+    for(const sql of [
+      BACKEND16_EXACT_READ_SQL.begin,
+      BACKEND16_EXACT_READ_SQL.statementTimeout,
+      BACKEND16_EXACT_READ_SQL.lockTimeout,
+    ])await stageConn.query(sql,[],fresh());
+    const identity=await stageConn.query(
+      BACKEND16_EXACT_READ_SQL.identity,[],fresh());
+    const stagePid=identity.rows[0].backend_pid;
+    assert.equal(identity.rows[0].session_login,A);
+    assert.equal(identity.rows[0].database_name,'saas_staging_ci');
+    assert.ok(Number.isSafeInteger(stagePid));
+    await assert.rejects(stageConn.release(true),/discarded/);
+    await gone(stagePid as number);
+
+    assert.equal((await stagingRead(a,ta,fresh())).kind,'authorized');
+    assert.equal((await stagingRead(b,tb,fresh())).kind,'authorized');
+    assert.deepEqual(await stagingRead(a,tb,fresh()),{kind:'denied'});
+    assert.deepEqual(await stagingRead(b,ta,fresh()),{kind:'denied'});
+    for(const login of [A,B])assert.equal(await scalar(
+      'SELECT count(*)::int FROM pg_stat_activity WHERE datname=$1 AND usename=$2',
+      ['saas_staging_ci',login]),0);
+
+    // Real PG16 FOR SHARE cancellation on an independently locked A grant.
+    blocker=await admin.reserve();
+    await blocker.unsafe('BEGIN').execute();
+    await blocker.unsafe(
+      'SELECT access_revision FROM saas_acl.principal_tenants '+
+      'WHERE principal_name=$1 AND tenant_id=$2 FOR UPDATE',[A,ta]).execute();
+    const cancelStage=new AbortController();
+    const inflight=stagingRead(a,ta,cancelStage.signal);
+    let waitingPid:number|undefined;
+    for(let i=0;i<30;i++){
+      const v=await admin.unsafe(
+        "SELECT pid::int AS pid FROM pg_stat_activity WHERE datname=$1 "+
+        "AND usename=$2 AND wait_event_type='Lock' LIMIT 1",
+        ['saas_staging_ci',A]);
+      if(v.length===1&&Number.isSafeInteger(v[0].pid)){
+        waitingPid=v[0].pid as number;break;
+      }
+      await Bun.sleep(30);
+    }
+    assert.ok(waitingPid!==undefined,'Backend16.9 FOR SHARE lock must block');
+    cancelStage.abort();
+    await assert.rejects(inflight,
+      /Backend16 exact SQL data source unavailable/);
+    await gone(waitingPid);
+    await blocker.unsafe('ROLLBACK').execute();
+    blocker.release();blocker=undefined;
+    await assert.rejects(stagingRead(b,tb,fresh()),/unavailable/);
+  }finally{await stagingPool.shutdown();}
+  const cleanStaging=createBackend16StagingDisposableCiPhysicalPgPool({
+    readPrincipal:(login)=>credentials(login),
+  });
+  try{
+    const resumed=createBackend16ExactSqlReadPort({
+      pool:cleanStaging,expectedDatabase:'saas_staging_ci',
+    });
+    assert.equal((await resumed(b,tb,fresh())).kind,'authorized');
+  }finally{await cleanStaging.shutdown();}
+  console.info('PASS Backend16.9: staging Bun.SQL core real PG16 physical LOGIN, locked exact session, cross-tenant deny, cancel/PID death and no retry');
+
   console.info('PASS Backend16.7: real Bun.SQL two distinct PG16 LOGIN backend PIDs, exact bound read, physical discard, forced cancellation, no credential spoof');
 }finally{
   if(blocker){
