@@ -132,6 +132,9 @@ test('real RS256 at+jwt produces only pinned immutable enrolled session metadata
   const result=await authenticate(jwt,signal());
   assert.equal(called.keys.length,1,'signed JWT never reached session lookup');
   assert.ok(returned,'current session authority failed to return its snapshot');
+  assert.equal(backend16SessionSnapshotMatches(
+    returned as Backend16CurrentSessionSnapshot, called.keys[0], NOW*1000),true,
+    'operator session response failed structural snapshot check');
   const key=called.keys[0], fixtureSnapshot=snapshot(key);
   const fixtureConditions={
     issuer:fixtureSnapshot.issuer===key.issuer,
