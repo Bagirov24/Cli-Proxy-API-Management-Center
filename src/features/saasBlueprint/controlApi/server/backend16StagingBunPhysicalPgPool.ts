@@ -56,6 +56,36 @@ const PARAM_COUNTS=new Map<string,number>([
 type Step=keyof typeof SQL|'done';
 
 /**
+ * Vaults and native driver internals may ignore AbortSignal. Bound every
+ * acquisition/SQL await anyway: an aborted request MUST stop awaiting even
+ * when the upstream promise never settles. Native resources are quarantined
+ * separately; late resolution cannot re-enter an authenticated read.
+ */
+function rejectOnAbort<T>(pending:PromiseLike<T>,signal:AbortSignal):Promise<T>{
+  if(signal.aborted)
+    return Promise.reject(new Error('Backend16 staging operation aborted'));
+  return new Promise<T>((resolve,reject)=>{
+    let done=false;
+    const finish=()=>{
+      if(done)return false;
+      done=true;
+      signal.removeEventListener('abort',onAbort);
+      return true;
+    };
+    const onAbort=()=>{
+      if(finish())reject(new Error('Backend16 staging operation aborted'));
+    };
+    signal.addEventListener('abort',onAbort,{once:true});
+    if(signal.aborted)onAbort();
+    Promise.resolve(pending).then(
+      value=>{if(finish())resolve(value);},
+      error=>{if(finish())reject(error);},
+    );
+  });
+}
+
+
+/**
  * Pure request-local state machine; exported to test its exact protocol
  * without creating Railway connections or accepting test credentials.
  * The adapter independently verifies physical session_user / PID and rows.
@@ -195,7 +225,7 @@ function buildBackend16StagingPhysicalPgPool(
       let reserved:NativeReserved|undefined;
       let acquirePhase:'VAULT'|'MAPPING'|'CONSTRUCTOR'|'RESERVE'|'MARKER'='VAULT';
       try{
-        const credentials=await vault.readPrincipal(login,signal);
+        const credentials=await rejectOnAbort(vault.readPrincipal(login,signal),signal);
         assertAvailable(signal);
         acquirePhase='MAPPING';
         if(!credentials||credentials.username!==login||
@@ -213,13 +243,13 @@ function buildBackend16StagingPhysicalPgPool(
         });
         active.add(native);
         acquirePhase='RESERVE';
-        reserved=await native.reserve({signal});
+        reserved=await rejectOnAbort(native.reserve({signal}),signal);
         assertAvailable(signal);
         acquirePhase='MARKER';
         // Same reserved physical LOGIN, never a user-supplied tenant GUC.
-        await reserved.unsafe(
+        await rejectOnAbort(reserved.unsafe(
           "SELECT pg_catalog.set_config('saas.staging_only','true',false)",[],
-        ).execute();
+        ).execute(),signal);
         assertAvailable(signal);
       }catch{
         quarantine('acquire-uncertain');
@@ -274,7 +304,7 @@ function buildBackend16StagingPhysicalPgPool(
           if(signal.aborted)cancel();
           try{
             if(aborted)throw new Error('Backend16 staging query aborted');
-            const result=await query.execute();
+            const result=await rejectOnAbort(query.execute(),signal);
             if(aborted||stopped||signal.aborted||!Array.isArray(result))
               throw new Error('Backend16 staging query uncertain');
             sequence.completed(sql,result);
