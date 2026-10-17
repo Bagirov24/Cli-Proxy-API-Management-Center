@@ -9,6 +9,10 @@ import {
 } from '../src/features/saasBlueprint/controlApi/server/backend16PinnedSessionAuthenticator.ts';
 import {createBackend16PrivateReadHandler}
   from '../src/features/saasBlueprint/controlApi/server/backend16PrivateTenantProjectRead.ts';
+import {createOperatorPinnedOidcAccessVerifier}
+  from '../src/features/saasBlueprint/controlApi/server/operatorPinnedOidcAccessVerifier.ts';
+import {createOperatorVerifiedSubjectFingerprintGate}
+  from '../src/features/saasBlueprint/controlApi/server/verifiedSubjectBinding.ts';
 
 const ISSUER = 'https://login.saas-unit.example.net/tenant';
 const AUDIENCE = 'saas-control-api';
@@ -101,10 +105,27 @@ async function fixture(
 }
 const signal=()=>new AbortController().signal;
 
+test('operator JWKS signature and subject fingerprint pass their standalone gates',async()=>{
+  const keys=await material;
+  const jwt=await token();
+  const verifier=await createOperatorPinnedOidcAccessVerifier({
+    issuer:ISSUER,audience:AUDIENCE,pinnedPublicJwksJson:keys.publicJwks,
+  });
+  const identity=await verifier.verifyAccessToken(jwt);
+  assert.ok(identity,'pinned RS256 verifier rejected fixture');
+  assert.equal(identity.issuer,ISSUER);
+  assert.equal(identity.subject,'operator-enrolled-subject');
+  const fingerprint=await createOperatorVerifiedSubjectFingerprintGate(verifier,()=>NOW)
+    .verify(jwt);
+  assert.ok(fingerprint,'verified subject fingerprint gate rejected fixture');
+  assert.equal(fingerprint.fingerprint,hex(PREFIX+ISSUER+'\0'+'operator-enrolled-subject'));
+});
+
 test('real RS256 at+jwt produces only pinned immutable enrolled session metadata',async()=>{
   const {authenticate,called}=await fixture();
   const jwt=await token();
   const result=await authenticate(jwt,signal());
+  assert.equal(called.keys.length,1,'signed JWT never reached session lookup');
   assert.deepEqual(result,{
     kind:'verified-server-session',
     issuer:ISSUER,
