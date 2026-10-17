@@ -40,26 +40,46 @@ const pool=new SQL({adapter:'postgres',hostname:'postgres.railway.internal',
   port:5432,database:'saas_staging',username:'postgres',password,
   tls:'require',max:1,connectionTimeout:4,idleTimeout:0,prepare:false});
 let connection:Awaited<ReturnType<typeof pool.reserve>>|undefined;
-let transaction=false,commitSent=false,closed=false;
+type Phase='RESERVE'|'BEGIN'|'SCOPED'|'CATALOG'|'COMMIT'|'CLOSE';
+let phase:Phase='RESERVE';
+let transaction=false,commitSent=false,closed=false,failed=false;
+let failurePhase:Phase|null=null;
 try{
   connection=await pool.reserve({signal:AbortSignal.timeout(8000)});
+  phase='BEGIN';
   await connection.unsafe('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY',[]).execute();
   transaction=true;
+  phase='SCOPED';
   await connection.unsafe('SET LOCAL search_path = pg_catalog, pg_temp',[]).execute();
   await connection.unsafe("SET LOCAL statement_timeout = '15000ms'",[]).execute();
   await connection.unsafe("SET LOCAL lock_timeout = '3000ms'",[]).execute();
   await connection.unsafe("SELECT pg_catalog.set_config('saas.b16.reconcile_expected','absent',true)",[]).execute();
+  phase='CATALOG';
   await connection.unsafe(RECONCILE_DO_SQL,[]).execute();
   commitSent=true;
+  phase='COMMIT';
   await connection.unsafe('COMMIT',[]).execute();
 }catch{
+  failed=true;
+  failurePhase=phase; // closed enum ONLY, never record raw error or connection URL
   if(transaction&&!commitSent&&connection){
     try{await connection.unsafe('ROLLBACK',[]).execute()}catch{/* read-only only */}
   }
-  throw Error('B16_READONLY_PREFLIGHT_FAILED_NO_DATABASE_WRITES');
 }finally{
-  try{connection?.release();await pool.close({timeout:0});closed=true}
-  catch{/* do not issue a PASS marker after uncertain backend close */}
+  try{
+    connection?.release();
+    await pool.close({timeout:0});
+    closed=true;
+  }catch{
+    failed=true;
+    failurePhase='CLOSE';
+  }
 }
-if(!closed||EXPECTED!=='absent')stop();
+// Negative/uncertain observations MUST terminate without a Railway crash
+// restart and without ever producing the positive verification marker.
+if(failed||!closed||EXPECTED!=='absent'){
+  console.error('B16_READONLY_PREFLIGHT_STOP_PHASE_'+
+    (failurePhase??'CLOSE')+'_NO_DATABASE_WRITES');
+  process.exit(0);
+}
 console.info(MARKER);
