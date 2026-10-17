@@ -19,9 +19,14 @@ function stop():never{throw Error('B16_READONLY_PREFLIGHT_STOP_NO_DATABASE_WRITE
 const e=Bun.env;
 if(e.RAILWAY_PROJECT_ID!==PROJECT||e.RAILWAY_ENVIRONMENT_ID!==ENV||
    e.RAILWAY_ENVIRONMENT_NAME!=='staging'||e.RAILWAY_SERVICE_NAME!==SERVICE||
-   e.SAAS_B16_READONLY_PREFLIGHT_EXPLICIT_ENABLE!=='true'||
-   e.GITHUB_ACTIONS==='true'||
-   !e.STAGING_POSTGRES_PRIVATE_URL)stop();
+   e.GITHUB_ACTIONS==='true')stop();
+// Absence of explicit operator enablement must be a silent NO-DB terminal
+// path, not a crashing Railway restart loop. Never print secret values.
+if(e.SAAS_B16_READONLY_PREFLIGHT_EXPLICIT_ENABLE!=='true'||
+   !e.STAGING_POSTGRES_PRIVATE_URL){
+  console.info('B16_READONLY_PREFLIGHT_DISABLED_NO_DATABASE');
+  process.exit(0);
+}
 let uri:URL;
 try{uri=new URL(e.STAGING_POSTGRES_PRIVATE_URL!)}catch{stop()}
 if(!['postgres:','postgresql:'].includes(uri.protocol)||
