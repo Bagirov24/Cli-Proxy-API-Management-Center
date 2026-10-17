@@ -16,6 +16,10 @@ import type {
 } from './backend16PhysicalPgAdmission';
 import {BACKEND16_EXACT_READ_SQL as SQL}
   from './backend16ExactSessionSqlRead';
+import {
+  backend16IsApprovedStagingPgTlsTrust,
+  type Backend16StagingPgTlsTrust,
+} from './backend16StagingPgTlsTrust';
 
 type NativeRow=Record<string,unknown>;
 type NativeQuery={execute():PromiseLike<NativeRow[]>;cancel():void};
@@ -130,10 +134,10 @@ export function createBackend16StagingSqlSequence(){
 type Backend16BunPgProfile=Readonly<{
   hostname:string;
   database:string;
-  tls?:'verify-full';
+  tls?:Backend16StagingPgTlsTrust;
 }>;
 const STAGING_PROFILE:Backend16BunPgProfile=Object.freeze({
-  hostname:HOST,database:DATABASE,tls:'verify-full',
+  hostname:HOST,database:DATABASE,
 });
 const DISPOSABLE_CI_PROFILE:Backend16BunPgProfile=Object.freeze({
   hostname:'127.0.0.1',database:'saas_staging_ci',
@@ -145,6 +149,7 @@ const runtimeEnv=()=>(globalThis as unknown as {
 /** No public profile or arbitrary hostname can be selected by the caller. */
 export function createBackend16StagingBunPhysicalPgPool(
   vault:Backend16StagingPrincipalVault,
+  tlsTrust:Backend16StagingPgTlsTrust,
 ):Backend16PhysicalPgPool & {shutdown():Promise<void>} {
   const env=runtimeEnv();
   if(!vault||typeof vault.readPrincipal!=='function'||
@@ -155,9 +160,14 @@ export function createBackend16StagingBunPhysicalPgPool(
      env.SAAS_B16_STAGING_0008_INDEPENDENT_READBACK!=='true'||
      env.SAAS_B16_STAGING_PRIVATE_ONLY!=='true'||
      env.GITHUB_ACTIONS==='true'||
-     env.SAAS_B16_EPHEMERAL_CI==='true')
+     env.SAAS_B16_EPHEMERAL_CI==='true'||
+     env.NODE_TLS_REJECT_UNAUTHORIZED==='0'||
+     !backend16IsApprovedStagingPgTlsTrust(tlsTrust))
     throw new Error('Backend16 staging driver release gates not met');
-  return buildBackend16StagingPhysicalPgPool(vault,STAGING_PROFILE);
+  // This is the only route to the fixed private staging host. The immutable,
+  // independently pinned root must authorize hostname + CA verification.
+  return buildBackend16StagingPhysicalPgPool(vault,
+    Object.freeze({...STAGING_PROFILE,tls:tlsTrust}));
 }
 
 /**

@@ -15,6 +15,10 @@ on:
       - 'tests/saasBackend16CiBunPhysicalPgPool.test.ts'
       - 'src/features/saasBlueprint/controlApi/server/backend16StagingBunPhysicalPgPool.ts'
       - 'tests/saasBackend16StagingBunPhysicalPgPool.test.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts'
+      - 'tests/saasBackend16StagingPgTlsTrust.test.ts'
+      - 'tests/fixtures/backend16-synthetic-root-ca.pem'
+      - 'docs/saas/BACKEND_16_10_OPERATOR_PINNED_PG_TLS.md'
       - 'scripts/saas-staging/verify-backend16-bun-physical-pid-ci.ts'
       - 'docs/saas/BACKEND_16_7_BUN_PHYSICAL_PG_PID_CI.md'
       - 'docs/saas/BACKEND_16_9_STAGING_PHYSICAL_PG16_E2E.md'
@@ -46,7 +50,7 @@ jobs:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
       - name: Fail-closed HTTP and origin-injection contracts
-        run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts tests/saasBackend16PinnedSessionAuthenticator.test.ts tests/saasBackend16PhysicalPgAdmission.test.ts tests/saasBackend16ExactSessionGate.test.ts tests/saasBackend16ExactSessionSqlRead.test.ts tests/saasBackend16CiBunPhysicalPgPool.test.ts tests/saasBackend16StagingBunPhysicalPgPool.test.ts tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts
+        run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts tests/saasBackend16PinnedSessionAuthenticator.test.ts tests/saasBackend16PhysicalPgAdmission.test.ts tests/saasBackend16ExactSessionGate.test.ts tests/saasBackend16ExactSessionSqlRead.test.ts tests/saasBackend16CiBunPhysicalPgPool.test.ts tests/saasBackend16StagingBunPhysicalPgPool.test.ts tests/saasBackend16StagingPgTlsTrust.test.ts tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts
       - name: Validate Backend16.4 disposable PG16 runner syntax
         run: bash -n scripts/saas-staging/verify-backend16-exact-session-pg16.sh
       - name: Strict TypeScript for full source
