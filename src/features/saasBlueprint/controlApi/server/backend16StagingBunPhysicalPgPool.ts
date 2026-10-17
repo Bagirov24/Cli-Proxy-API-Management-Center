@@ -97,12 +97,26 @@ export function createBackend16StagingSqlSequence(){
  * and real staging deployment remain prohibited until a separately audited
  * server-only resolver and release gates exist. No secret ever enters logs.
  */
+type Backend16BunPgProfile=Readonly<{
+  hostname:string;
+  database:string;
+  tls:'verify-full'|'disable';
+}>;
+const STAGING_PROFILE:Backend16BunPgProfile=Object.freeze({
+  hostname:HOST,database:DATABASE,tls:'verify-full',
+});
+const DISPOSABLE_CI_PROFILE:Backend16BunPgProfile=Object.freeze({
+  hostname:'127.0.0.1',database:'saas_staging_ci',tls:'disable',
+});
+const runtimeEnv=()=>(globalThis as unknown as {
+  process?:{env:Record<string,string|undefined>};
+}).process?.env??{};
+
+/** No public profile or arbitrary hostname can be selected by the caller. */
 export function createBackend16StagingBunPhysicalPgPool(
   vault:Backend16StagingPrincipalVault,
 ):Backend16PhysicalPgPool & {shutdown():Promise<void>} {
-  const env=(globalThis as unknown as {
-    process?:{env:Record<string,string|undefined>};
-  }).process?.env??{};
+  const env=runtimeEnv();
   if(!vault||typeof vault.readPrincipal!=='function'||
      env.RAILWAY_PROJECT_ID!==PROJECT||
      env.RAILWAY_ENVIRONMENT_ID!==ENVIRONMENT||
@@ -113,6 +127,37 @@ export function createBackend16StagingBunPhysicalPgPool(
      env.GITHUB_ACTIONS==='true'||
      env.SAAS_B16_EPHEMERAL_CI==='true')
     throw new Error('Backend16 staging driver release gates not met');
+  return buildBackend16StagingPhysicalPgPool(vault,STAGING_PROFILE);
+}
+
+/**
+ * Identical physical/query/discard implementation exercised with *real*
+ * isolated PG16 in GitHub Actions. This entrypoint cannot connect to Railway,
+ * production, any TCP proxy, or a non-local database. It is NOT a fallback.
+ */
+export function createBackend16StagingDisposableCiPhysicalPgPool(
+  vault:Backend16StagingPrincipalVault,
+):Backend16PhysicalPgPool & {shutdown():Promise<void>} {
+  const env=runtimeEnv();
+  if(!vault||typeof vault.readPrincipal!=='function'||
+     env.GITHUB_ACTIONS!=='true'||
+     env.SAAS_B16_EPHEMERAL_CI!=='true'||
+     env.SAAS_B16_PHYSICAL_CI!=='true'||
+     env.PGHOST!=='127.0.0.1'||
+     env.PGPORT!=='5432'||
+     env.PGDATABASE!=='saas_ephemeral_test'||
+     env.PGPASSWORD!=='ci_ephemeral_test_only'||
+     env.NODE_ENV==='production'||
+     env.RAILWAY_PROJECT_ID||env.RAILWAY_ENVIRONMENT_ID||
+     env.RAILWAY_SERVICE_ID||env.RAILWAY_ENVIRONMENT)
+    throw new Error('Backend16 staging test driver limited to disposable GitHub PG16');
+  return buildBackend16StagingPhysicalPgPool(vault,DISPOSABLE_CI_PROFILE);
+}
+
+function buildBackend16StagingPhysicalPgPool(
+  vault:Backend16StagingPrincipalVault,
+  profile:Backend16BunPgProfile,
+):Backend16PhysicalPgPool & {shutdown():Promise<void>} {
   const Ctor=(globalThis as unknown as {Bun?:{SQL?:NativeCtor}}).Bun?.SQL;
   if(typeof Ctor!=='function')
     throw new Error('Backend16 staging Bun.SQL unavailable');
@@ -156,9 +201,10 @@ export function createBackend16StagingBunPhysicalPgPool(
            !PASSWORD.test(credentials.password))
           throw new Error('Backend16 staging vault mapping refused');
         native=new Ctor({
-          adapter:'postgres',hostname:HOST,port:5432,database:DATABASE,
+          adapter:'postgres',hostname:profile.hostname,port:5432,
+          database:profile.database,
           username:credentials.username,password:credentials.password,
-          tls:'verify-full',max:1,connectionTimeout:4,idleTimeout:0,
+          tls:profile.tls,max:1,connectionTimeout:4,idleTimeout:0,
           prepare:false,
         });
         active.add(native);
