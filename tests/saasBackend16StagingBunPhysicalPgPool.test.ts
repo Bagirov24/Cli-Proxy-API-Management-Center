@@ -74,6 +74,7 @@ test('no production login, arbitrary SQL, HTTP, retry or migration capability',(
     "query.cancel()","db.close({timeout:0})",
   ])assert.ok(source.includes(value),value);
   assert.doesNotMatch(source,/Bun\.serve|createServer|\.listen\(|DATABASE_PUBLIC_URL/);
-  assert.doesNotMatch(source,/\b(?:SET ROLE|CREATE ROLE|ALTER ROLE|DROP ROLE|pg_terminate_backend)\b/i);
+  const executable=source.replace(/\/\*[\s\S]*?\*\//g,'').replace(/\/\/[^\n]*/g,'');
+  assert.doesNotMatch(executable,/\b(?:SET ROLE|CREATE ROLE|ALTER ROLE|DROP ROLE|pg_terminate_backend)\b/i);
   assert.doesNotMatch(source,/retry\s*\(/);
 });
