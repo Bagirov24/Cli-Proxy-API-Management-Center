@@ -71,12 +71,19 @@ function clock(now:unknown):now is number{
   return typeof now==='number'&&Number.isSafeInteger(now)&&now>0;
 }
 function exactKeys(value:unknown,keys:string):boolean{
-  return value!==null&&typeof value==='object'&&!Array.isArray(value)&&
-    Object.keys(value).sort().join(',')===keys;
+  if(value===null||typeof value!=='object'||Array.isArray(value))
+    return false;
+  // External provider records must be plain data, not accessor-bearing
+  // objects that can change LOGIN, version or password between reads.
+  const props=Object.getOwnPropertyDescriptors(value);
+  return Object.keys(props).sort().join(',')===keys &&
+    Object.values(props).every(d=>'value' in d);
 }
-function digest(bytes:Uint8Array):Promise<string>{
-  return crypto.subtle.digest('SHA-256',bytes).then(buffer=>
-    Array.from(new Uint8Array(buffer),n=>
+function digest(canonical:string):Promise<string>{
+  // Inline TextEncoder yields a DOM-compatible BufferSource on the frontend
+  // TypeScript project without adding Node or browser-insecure crypto shims.
+  return crypto.subtle.digest('SHA-256',new TextEncoder().encode(canonical))
+    .then(buffer=>Array.from(new Uint8Array(buffer),n=>
       n.toString(16).padStart(2,'0')).join(''));
 }
 function abortable<T>(promise:Promise<T>,signal:AbortSignal):Promise<T>{
@@ -140,7 +147,7 @@ export async function createBackend16StagingVersionedPrincipalVault(
       schema:'backend16-staging-vault-v1',
       entries:entries.map(item=>[item.pgLogin,item.secretId,item.version]),
     });
-    if(await digest(new TextEncoder().encode(canonical))!==
+    if(await digest(canonical)!==
        options.manifest.approvedManifestSha256)refuse();
 
     const lookup=new Map(entries.map(item=>[item.pgLogin,item] as const));
@@ -166,18 +173,21 @@ export async function createBackend16StagingVersionedPrincipalVault(
           const after=now();
           if(signal.aborted||!clock(after)||after<before||
              !exactKeys(raw,RECORD_KEYS))refuse();
+          // Snapshot each external value exactly once, before validating;
+          // no provider callback/getter may swap credentials after checking.
           const row=raw as Record<string,unknown>;
-          if(row.username!==login||row.version!==entry.version||
-             typeof row.password!=='string'||!PASSWORD.test(row.password)||
-             !clock(row.expiresAtMs)||
-             row.expiresAtMs-after<=MIN_LEASE_MS||
-             row.expiresAtMs-after>MAX_LEASE_MS)refuse();
+          const {username,password,version,expiresAtMs}=row;
+          if(username!==login||version!==entry.version||
+             typeof password!=='string'||!PASSWORD.test(password)||
+             !clock(expiresAtMs)||
+             expiresAtMs-after<=MIN_LEASE_MS||
+             expiresAtMs-after>MAX_LEASE_MS)refuse();
 
           // Do not retain passwords, sessions, tenant IDs or provider rows in
           // this adapter. Every acquisition fetches the exact pinned version.
           // Password strings in JS cannot be reliably zeroized; this module
           // is not a substitute for real vault isolation and rotation.
-          return Object.freeze({username:login,password:row.password});
+          return Object.freeze({username:login,password});
         }catch{refuse();}
       },
     });
