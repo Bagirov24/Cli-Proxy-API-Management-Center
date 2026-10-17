@@ -77,9 +77,17 @@ The isolated acceptance runner executes under **Node 24** with
 TypeScript stripping rather than Bun's auto-discovered `*.test.ts` process.
 The real loopback OpenSSL/TLS chain test therefore validates the Node TLS
 transport and security invariant; a separate Bun bundling check validates
-that the same source builds for Bun. **This is not evidence of a real Bun
-TLS handshake on Railway**. That runtime-specific live verification remains
-mandatory before approving the Bun staging driver. The disposable CI entrypoint requires GitHub Actions and three
+that the same source builds for Bun. A second isolated CI runner, `verify-backend16-bun-tls-client-ci.ts`,
+runs the **actual Bun TLS client** against a separate Node 24 SSLRequest/TLS
+fixture (`backend16-ci-node-pg-ssl-sidecar.cjs`). It uses synthetic CA
+and leaf certificates and checks acceptance plus wrong-root, wrong-SAN
+and no-SSL denial. This exercises Bun's client handshake without relying
+on Bun's unsupported synthetic server-side TLSSocket upgrade.
+
+**Neither local Node nor Bun test proves the real Railway PostgreSQL
+server's CA identity or its live authenticated connection.** The private
+staging root/handshake and independently signed operator evidence are still
+mandatory before staging SQL/data access. The disposable CI entrypoint requires GitHub Actions and three
 positive CI-only environment gates, and refuses all Railway IDs.
 It is not a staging fallback. CI root keys are not approved real roots.
 
