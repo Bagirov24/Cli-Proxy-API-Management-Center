@@ -55,6 +55,18 @@ function refuse():never{
 function sha(buffer:Uint8Array):string{
   return createHash('sha256').update(buffer).digest('hex');
 }
+/**
+ * Reject a CA-valid wildcard certificate such as *.railway.internal.
+ * checkHost() normally accepts DNS wildcard SANs; this private PostgreSQL
+ * identity requires an *exact* DNS SAN, never the leaf's Common Name.
+ * Certificate bytes and SAN text are public, but never logged.
+ */
+function exactPrivateDnsSan(cert:X509Certificate):boolean{
+  const san=cert.subjectAltName;
+  return typeof san==='string'&&
+    san.split(/,\s*/).includes('DNS:'+HOST)&&
+    cert.checkHost(HOST,{subject:'never',wildcards:false})===HOST;
+}
 function validTrust(value:unknown):value is Backend16StagingPgTlsTrust{
   return backend16IsApprovedStagingPgTlsTrust(value) &&
     (value as Backend16StagingPgTlsTrust).serverName===HOST &&
@@ -108,8 +120,7 @@ function handshake(
             checkServerIdentity:(hostname:string,cert:{raw?:Uint8Array})=>{
               try{
                 if(hostname!==HOST||!cert?.raw||
-                   !(new X509Certificate(cert.raw).checkHost(
-                     HOST,{subject:'never'})))
+                   !exactPrivateDnsSan(new X509Certificate(cert.raw)))
                   return new Error('Backend16 strict DNS SAN refused');
                 return undefined;
               }catch{
@@ -134,7 +145,7 @@ function handshake(
               if(!Number.isSafeInteger(now)||
                  !Number.isFinite(before)||!Number.isFinite(after)||
                  now<before||now+MIN_LEAF_REMAINING_MS>=after||
-                 !cert.checkHost(HOST,{subject:'never'}))refuse();
+                 !exactPrivateDnsSan(cert))refuse();
               const version=verified.getProtocol();
               if(version!=='TLSv1.2'&&version!=='TLSv1.3')refuse();
               // Public digests only. The root fingerprint is an observation

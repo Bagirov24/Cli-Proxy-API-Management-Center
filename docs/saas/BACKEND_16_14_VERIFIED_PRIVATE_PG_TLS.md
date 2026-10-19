@@ -16,8 +16,8 @@ Backend16.14 adds
 It sends the PostgreSQL protocol SSLRequest (**only eight application bytes**),
 expects exactly one `S` response, then negotiates TLS 1.2/1.3 with
 `rejectUnauthorized:true`, the fixed private SNI, a separately approved CA
-and a custom `checkServerIdentity` requiring a DNS SAN matching the private
-hostname **without Common Name fallback**. The verified TLS chain must have
+and a custom `checkServerIdentity` requiring an **exact DNS SAN**
+`DNS:postgres.railway.internal` **without Common Name or wildcard fallback**. The verified TLS chain must have
 `authorized===true`, the leaf must be time-valid, and the root trust must
 be an unforgeable branded object returned by Backend16.10's operator-approved
 CA validation.
@@ -68,7 +68,8 @@ files after completion. A loopback fake PostgreSQL server accepts only
 the literal eight-byte SSLRequest and then upgrades to a real TLS socket.
 
 The Node 24 transport test verifies a valid signed leaf using a pinned synthetic root and
-denies a different root, wrong hostname SAN, **CN-only certificate**,
+denies a different root, wrong hostname SAN, **CA-signed wildcard SAN**
+(`DNS:*.railway.internal`), **CN-only certificate**,
 plaintext `N` SSL rejection, a hung server after abort, unbranded CA
 objects and malformed local ports. TLS SNI remains the exact private
 hostname even when the TCP socket is loopback.
@@ -80,8 +81,8 @@ transport and security invariant; a separate Bun bundling check validates
 that the same source builds for Bun. A second isolated CI runner, `verify-backend16-bun-tls-client-ci.ts`,
 runs the **actual Bun TLS client** against a separate Node 24 SSLRequest/TLS
 fixture (`backend16-ci-node-pg-ssl-sidecar.cjs`). It uses synthetic CA
-and leaf certificates and checks acceptance plus wrong-root, wrong-SAN
-and no-SSL denial. This exercises Bun's client handshake without relying
+and leaf certificates and checks acceptance plus wrong-root, wrong-SAN,
+**CA-valid wildcard SAN** and no-SSL denial. This exercises Bun's client handshake without relying
 on Bun's unsupported synthetic server-side TLSSocket upgrade.
 
 **Neither local Node nor Bun test proves the real Railway PostgreSQL
@@ -91,6 +92,23 @@ mandatory before staging SQL/data access. The disposable CI entrypoint requires 
 positive CI-only environment gates, and refuses all Railway IDs.
 It is not a staging fallback. CI root keys are not approved real roots.
 
+
+## Backend16.17 hardening — exact DNS SAN
+
+This stacked change intentionally strengthens the hostname predicate beyond
+the usual valid-chain + `checkHost(HOST)` default: a CA-signed
+`DNS:*.railway.internal` wildcard must not impersonate the *specific*
+`postgres.railway.internal` database identity. The verifier now requires
+an exact `DNS:postgres.railway.internal` entry in the leaf's DNS SANs,
+uses `checkHost(HOST,{subject:'never',wildcards:false})`, and repeats the
+check after `secureConnect`. A matching Common Name is insufficient.
+Node 24 **and real Bun** disposable TLS acceptance tests exercise a
+CA-valid wildcard leaf and require refusal with no StartupMessage or SQL.
+
+No production certificate, root pin, Railway Function or DB credentials are
+created here; the root CA must still be independently approved. Staged
+deployment is not authorized by green CI or by the SQL0008 migration.
+
 ## Remaining release blockers
 
 - Actual independently approved root CA and a successful private Railway
@@ -98,7 +116,9 @@ It is not a staging fallback. CI root keys are not approved real roots.
 - Real per-principal versioned secret provider/IAM/rotation (PR #60 is
   source-only) and physical least-privileged PostgreSQL authentication.
 - Live OIDC session authority; independent durable off-host audit;
-  installed-mode SQL0008 readback and one-shot execution discipline.
+  independent **signed** acceptance of permanent staging SQL0008 installed-mode
+  readback and one-shot execution (SQL0008 was installed and read-only verified
+  on 2026-10-19; see PR #53 evidence, but that is not a signed release approval).
 - Confirmed recoverability/restoration before any irreversible database
   operation, private multi-tenant E2E and separate security/operations
   release review (PR #62).

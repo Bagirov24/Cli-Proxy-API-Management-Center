@@ -114,6 +114,7 @@ async function run(){
     const untrusted=root('untrusted');
     const good=leaf('good','trusted',HOST);
     const wrongHost=leaf('wrong-host','trusted','wrong.railway.internal');
+    const wildcardHost=leaf('wildcard-host','trusted','*.railway.internal');
     async function exchange(
       mode:'tls'|'no-ssl',cert:string,key:string,
       trust:ReturnType<typeof root>,accepted:boolean,
@@ -139,6 +140,8 @@ async function run(){
     console.info('B16_BUN_TLS_CI_WRONG_ROOT_DENY');
     await exchange('tls',wrongHost.cert,wrongHost.key,trusted,false);
     console.info('B16_BUN_TLS_CI_WRONG_SAN_DENY');
+    await exchange('tls',wildcardHost.cert,wildcardHost.key,trusted,false);
+    console.info('B16_BUN_TLS_CI_CA_SIGNED_WILDCARD_SAN_DENY');
     await exchange('no-ssl',good.cert,good.key,trusted,false);
     console.info('B16_BUN_TLS_CI_NO_SSL_DENY');
     console.info('PASS Backend16.14 real Bun verified-full private TLS client');

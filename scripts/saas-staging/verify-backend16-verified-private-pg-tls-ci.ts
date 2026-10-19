@@ -117,7 +117,9 @@ function verifyStaticContract(){
   assert.match(source,/response\.length!==1\|\|response\[0\]!==83/);
   assert.match(source,/rejectUnauthorized:true/);
   assert.match(source,/checkServerIdentity:/);
-  assert.match(source,/checkHost\(\s*HOST,\{subject:'never'\}\)/);
+  assert.match(source,/checkHost\(HOST,\{subject:'never',wildcards:false\}\)/);
+  assert.ok(source.includes("san.split(/,\\s*/).includes('DNS:'+HOST)"),
+    'CA-authenticated TLS must not accept wildcard DNS SAN');
   assert.match(source,/verified\.authorized!==true/);
   assert.match(source,/!validTrust\(trust\)/);
   assert.match(source,/env\.RAILWAY_ENVIRONMENT_NAME!=='staging'/);
@@ -152,6 +154,7 @@ async function runRealTlsCases(){
     const otherRoot=root(dir,'root-b');
     const good=leaf(dir,'good','root-a',HOST);
     const wrongHost=leaf(dir,'wrong-host','root-a','other.railway.internal');
+    const wildcardHost=leaf(dir,'wildcard-host','root-a','*.railway.internal');
     const noSan=leaf(dir,'cn-only','root-a');
     const trust=createBackend16StagingPgTlsTrust({
       caPem:originalRoot.pem,approvedCaDerSha256:originalRoot.pin,
@@ -195,6 +198,8 @@ async function runRealTlsCases(){
     console.info('B16_TLS_CI_WRONG_ROOT_START');
     await exchange(good,secondTrust,false);
     await exchange(wrongHost,trust,false);
+    await exchange(wildcardHost,trust,false);
+    console.info('B16_TLS_CI_CA_SIGNED_WILDCARD_SAN_DENIED');
     await exchange(noSan,trust,false,
       'tls'); // correct CN alone must never be enough
     await exchange(null,trust,false,'no-ssl');
