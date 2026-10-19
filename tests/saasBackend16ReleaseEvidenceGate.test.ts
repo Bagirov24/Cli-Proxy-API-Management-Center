@@ -6,6 +6,7 @@ import {
   BACKEND16_REQUIRED_STAGING_GATES,
   backend16CanonicalOperatorKeyset,
   backend16CanonicalReleaseEvidence,
+  backend16CanonicalSignedTechnicalBundle,
   verifyBackend16ReleaseEvidence,
   type Backend16StagingGate,
   type Backend16EvidenceSignerRole,
@@ -78,25 +79,35 @@ async function makeFixture():Promise<Fixture>{
   const technical=BACKEND16_REQUIRED_STAGING_GATES.filter(
     gate=>!APPROVALS.has(gate));
   const proofs=new Map(technical.map(gate=>[gate,DIGEST('proof/'+gate)]));
-  const approvalDigest=DIGEST(JSON.stringify({
-    schema:'backend16-technical-release-evidence-v1',
-    gates:technical.map(gate=>[gate,proofs.get(gate)]),
-  }));
   const attestations:Backend16SignedReleaseEvidence[]=[];
-  for(const gate of BACKEND16_REQUIRED_STAGING_GATES){
+  for(const gate of technical){
     const role=ROLE[gate];
     const signerId=signers.find(k=>k.role===role)?.signerId;
     assert.ok(signerId);
-    const approval=APPROVALS.has(gate);
     const e:Backend16ReleaseEvidence={
       schema:'backend16-release-evidence-v1',gate,role,signerId,
       repo:REPO,projectId:PROJECT,environmentId:STAGING,
-      sourceCommitSha:COMMIT,
-      observedAtMs:NOW-(approval?1000:2000),
-      validUntilMs:NOW+60_000,
-      outcome:'pass',
+      sourceCommitSha:COMMIT,observedAtMs:NOW-2000,
+      validUntilMs:NOW+60_000,outcome:'pass',
       proofUri:'https://github.com/'+REPO+'/actions/runs/39062972244',
-      proofSha256:approval?approvalDigest:proofs.get(gate)!,
+      proofSha256:proofs.get(gate)!,
+    };
+    attestations.push(await reSign(e,keypairs));
+  }
+  const approvalDigest=DIGEST(
+    backend16CanonicalSignedTechnicalBundle(attestations));
+  for(const gate of BACKEND16_REQUIRED_STAGING_GATES.filter(
+    gate=>APPROVALS.has(gate))){
+    const role=ROLE[gate];
+    const signerId=signers.find(k=>k.role===role)?.signerId;
+    assert.ok(signerId);
+    const e:Backend16ReleaseEvidence={
+      schema:'backend16-release-evidence-v1',gate,role,signerId,
+      repo:REPO,projectId:PROJECT,environmentId:STAGING,
+      sourceCommitSha:COMMIT,observedAtMs:NOW-1000,
+      validUntilMs:NOW+60_000,outcome:'pass',
+      proofUri:'https://github.com/'+REPO+'/actions/runs/39062972244',
+      proofSha256:approvalDigest,
     };
     attestations.push(await reSign(e,keypairs));
   }
@@ -233,6 +244,63 @@ test('security and operations approvals must sign AFTER technical evidence',asyn
     'signature must bind the exact combined technical proof digest');
 });
 
+
+test('final approvals bind exact signed observations even with identical proof hashes',async()=>{
+  // A technically valid observation may be re-signed with a fresher
+  // timestamp or a different archive URI without changing proofSha256.
+  // Both final approvals must be renewed for the new signed record.
+  for(const change of [
+    {observedAtMs:NOW-1800},
+    {proofUri:'https://github.com/'+REPO+'/issues/650'},
+    {validUntilMs:NOW+45_000},
+  ]){
+    const f=await fixture();
+    const index=f.attestations.findIndex(t=>
+      t.evidence.gate==='pg-tls-verify-full-proven');
+    assert.ok(index>=0);
+    const old=f.attestations[index];
+    const replacement=await reSign({...old.evidence,...change},f.keypairs);
+    assert.equal(replacement.evidence.proofSha256,old.evidence.proofSha256);
+    assert.notEqual(replacement.signatureHex,old.signatureHex);
+    f.attestations[index]=replacement;
+    assert.equal((await verify(f)).result,'BLOCKED',
+      'unreviewed signed record substitution: '+Object.keys(change).join(','));
+  }
+});
+
+test('old proof-digest-only v1 review signatures never validate under v2 binding',async()=>{
+  const f=await fixture();
+  const technical=BACKEND16_REQUIRED_STAGING_GATES.filter(
+    gate=>!APPROVALS.has(gate));
+  const v1Digest=DIGEST(JSON.stringify({
+    schema:'backend16-technical-release-evidence-v1',
+    gates:technical.map(gate=>[gate,
+      f.attestations.find(x=>x.evidence.gate===gate)?.evidence.proofSha256]),
+  }));
+  const v2Digest=DIGEST(backend16CanonicalSignedTechnicalBundle(
+    f.attestations.filter(x=>technical.includes(x.evidence.gate))));
+  assert.notEqual(v1Digest,v2Digest);
+  for(let i=0;i<f.attestations.length;i++){
+    if(!APPROVALS.has(f.attestations[i].evidence.gate))continue;
+    const e={...f.attestations[i].evidence,proofSha256:v1Digest};
+    f.attestations[i]=await reSign(e,f.keypairs);
+  }
+  assert.equal((await verify(f)).result,'BLOCKED');
+});
+
+test('signed technical canonical aggregate preserves order, identity, timing and signature',async()=>{
+  const f=await fixture();
+  const technical=f.attestations.filter(x=>!APPROVALS.has(x.evidence.gate));
+  const canonical=backend16CanonicalSignedTechnicalBundle(technical);
+  assert.ok(canonical.startsWith(
+    '{"schema":"backend16-technical-signed-release-evidence-v2"'));
+  assert.ok(canonical.includes(backend16CanonicalReleaseEvidence(
+    technical[0].evidence).replaceAll('"','\\"')));
+  assert.ok(canonical.includes(technical[0].signatureHex));
+  const reversed=backend16CanonicalSignedTechnicalBundle([...technical].reverse());
+  assert.notEqual(canonical,reversed);
+});
+
 test('reviewed signer keys must be sorted by role and distinct by ID and key',async()=>{
   const f=await fixture();
   const signers=[...f.policy.signers].reverse();
@@ -326,6 +394,7 @@ test('verifier is offline, read-only and contains no release deploy or bypass pa
     'pg-tls-verify-full-proven','durable-offhost-audit-replay-proven',
     'security-release-review','operations-release-review',
     'approval.proofSha256!==technicalDigest',
+    'backend16CanonicalSignedTechnicalBundle',
   ])assert.ok(source.includes(marker),marker);
   assert.doesNotMatch(source,
     /\b(?:fetch\(|Bun\.serve|createServer|\.listen\(|\.query\(|\.unsafe\(|ALTER ROLE|CREATE ROLE|DROP ROLE|UPDATE\s+|INSERT\s+|DELETE\s+|railway up)\b/i);
