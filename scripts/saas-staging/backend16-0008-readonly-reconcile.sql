@@ -209,8 +209,6 @@ BEGIN
            pg_catalog.pg_get_userbyid(p.proowner) AS owner_name,
            p.proconfig,p.proargnames,
            (SELECT lanname FROM pg_catalog.pg_language WHERE oid=p.prolang) AS language_name,
-           pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc,'UTF8')),'hex') AS body_sha256,p.proargnames,
-           (SELECT lanname FROM pg_catalog.pg_language WHERE oid=p.prolang) AS language_name,
            pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc,'UTF8')),'hex') AS body_sha256,
            pg_catalog.has_function_privilege(
              'saas_runtime_reader',p.oid,'EXECUTE') AS reader_execute,
