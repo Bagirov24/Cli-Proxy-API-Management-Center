@@ -180,6 +180,28 @@ export function backend16CanonicalOperatorKeyset(
   });
 }
 
+/**
+ * Aggregate the EXACT signed technical attestations, not only their proof
+ * hashes. Two genuinely different signed observations may legitimately
+ * refer to the same archived proof digest but have different timestamps,
+ * provenance URLs, signature bytes or reviewed operator identities.
+ *
+ * The schema is intentionally v2: old proof-digest-only approvals are
+ * incompatible and MUST be independently re-signed.
+ */
+export function backend16CanonicalSignedTechnicalBundle(
+  signed:readonly Backend16SignedReleaseEvidence[],
+):string{
+  return JSON.stringify({
+    schema:'backend16-technical-signed-release-evidence-v2',
+    gates:signed.map(item=>[
+      item.evidence.gate,
+      backend16CanonicalReleaseEvidence(item.evidence),
+      item.signatureHex,
+    ]),
+  });
+}
+
 function validProofUri(uri:unknown):uri is string{
   if(typeof uri!=='string'||uri.length>320)return false;
   // Reviewed provenance URLs only; never user-controlled URLs or fetch().
@@ -304,7 +326,7 @@ export async function verifyBackend16ReleaseEvidence(input:Readonly<{
     if(!Number.isSafeInteger(now)||now<=0)return blocked();
     const keyset=await trustedKeyset(policy);
     if(!keyset)return blocked();
-    const accepted=new Map<Backend16StagingGate,Backend16ReleaseEvidence>();
+    const accepted=new Map<Backend16StagingGate,Backend16SignedReleaseEvidence>();
     for(const item of attestations){
       if(!plainExact(item,SIGNED_KEYS)||
          !item.evidence||
@@ -320,18 +342,22 @@ export async function verifyBackend16ReleaseEvidence(input:Readonly<{
         new TextEncoder().encode(
           backend16CanonicalReleaseEvidence(item.evidence)));
       if(!valid)return blocked();
-      accepted.set(item.evidence.gate,item.evidence);
+      accepted.set(item.evidence.gate,item);
     }
     const technical=BACKEND16_REQUIRED_STAGING_GATES.filter(
       gate=>!APPROVAL_GATES.some(review=>review===gate));
-    const maxTechnicalTime=Math.max(...technical.map(
-      gate=>accepted.get(gate)?.observedAtMs??Infinity));
-    const technicalDigest=await sha256(JSON.stringify({
-      schema:'backend16-technical-release-evidence-v1',
-      gates:technical.map(gate=>[gate,accepted.get(gate)?.proofSha256]),
-    }));
+    const technicalRecords=technical.map(gate=>accepted.get(gate));
+    if(technicalRecords.some(item=>!item))return blocked();
+    const maxTechnicalTime=Math.max(...technicalRecords.map(
+      item=>item?.evidence.observedAtMs??Infinity));
+    // All eight signed, role-verified records are bound to both final
+    // approvals in fixed gate order. A new timestamp/URI/signer/signature
+    // with the same proof digest still invalidates the old approvals.
+    const technicalDigest=await sha256(
+      backend16CanonicalSignedTechnicalBundle(
+        technicalRecords as Backend16SignedReleaseEvidence[]));
     for(const gate of APPROVAL_GATES){
-      const approval=accepted.get(gate);
+      const approval=accepted.get(gate)?.evidence;
       if(!approval||approval.observedAtMs<maxTechnicalTime||
          approval.proofSha256!==technicalDigest)return blocked();
     }
