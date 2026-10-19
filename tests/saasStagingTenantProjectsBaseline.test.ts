@@ -2,6 +2,7 @@ import {describe, expect, test} from 'bun:test';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 
 const SQL = new URL('../staging/saas-bootstrap/0002_tenant_projects_baseline.sql', import.meta.url);
 const PRIOR = new URL('../staging/saas-bootstrap/0001_ledger_only.sql', import.meta.url);
@@ -9,7 +10,7 @@ const PLAN = new URL('../scripts/saas-staging/plan-staging-bootstrap.mjs', impor
 const SECRET = 'UNIT_TEST_FAKE_DB_PASSWORD_NO_LOG';
 
 function plan(arg: string) {
-  const r = spawnSync('node', [PLAN.pathname, arg], {
+  const r = spawnSync('node', [fileURLToPath(PLAN), arg], {
     encoding: 'utf8',
     env: {...process.env, DATABASE_URL: SECRET, PGPASSWORD: SECRET},
     timeout: 8000,

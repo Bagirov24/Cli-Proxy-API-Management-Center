@@ -2,13 +2,14 @@ import {describe, expect, test} from 'bun:test';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 
 const OPERATOR = new URL('../staging/saas-bootstrap/0000_operator_migrator_role.sql', import.meta.url);
 const PLANNER = new URL('../scripts/saas-staging/plan-staging-bootstrap.mjs', import.meta.url);
 const forbiddenSecret = 'FAKE_TEST_PASSWORD_DO_NOT_LOG';
 
 function plan(arg: string) {
-  const result = spawnSync('node', [PLANNER.pathname, arg], {
+  const result = spawnSync('node', [fileURLToPath(PLANNER), arg], {
     encoding: 'utf8',
     timeout: 7000,
     env: {...process.env, PGPASSWORD: forbiddenSecret, DATABASE_URL: forbiddenSecret},
