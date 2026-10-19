@@ -22,6 +22,7 @@ const EVIDENCE_KEYS='environmentId,gate,observedAtMs,outcome,projectId,proofSha2
 const SIGNED_KEYS='evidence,signatureHex';
 const SIGNER_KEYS='publicKeyHex,role,signerId';
 const POLICY_KEYS='approvedSignerKeysetSha256,expectedSourceCommitSha,signers';
+const INPUT_KEYS='attestations,policy';
 
 export const BACKEND16_REQUIRED_STAGING_GATES=Object.freeze([
   'sql0008-installed-catalog-readback',
@@ -134,6 +135,21 @@ function blocked():Backend16ReleaseEvidenceVerdict{
     productionAuthorized:false,
   });
 }
+/** Copy dense data arrays without invoking caller methods or element getters. */
+function dataArray<T>(value:readonly T[],length:number):T[]{
+  if(!Array.isArray(value)||Object.getPrototypeOf(value)!==Array.prototype)
+    throw Error('invalid evidence array');
+  const props=Object.getOwnPropertyDescriptors(value) as unknown as PropertyDescriptorMap;
+  if(props.length?.value!==length||Reflect.ownKeys(props).length!==length+1)
+    throw Error('invalid evidence array');
+  const result:T[]=[];
+  for(let i=0;i<length;i++){
+    const descriptor=props[String(i)];
+    if(!descriptor||!('value' in descriptor))throw Error('invalid evidence array');
+    result.push(descriptor.value);
+  }
+  return result;
+}
 function verdict(missing:readonly Backend16StagingGate[]):
   Backend16ReleaseEvidenceVerdict{
   return Object.freeze({
@@ -177,6 +193,28 @@ export function backend16CanonicalOperatorKeyset(
   return JSON.stringify({
     schema:POLICY_SCHEMA,
     signers:keys.map(k=>[k.role,k.signerId,k.publicKeyHex]),
+  });
+}
+
+/**
+ * Aggregate the EXACT signed technical attestations, not only their proof
+ * hashes. Two genuinely different signed observations may legitimately
+ * refer to the same archived proof digest but have different timestamps,
+ * provenance URLs, signature bytes or reviewed operator identities.
+ *
+ * The schema is intentionally v2: old proof-digest-only approvals are
+ * incompatible and MUST be independently re-signed.
+ */
+export function backend16CanonicalSignedTechnicalBundle(
+  signed:readonly Backend16SignedReleaseEvidence[],
+):string{
+  return JSON.stringify({
+    schema:'backend16-technical-signed-release-evidence-v2',
+    gates:signed.map(item=>[
+      item.evidence.gate,
+      backend16CanonicalReleaseEvidence(item.evidence),
+      item.signatureHex,
+    ]),
   });
 }
 
@@ -258,33 +296,40 @@ async function trustedKeyset(policy:Backend16ReleaseEvidencePolicy):
 export async function verifyBackend16ReleaseEvidence(input:Readonly<{
   policy:Backend16ReleaseEvidencePolicy;
   attestations:readonly Backend16SignedReleaseEvidence[];
-  /** Injectable only for deterministic unit tests. */
-  nowMs?:()=>number;
 }>):Promise<Backend16ReleaseEvidenceVerdict>{
   try{
-    if(!input||!Array.isArray(input.attestations)||
+    // Caller-controlled clocks are forbidden. Even tests must use the
+    // system wall clock; accepting nowMs would let the caller renew stale
+    // Ed25519 attestations without obtaining fresh operator signatures.
+    if(!plainExact(input,INPUT_KEYS)||
+       !Array.isArray(input.attestations)||
        input.attestations.length!==BACKEND16_REQUIRED_STAGING_GATES.length||
-       !plainExact(input.policy,POLICY_KEYS)||
-       (input.nowMs!==undefined&&typeof input.nowMs!=='function'))
+       !plainExact(input.policy,POLICY_KEYS))
       return blocked();
 
     // Copy the complete, descriptor-validated input synchronously BEFORE
     // the first await. A mutable external config/evidence object must not
     // change the keyset or signed proof while WebCrypto is verifying it.
     const rawPolicy=input.policy;
-    if(!Array.isArray(rawPolicy.signers))return blocked();
-    const signers=Object.freeze(rawPolicy.signers.map(k=>{
+    // Pin authority scalars before inspecting collections. Caller-owned map
+    // overrides must never rewrite the approved source or reviewer keyset.
+    const expectedSourceCommitSha=rawPolicy.expectedSourceCommitSha;
+    const approvedSignerKeysetSha256=rawPolicy.approvedSignerKeysetSha256;
+    const rawSigners=dataArray(rawPolicy.signers,OPERATOR_ROLES.length);
+    const rawAttestations=dataArray(input.attestations,
+      BACKEND16_REQUIRED_STAGING_GATES.length);
+    const signers=Object.freeze(rawSigners.map(k=>{
       if(!plainExact(k,SIGNER_KEYS))throw Error('invalid signer');
       return Object.freeze({
         role:k.role,signerId:k.signerId,publicKeyHex:k.publicKeyHex,
       });
     }));
     const policy:Backend16ReleaseEvidencePolicy=Object.freeze({
-      expectedSourceCommitSha:rawPolicy.expectedSourceCommitSha,
-      approvedSignerKeysetSha256:rawPolicy.approvedSignerKeysetSha256,
+      expectedSourceCommitSha,
+      approvedSignerKeysetSha256,
       signers,
     });
-    const attestations=Object.freeze(input.attestations.map(item=>{
+    const attestations=Object.freeze(rawAttestations.map(item=>{
       if(!plainExact(item,SIGNED_KEYS)||
          !plainExact(item.evidence,EVIDENCE_KEYS))
         throw Error('invalid signed evidence');
@@ -300,11 +345,11 @@ export async function verifyBackend16ReleaseEvidence(input:Readonly<{
         evidence,signatureHex:item.signatureHex,
       });
     }));
-    const now=(input.nowMs??Date.now)();
+    const now=Date.now();
     if(!Number.isSafeInteger(now)||now<=0)return blocked();
     const keyset=await trustedKeyset(policy);
     if(!keyset)return blocked();
-    const accepted=new Map<Backend16StagingGate,Backend16ReleaseEvidence>();
+    const accepted=new Map<Backend16StagingGate,Backend16SignedReleaseEvidence>();
     for(const item of attestations){
       if(!plainExact(item,SIGNED_KEYS)||
          !item.evidence||
@@ -320,21 +365,33 @@ export async function verifyBackend16ReleaseEvidence(input:Readonly<{
         new TextEncoder().encode(
           backend16CanonicalReleaseEvidence(item.evidence)));
       if(!valid)return blocked();
-      accepted.set(item.evidence.gate,item.evidence);
+      accepted.set(item.evidence.gate,item);
     }
     const technical=BACKEND16_REQUIRED_STAGING_GATES.filter(
       gate=>!APPROVAL_GATES.some(review=>review===gate));
-    const maxTechnicalTime=Math.max(...technical.map(
-      gate=>accepted.get(gate)?.observedAtMs??Infinity));
-    const technicalDigest=await sha256(JSON.stringify({
-      schema:'backend16-technical-release-evidence-v1',
-      gates:technical.map(gate=>[gate,accepted.get(gate)?.proofSha256]),
-    }));
+    const technicalRecords=technical.map(gate=>accepted.get(gate));
+    if(technicalRecords.some(item=>!item))return blocked();
+    const maxTechnicalTime=Math.max(...technicalRecords.map(
+      item=>item?.evidence.observedAtMs??Infinity));
+    // All eight signed, role-verified records are bound to both final
+    // approvals in fixed gate order. A new timestamp/URI/signer/signature
+    // with the same proof digest still invalidates the old approvals.
+    const technicalDigest=await sha256(
+      backend16CanonicalSignedTechnicalBundle(
+        technicalRecords as Backend16SignedReleaseEvidence[]));
     for(const gate of APPROVAL_GATES){
-      const approval=accepted.get(gate);
-      if(!approval||approval.observedAtMs<maxTechnicalTime||
+      const approval=accepted.get(gate)?.evidence;
+      if(!approval||approval.observedAtMs<=maxTechnicalTime||
          approval.proofSha256!==technicalDigest)return blocked();
     }
+    // Verification is asynchronous. A proof that expires while Ed25519 and
+    // bundle hashing run must NOT receive a READY verdict based only on its
+    // earlier validity at invocation. Refuse backward clock jumps as well.
+    const finishedAt=Date.now();
+    if(!Number.isSafeInteger(finishedAt)||finishedAt<now||
+       attestations.some(item=>!validEvidence(
+         item.evidence,policy.expectedSourceCommitSha,finishedAt)))
+      return blocked();
     return verdict(BACKEND16_REQUIRED_STAGING_GATES.filter(
       gate=>!accepted.has(gate)));
   }catch{

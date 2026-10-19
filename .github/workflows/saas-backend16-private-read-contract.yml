@@ -1,47 +1,47 @@
 name: SaaS Backend16 Private Read Contract
-
 on:
   pull_request:
     paths:
-      - 'src/features/saasBlueprint/controlApi/server/backend16PrivateTenantProjectRead.ts'
-      - 'tests/saasBackend16PrivateTenantProjectRead.test.ts'
-      - 'src/features/saasBlueprint/controlApi/server/backend16PinnedSessionAuthenticator.ts'
-      - 'tests/saasBackend16PinnedSessionAuthenticator.test.ts'
-      - 'src/features/saasBlueprint/controlApi/server/backend16PhysicalPgAdmission.ts'
-      - 'tests/saasBackend16PhysicalPgAdmission.test.ts'
-      - 'src/features/saasBlueprint/controlApi/server/backend16ExactSessionSqlRead.ts'
-      - 'tests/saasBackend16ExactSessionSqlRead.test.ts'
-      - 'src/features/saasBlueprint/controlApi/server/backend16CiBunPhysicalPgPool.ts'
-      - 'tests/saasBackend16CiBunPhysicalPgPool.test.ts'
-      - 'src/features/saasBlueprint/controlApi/server/backend16StagingBunPhysicalPgPool.ts'
-      - 'tests/saasBackend16StagingBunPhysicalPgPool.test.ts'
-      - 'src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts'
-      - 'tests/saasBackend16StagingPgTlsTrust.test.ts'
-      - 'src/features/saasBlueprint/controlApi/server/backend16ReleaseEvidenceGate.ts'
-      - 'tests/saasBackend16ReleaseEvidenceGate.test.ts'
-      - 'docs/saas/BACKEND_16_13_SIGNED_RELEASE_EVIDENCE.md'
-      - 'tests/fixtures/backend16-synthetic-root-ca.pem'
-      - 'docs/saas/BACKEND_16_10_OPERATOR_PINNED_PG_TLS.md'
-      - 'scripts/saas-staging/verify-backend16-bun-physical-pid-ci.ts'
-      - 'docs/saas/BACKEND_16_7_BUN_PHYSICAL_PG_PID_CI.md'
-      - 'docs/saas/BACKEND_16_9_STAGING_PHYSICAL_PG16_E2E.md'
-      - 'docs/saas/BACKEND_16_EXACT_SQL_READ_PORT.md'
-      - 'staging/saas-bootstrap/0008_exact_subject_session_gate.sql'
-      - 'tests/sql/saas_backend16_exact_session_gate.test.sql'
-      - 'tests/saasBackend16ExactSessionGate.test.ts'
-      - 'scripts/saas-staging/backend16-0008-readonly-reconcile.sql'
-      - 'tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts'
-      - 'scripts/saas-staging/verify-backend16-exact-session-pg16.sh'
-      - 'docs/saas/BACKEND_16_SQL0008_EXACT_SESSION.md'
-      - 'docs/saas/BACKEND_16_PHYSICAL_PG_ADMISSION.md'
-      - 'docs/saas/BACKEND_16_PINNED_SESSION_AUTH.md'
-      - 'docs/saas/BACKEND_16_PRIVATE_READ_BOUNDARY.md'
-      - '.github/workflows/saas-backend16-private-read-contract.yml'
-  workflow_dispatch:
-
+      - src/features/saasBlueprint/controlApi/server/backend16PrivateTenantProjectRead.ts
+      - tests/saasBackend16PrivateTenantProjectRead.test.ts
+      - src/features/saasBlueprint/controlApi/server/backend16PinnedSessionAuthenticator.ts
+      - tests/saasBackend16PinnedSessionAuthenticator.test.ts
+      - src/features/saasBlueprint/controlApi/server/backend16PhysicalPgAdmission.ts
+      - tests/saasBackend16PhysicalPgAdmission.test.ts
+      - src/features/saasBlueprint/controlApi/server/backend16ExactSessionSqlRead.ts
+      - tests/saasBackend16ExactSessionSqlRead.test.ts
+      - src/features/saasBlueprint/controlApi/server/backend16CiBunPhysicalPgPool.ts
+      - tests/saasBackend16CiBunPhysicalPgPool.test.ts
+      - src/features/saasBlueprint/controlApi/server/backend16StagingBunPhysicalPgPool.ts
+      - tests/saasBackend16StagingBunPhysicalPgPool.test.ts
+      - src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts
+      - tests/saasBackend16StagingPgTlsTrust.test.ts
+      - scripts/saas-staging/backend16-pg-tls-peer-observation.ts
+      - tests/saasBackend16TlsPeerProbe.test.ts
+      - docs/saas/BACKEND_16_12_TLS_PEER_OBSERVATION.md
+      - tests/fixtures/backend16-synthetic-root-ca.pem
+      - docs/saas/BACKEND_16_10_OPERATOR_PINNED_PG_TLS.md
+      - scripts/saas-staging/verify-backend16-bun-physical-pid-ci.ts
+      - docs/saas/BACKEND_16_7_BUN_PHYSICAL_PG_PID_CI.md
+      - docs/saas/BACKEND_16_9_STAGING_PHYSICAL_PG16_E2E.md
+      - docs/saas/BACKEND_16_EXACT_SQL_READ_PORT.md
+      - staging/saas-bootstrap/0008_exact_subject_session_gate.sql
+      - tests/sql/saas_backend16_exact_session_gate.test.sql
+      - tests/saasBackend16ExactSessionGate.test.ts
+      - scripts/saas-staging/backend16-0008-readonly-reconcile.sql
+      - tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts
+      - scripts/saas-staging/verify-backend16-exact-session-pg16.sh
+      - docs/saas/BACKEND_16_SQL0008_EXACT_SESSION.md
+      - docs/saas/BACKEND_16_PHYSICAL_PG_ADMISSION.md
+      - docs/saas/BACKEND_16_PINNED_SESSION_AUTH.md
+      - docs/saas/BACKEND_16_PRIVATE_READ_BOUNDARY.md
+      - .github/workflows/saas-backend16-private-read-contract.yml
+      - src/features/saasBlueprint/controlApi/server/backend16ReleaseEvidenceGate.ts
+      - tests/saasBackend16ReleaseEvidenceGate.test.ts
+      - docs/saas/BACKEND_16_13_SIGNED_RELEASE_EVIDENCE.md
+  workflow_dispatch: null
 permissions:
   contents: read
-
 jobs:
   private-read-contract:
     runs-on: ubuntu-latest
@@ -53,8 +53,10 @@ jobs:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
       - name: Fail-closed HTTP and origin-injection contracts
-        run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts tests/saasBackend16PinnedSessionAuthenticator.test.ts tests/saasBackend16PhysicalPgAdmission.test.ts tests/saasBackend16ExactSessionGate.test.ts tests/saasBackend16ExactSessionSqlRead.test.ts tests/saasBackend16CiBunPhysicalPgPool.test.ts tests/saasBackend16StagingBunPhysicalPgPool.test.ts tests/saasBackend16StagingPgTlsTrust.test.ts tests/saasBackend16ReleaseEvidenceGate.test.ts tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts
+        run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts tests/saasBackend16PinnedSessionAuthenticator.test.ts tests/saasBackend16PhysicalPgAdmission.test.ts tests/saasBackend16ExactSessionGate.test.ts tests/saasBackend16ExactSessionSqlRead.test.ts tests/saasBackend16CiBunPhysicalPgPool.test.ts tests/saasBackend16StagingBunPhysicalPgPool.test.ts tests/saasBackend16StagingPgTlsTrust.test.ts tests/saasBackend16TlsPeerProbe.test.ts tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts tests/saasBackend16ReleaseEvidenceGate.test.ts
       - name: Validate Backend16.4 disposable PG16 runner syntax
         run: bash -n scripts/saas-staging/verify-backend16-exact-session-pg16.sh
+      - name: Bundle isolated, no-credential Bun TLS peer observation
+        run: bun build --target=bun scripts/saas-staging/backend16-pg-tls-peer-observation.ts --outdir /tmp/b16-pg-tls-peer-probe
       - name: Strict TypeScript for full source
         run: bun run type-check

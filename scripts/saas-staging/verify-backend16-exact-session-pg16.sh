@@ -68,6 +68,7 @@ PGOPTIONS='-c saas.staging_only=true' PGUSER=postgres \
   { tail -n 14 /tmp/b16-readonly-installed.log >&2; fail; }
 grep -q 'PASS_BACKEND16_SQL0008_READONLY_INSTALLED_SEALED' \
   /tmp/b16-readonly-installed.log || fail
+bash scripts/saas-staging/verify-backend16-readonly-drift-ci.sh || fail
 
 a_pw="$(openssl rand -hex 32)"
 b_pw="$(openssl rand -hex 32)"

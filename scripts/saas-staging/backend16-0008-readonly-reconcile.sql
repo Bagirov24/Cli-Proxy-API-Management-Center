@@ -207,7 +207,9 @@ BEGIN
   ELSE
     SELECT p.prosecdef,p.provolatile,p.prorettype,
            pg_catalog.pg_get_userbyid(p.proowner) AS owner_name,
-           p.proconfig,
+           p.proconfig,p.proargnames,
+           (SELECT lanname FROM pg_catalog.pg_language WHERE oid=p.prolang) AS language_name,
+           pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc,'UTF8')),'hex') AS body_sha256,
            pg_catalog.has_function_privilege(
              'saas_runtime_reader',p.oid,'EXECUTE') AS reader_execute,
            pg_catalog.has_function_privilege(
@@ -228,7 +230,10 @@ BEGIN
        OR f.prorettype IS DISTINCT FROM 'boolean'::regtype
        OR f.owner_name IS DISTINCT FROM 'saas_schema_migrator'
        OR f.proconfig IS NULL
-       OR NOT (f.proconfig @> ARRAY['search_path=pg_catalog, pg_temp'])
+       OR f.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog, pg_temp']
+       OR f.proargnames IS DISTINCT FROM ARRAY['p_tenant','p_session','p_binding','p_subject_sha256']
+       OR f.language_name IS DISTINCT FROM 'plpgsql'
+       OR f.body_sha256 IS DISTINCT FROM '158e303247b82187dc081212a10eb90f1295cf40f8874e353fef377a14ac753e'
        OR f.reader_execute IS DISTINCT FROM true
        OR f.writer_execute IS DISTINCT FROM true
        OR f.foreign_grants<>0

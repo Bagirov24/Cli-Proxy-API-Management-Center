@@ -55,10 +55,16 @@ properties, be plain records with no getters or extra keys, use the
 approved role and signer ID and have a valid Ed25519 signature over
 all properties.
 The verifier also makes a **synchronous immutable snapshot** of the
-operator keyset and all evidence records before invoking any asynchronous
-WebCrypto call or test clock callback. Mutating a supplied JavaScript
-object while signatures are checked cannot change the reviewed subject.
-Concurrent key/proof replacement is covered by a regression test.
+operator keyset and all evidence records before invoking asynchronous
+WebCrypto. The exported verifier only accepts the exact top-level
+`policy` and `attestations` fields: a caller-provided `nowMs` or
+additional callback is **rejected**, never used to extend expired evidence.
+It reads `Date.now()` from the runtime at invocation and **again after
+all signature/hash checks**, rejecting a backward clock jump, an expired
+record or evidence aging beyond its gate limit during verification.
+Mutating supplied keys or proofs during WebCrypto cannot alter the
+already snapshotted subject. The local test harness simulates a clock
+jump without exposing a runtime clock override.
 
 ## Evidence sequence and expiry
 
@@ -78,20 +84,36 @@ Concurrent key/proof replacement is covered by a regression test.
 Each evidence record must be observed in the past, not expired at review
 time, and not older than its limit. An invalid or missing gate results in
 `BLOCKED`, never permissive partial approval. Both final review records
-must be signed **after all eight technical observations**. Their signed
-`proofSha256` must equal SHA256 of the exact canonical ordered aggregate
-of the eight technical proof digests:
+must be signed **strictly later** than all eight technical observations;
+a timestamp equal to the latest observation is refused. Their signed
+`proofSha256` is the SHA256 of the complete, ordered **v2 aggregate of
+all eight independently verified signed technical attestations**:
 
 ```ts
+const canonical = backend16CanonicalSignedTechnicalBundle(
+  technicalGates.map(gate => signedEvidence[gate]),
+);
+// Exact canonical JSON preimage:
 JSON.stringify({
-  schema: 'backend16-technical-release-evidence-v1',
-  gates: technicalGates.map(gate => [gate, evidence[gate].proofSha256]),
-})
+  schema: 'backend16-technical-signed-release-evidence-v2',
+  gates: technicalGates.map(gate => [
+    gate,
+    backend16CanonicalReleaseEvidence(signedEvidence[gate].evidence),
+    signedEvidence[gate].signatureHex,
+  ]),
+});
+const approvalProofSha256 = sha256(canonical); // example only; no signer key
 ```
 
-This binds the approvals to one exact set of signed observations;
-substituting a TLS, backup or SQL readback proof requires two fresh
-review signatures.
+The v1 digest-of-proof-hashes form is **obsolete and rejected**. Because two
+distinct valid signed observations can reference the same archived
+`proofSha256` while differing in observation time, URI, validity or
+signer signature, a proof-hash-only aggregate did *not* bind the exact
+reviewed records. Changing *any* technical signed record requires new
+security and operations review signatures, even when the raw proof digest
+stays identical. Never compute a purported approval from unverifiable data
+or silently migrate/reuse existing approval signatures. This code verifies
+only; all approvals require separately authorized human signers.
 
 Evidence URLs are limited to this GitHub repository's Actions runs,
 pull requests or issues and the exact Railway staging project/service
@@ -103,11 +125,19 @@ that the real world is safe. Never sign missing or invented evidence.
 
 ## Present state and deployment boundaries
 
-As of 17 October 2026, **do not generate a positive manifest**:
+**Current state as of 19 October 2026: do not generate a positive release
+manifest.** The following distinguish permanent staging observations from
+unmet release attestations:
 
-- Permanent staging SQL0008 was last observed **ABSENT**, not installed;
-  installer `Restart Policy=NEVER` is read back, but no SQL writes are
-  authorized without fresh read-only reconciliation and recoverability.
+- SQL0008 was applied **once** to permanent Railway staging PG16, with
+  installer PASS `36fb4858-3d5b-4c15-a115-ba4a2a56cba6` and independent
+  installed-state read-only PASS `623f00ff-92f0-4fb5-9a91-d7ba0d33a3df`.
+  Original redacted evidence is archived at
+  https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/pull/53#issuecomment-6265741781 .
+  The temporary installer has been deleted; **never run SQL0008 again**.
+  These logs have **not** been independently archived, approved and signed
+  as the gate's 1-hour-fresh v2 release attestation. A stale observation
+  cannot be re-labeled as fresh evidence.
 - Railway staging TLS certificate-only probe observed a valid matching
   private DNS SAN and TLSv1.3, but **unverifiedChain=true**. No approved
   root CA or authenticated `verify-full` handshake yet.
