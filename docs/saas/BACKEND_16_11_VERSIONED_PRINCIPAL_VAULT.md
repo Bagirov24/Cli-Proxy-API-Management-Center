@@ -48,6 +48,30 @@ release manifest**, not be generated on the fly from untrusted API
 parameters. Both values provided by the same attacker are not a proof
 of trust.
 
+### Backend16.19 — immutable approval and provider reference
+
+The source-only adapter now accepts **exactly** the `manifest` and
+`source` fields. The manifest has exactly `entries` and
+`approvedManifestSha256`. Extra fields or getter/prototype-bearing
+approval records are refused; in particular **no caller-provided
+`nowMs` clock** is accepted in runtime configuration. Freshness
+checks use the system `Date.now()` at each credential acquisition.
+
+The approved SHA256 and exact provider's `readVersion` function are
+captured **synchronously before the first SHA256 `await`**. Even if
+an external config object changes while hashing is pending, a wrong
+initial digest must not become approved, and an approved provider
+must not be silently exchanged for a different secret reader. The
+canonical per-principal manifest entries are also copied and frozen
+before verification. Provider records must be ordinary own-data
+objects, not accessor/prototype-bearing credential wrappers. Real
+operator approval and provider IAM remain independent prerequisites.
+
+Synthetic CI tests exercise digest replacement, provider substitution,
+malicious manifest accessors and inherited response fields. These are
+pure JavaScript contract tests, **not** proof of a deployed or
+approved external vault.
+
 Rotate by preparing a new version of the *same* external secret, review
 and pin a new release manifest, and switch composition only after
 physical old-connection drain and operator review. Do not accept
@@ -87,9 +111,15 @@ expired or after revoked operator approval.
   or operator-controlled manifest signature have been provisioned.
 - No verified private-network PostgreSQL CA/SAN handshake exists yet;
   Backend16.10 still refuses an unapproved TLS root.
-- SQL0008 is confirmed **ABSENT** from permanent staging by the last
-  read-only preflight; one-shot installer `RestartPolicy=Never` remains
-  unconfirmed. Do not run/retry SQL0008 on this basis.
+- SQL0008 was installed **once** on permanent staging PostgreSQL16 on
+  2026-10-19 and independently reconciled as **INSTALLED**, sealed,
+  with eight receipts: installer deployment
+  `36fb4858-3d5b-4c15-a115-ba4a2a56cba6`, independent
+  read-only postflight `623f00ff-92f0-4fb5-9a91-d7ba0d33a3df`.
+  The one-shot installer was then deleted. Evidence:
+  https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/pull/53#issuecomment-6265741781 .
+  **Never rerun SQL0008 or recreate its installer.** This migration
+  does not itself satisfy signed release or runtime approval.
 - Independent OIDC session-authority, per-principal live grants, durable
   off-host audit, private service deployment, real staging E2E and
   release review are separate blockers.
@@ -98,8 +128,10 @@ expired or after revoked operator approval.
 
 **CI contract:** `tests/saasBackend16StagingVersionedPrincipalVault.test.ts`
 checks canonical pin, exact secret-ID/version/LOGIN binding, freshness
-limits, provider errors, revocation observation, caller abort while
-source is hung, and absence of HTTP/SQL/migration capabilities.
+limits, operator digest/provider snapshot across asynchronous SHA256,
+rejection of caller clocks and accessor/prototype records, provider errors,
+revocation observation, caller abort while source is hung, and absence
+of HTTP/SQL/migration capabilities.
 
 ## Physical PostgreSQL16 E2E (disposable GitHub Actions)
 
