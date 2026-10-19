@@ -10,7 +10,7 @@ import {
 import type {Backend16StagingPrincipalVault}
   from '../src/features/saasBlueprint/controlApi/server/backend16StagingBunPhysicalPgPool.ts';
 
-const NOW=Date.UTC(2026,9,17,20);
+const NOW=Date.now();
 const A='saas_b16_reader_a',B='saas_b16_reader_b';
 const PASS='x'.repeat(64),VERSION='a'.repeat(32),OTHER_VERSION='b'.repeat(32);
 const aId='b16-stg-pg-'+('a'.repeat(20));
@@ -24,7 +24,7 @@ const pinned=(entries:readonly Backend16StagingVaultEntry[])=>({
     entries:entries.map(i=>[i.pgLogin,i.secretId,i.version]),
   })).digest('hex'),
 });
-const expires=(username=A,version=VERSION,expiry=NOW+120_000)=>
+const expires=(username=A,version=VERSION,expiry=Date.now()+120_000)=>
   ({username,password:PASS,version,expiresAtMs:expiry});
 const signal=()=>new AbortController().signal;
 const sourceText=readFileSync(new URL(
@@ -42,7 +42,7 @@ test('only manifest-selected exact secret ID and immutable version are requested
   const manifest=pinned([first(),second()]);
   const vault:Backend16StagingPrincipalVault=
     await createBackend16StagingVersionedPrincipalVault({
-      manifest,source,nowMs:()=>NOW,
+      manifest,source,
     });
   const x=await vault.readPrincipal(A,signal());
   assert.deepEqual(x,{username:A,password:PASS});
@@ -78,7 +78,7 @@ test('manifest must be sorted, nonduplicated, canonical and independently SHA-pi
     }))),
   ])await assert.rejects(
     createBackend16StagingVersionedPrincipalVault({
-      manifest,source:reader,nowMs:()=>NOW,
+      manifest,source:reader,
     }),/principal credential vault unavailable/);
   const good=pinned([first()]);
   await assert.rejects(createBackend16StagingVersionedPrincipalVault({
@@ -102,7 +102,7 @@ test('snapshot cannot substitute a different LOGIN, version or leaked extra prop
     {...expires(),expiresAtMs:NOW-1000},
     {...expires(),expiresAtMs:NOW+500},
     {...expires(),expiresAtMs:NOW+60_000},
-    {...expires(),expiresAtMs:NOW+300_001},
+    {...expires(),expiresAtMs:NOW+330_000},
     {...expires(),expiresAtMs:NaN},
     null,
     'temporary-secret',
@@ -110,7 +110,6 @@ test('snapshot cannot substitute a different LOGIN, version or leaked extra prop
     const vault=await createBackend16StagingVersionedPrincipalVault({
       manifest:pinned([first()]),
       source:{async readVersion(){return wrong;}},
-      nowMs:()=>NOW,
     });
     await assert.rejects(vault.readPrincipal(A,signal()),/unavailable/);
   }
@@ -119,7 +118,7 @@ test('snapshot cannot substitute a different LOGIN, version or leaked extra prop
 test('never cache an approved password: next lookup observes revocation',async()=>{
   let count=0;
   const vault=await createBackend16StagingVersionedPrincipalVault({
-    manifest:pinned([first()]),nowMs:()=>NOW,
+    manifest:pinned([first()]),
     source:{async readVersion(){
       count++;
       return count===1?expires():null;
@@ -133,7 +132,7 @@ test('never cache an approved password: next lookup observes revocation',async()
 test('abort races provider that ignores AbortSignal, including late data',async()=>{
   let resolveProvider:((value:unknown)=>void)|undefined;
   const vault=await createBackend16StagingVersionedPrincipalVault({
-    manifest:pinned([first()]),nowMs:()=>NOW,
+    manifest:pinned([first()]),
     source:{readVersion(){
       return new Promise<unknown>(resolve=>{resolveProvider=resolve;});
     }},
@@ -149,10 +148,76 @@ test('abort races provider that ignores AbortSignal, including late data',async(
   await assert.rejects(vault.readPrincipal(A,controller.signal),/unavailable/);
 });
 
+
+test('operator digest and provider method are snapshotted before asynchronous SHA256',async()=>{
+  const good=pinned([first()]);
+  let approvedCalls=0,substitutedCalls=0;
+  const approved:Backend16StagingVersionedSecretReader={
+    async readVersion(){approvedCalls++;return expires();},
+  };
+  const substituted:Backend16StagingVersionedSecretReader={
+    async readVersion(){substitutedCalls++;return {
+      ...expires(),password:'z'.repeat(64),
+    };},
+  };
+  const options={manifest:{...good},source:approved};
+  const constructing=createBackend16StagingVersionedPrincipalVault(options);
+  // No untrusted mutation after the SHA256 invocation may redirect reads.
+  options.source=substituted;
+  options.manifest.approvedManifestSha256='0'.repeat(64);
+  const vault=await constructing;
+  assert.deepEqual(await vault.readPrincipal(A,signal()),
+    {username:A,password:PASS});
+  assert.equal(approvedCalls,1);
+  assert.equal(substitutedCalls,0);
+
+  // Conversely, an originally WRONG approval cannot become valid by
+  // substituting an approved digest while WebCrypto is awaiting.
+  const unapproved={
+    manifest:{...good,approvedManifestSha256:'0'.repeat(64)},
+    source:approved,
+  };
+  const pending=createBackend16StagingVersionedPrincipalVault(unapproved);
+  unapproved.manifest.approvedManifestSha256=good.approvedManifestSha256;
+  await assert.rejects(pending,/principal credential vault unavailable/);
+  assert.equal(approvedCalls,1,'failed manifest never calls external secret provider');
+});
+
+test('caller-supplied release clock and accessor/prototype manifests fail closed',async()=>{
+  const manifest=pinned([first()]);
+  const source={async readVersion(){return expires();}};
+  await assert.rejects(createBackend16StagingVersionedPrincipalVault({
+    manifest,source,nowMs:()=>NOW,
+  } as never),/principal credential vault unavailable/);
+
+  let getterCalled=false;
+  const accessor=Object.defineProperty({
+    entries:[first()],
+  },'approvedManifestSha256',{
+    enumerable:true,get(){getterCalled=true;return manifest.approvedManifestSha256;},
+  });
+  await assert.rejects(createBackend16StagingVersionedPrincipalVault({
+    manifest:accessor as never,source,
+  }),/principal credential vault unavailable/);
+  assert.equal(getterCalled,false,'operator approval getter must not execute');
+
+  const inheritedManifest=Object.assign(
+    Object.create({unexpectedInheritedPolicy:true}),manifest);
+  await assert.rejects(createBackend16StagingVersionedPrincipalVault({
+    manifest:inheritedManifest,source,
+  }),/principal credential vault unavailable/);
+
+  const inheritedRow=Object.assign(Object.create({unreviewed:true}),expires());
+  const vault=await createBackend16StagingVersionedPrincipalVault({
+    manifest,source:{async readVersion(){return inheritedRow;}},
+  });
+  await assert.rejects(vault.readPrincipal(A,signal()),/unavailable/);
+});
+
 test('provider errors, secrets, credentials and tenancy never surface in exceptions',async()=>{
   const secretMarker='very_private_secret_marker';
   const vault=await createBackend16StagingVersionedPrincipalVault({
-    manifest:pinned([first()]),nowMs:()=>NOW,
+    manifest:pinned([first()]),
     source:{async readVersion(){throw Error('vault error '+secretMarker);}},
   });
   await assert.rejects(vault.readPrincipal(A,signal()),err=>{
@@ -163,7 +228,7 @@ test('provider errors, secrets, credentials and tenancy never surface in excepti
   });
   assert.doesNotMatch(sourceText,/Bun\.serve|createServer|\.listen\(|DATABASE_URL|DATABASE_PUBLIC_URL|setInterval|retry\s*\(/);
   assert.doesNotMatch(sourceText,/\b(?:SET ROLE|ALTER ROLE|CREATE ROLE|DROP ROLE|pg_terminate_backend)\b/i);
-  assert.ok(sourceText.includes("source.readVersion(entry.secretId,entry.version,signal)"));
+  assert.ok(sourceText.includes("readVersion.call(source,entry.secretId,entry.version,signal)"));
   assert.ok(sourceText.includes('AbortSignal.timeout(FETCH_TIMEOUT_MS)'));
   assert.ok(sourceText.includes('const lookup=new Map(entries.map'));
 });
