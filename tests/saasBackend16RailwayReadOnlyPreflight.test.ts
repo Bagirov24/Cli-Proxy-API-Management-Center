@@ -105,7 +105,7 @@ test('post-install staging runner cannot revert to a seven-receipt ABSENT succes
     /PASS_BACKEND16_SQL0008_READONLY_ABSENT_SEALED_NEVER_AUTO_INSTALL/);
   assert.doesNotMatch(withoutImmutableSql,/const EXPECTED='absent'/);
   assert.match(source,/BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY/);
-  assert.doesNotMatch(withoutImmutableSql,/ALTER ROLE|CREATE FUNCTION|\\b(?:INSERT|DELETE|UPDATE) INTO\\b/i);
+  assert.doesNotMatch(withoutImmutableSql,/(?:ALTER ROLE|CREATE FUNCTION|INSERT INTO|DELETE FROM|UPDATE saas_)/i);
 });
 
 test('only reviewed SQL catalog STOP codes can reach Railway logs',()=>{
