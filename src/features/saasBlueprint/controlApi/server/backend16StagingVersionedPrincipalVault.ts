@@ -25,6 +25,8 @@ const MIN_LEASE_MS=60_000;
 const MAX_LEASE_MS=5*60_000;
 const FETCH_TIMEOUT_MS=4500;
 const ENTRY_KEYS='pgLogin,secretId,version';
+const OPTIONS_KEYS='manifest,source';
+const MANIFEST_KEYS='approvedManifestSha256,entries';
 const RECORD_KEYS='expiresAtMs,password,username,version';
 
 export type Backend16StagingVaultEntry=Readonly<{
@@ -56,8 +58,6 @@ export interface Backend16StagingVersionedSecretReader {
 export interface Backend16StagingVersionedVaultOptions {
   readonly manifest:Backend16OperatorVaultManifest;
   readonly source:Backend16StagingVersionedSecretReader;
-  /** Test-only deterministic clock; actual composition uses Date.now. */
-  readonly nowMs?:()=>number;
 }
 
 function refuse():never{
@@ -75,6 +75,8 @@ function exactKeys(value:unknown,keys:string):boolean{
     return false;
   // External provider records must be plain data, not accessor-bearing
   // objects that can change LOGIN, version or password between reads.
+  const proto=Object.getPrototypeOf(value);
+  if(proto!==Object.prototype&&proto!==null)return false;
   const props=Object.getOwnPropertyDescriptors(value);
   return Object.keys(props).sort().join(',')===keys &&
     Object.values(props).every(d=>'value' in d);
@@ -117,20 +119,25 @@ export async function createBackend16StagingVersionedPrincipalVault(
   options:Backend16StagingVersionedVaultOptions,
 ):Promise<Backend16StagingPrincipalVault>{
   try{
-    if(!options||!options.source||
-       typeof options.source.readVersion!=='function'||
-       (options.nowMs!==undefined&&typeof options.nowMs!=='function')||
-       !options.manifest||
-       !Array.isArray(options.manifest.entries)||
-       options.manifest.entries.length<1||
-       options.manifest.entries.length>MAX_PRINCIPALS||
-       typeof options.manifest.approvedManifestSha256!=='string'||
-       !SHA256.test(options.manifest.approvedManifestSha256))refuse();
+    // Snapshot approved inputs BEFORE the first await. An attacker must not
+    // swap the operator pin or credential source while SHA256 is pending.
+    // Extra fields including a caller-provided nowMs are never accepted.
+    if(!exactKeys(options,OPTIONS_KEYS))refuse();
+    const {manifest,source}=options;
+    if(!exactKeys(manifest,MANIFEST_KEYS)||
+       !source||typeof source.readVersion!=='function'||
+       !Array.isArray(manifest.entries)||
+       manifest.entries.length<1||
+       manifest.entries.length>MAX_PRINCIPALS||
+       typeof manifest.approvedManifestSha256!=='string'||
+       !SHA256.test(manifest.approvedManifestSha256))refuse();
+    const approvedManifestSha256=manifest.approvedManifestSha256;
+    const readVersion=source.readVersion; // immutable function reference
 
     const entries:Backend16StagingVaultEntry[]=[];
     const ids=new Set<string>();
     let previous='';
-    for(const item of options.manifest.entries){
+    for(const item of manifest.entries){
       if(!exactKeys(item,ENTRY_KEYS))refuse();
       if(typeof item.pgLogin!=='string'||!goodLogin(item.pgLogin)||
          item.pgLogin<=previous||
@@ -147,12 +154,9 @@ export async function createBackend16StagingVersionedPrincipalVault(
       schema:'backend16-staging-vault-v1',
       entries:entries.map(item=>[item.pgLogin,item.secretId,item.version]),
     });
-    if(await digest(canonical)!==
-       options.manifest.approvedManifestSha256)refuse();
+    if(await digest(canonical)!==approvedManifestSha256)refuse();
 
     const lookup=new Map(entries.map(item=>[item.pgLogin,item] as const));
-    const source=options.source;
-    const now=options.nowMs??Date.now;
 
     return Object.freeze({
       async readPrincipal(login:string,requestSignal:AbortSignal){
@@ -161,16 +165,16 @@ export async function createBackend16StagingVersionedPrincipalVault(
              !requestSignal||requestSignal.aborted)refuse();
           const entry=lookup.get(login);
           if(!entry)refuse(); // no arbitrary secret-ID lookup or fallback
-          const before=now();
+          const before=Date.now();
           if(!clock(before))refuse();
           const signal=AbortSignal.any([
             requestSignal,AbortSignal.timeout(FETCH_TIMEOUT_MS),
           ]);
           const raw=await abortable(Promise.resolve().then(()=>{
             if(signal.aborted)refuse();
-            return source.readVersion(entry.secretId,entry.version,signal);
+            return readVersion.call(source,entry.secretId,entry.version,signal);
           }),signal);
-          const after=now();
+          const after=Date.now();
           if(signal.aborted||!clock(after)||after<before||
              !exactKeys(raw,RECORD_KEYS))refuse();
           // Snapshot each external value exactly once, before validating;
