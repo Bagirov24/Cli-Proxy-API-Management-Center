@@ -17,6 +17,7 @@ on:
       - 'tests/saasBackend16StagingBunPhysicalPgPool.test.ts'
       - 'src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts'
       - 'tests/saasBackend16StagingPgTlsTrust.test.ts'
+      - 'tests/saasBackend16IntegrationWorkflow.test.ts'
       - 'scripts/saas-staging/backend16-pg-tls-peer-observation.ts'
       - 'tests/saasBackend16TlsPeerProbe.test.ts'
       - 'docs/saas/BACKEND_16_12_TLS_PEER_OBSERVATION.md'
