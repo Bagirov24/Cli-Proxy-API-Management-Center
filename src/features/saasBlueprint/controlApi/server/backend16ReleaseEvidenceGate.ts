@@ -139,7 +139,7 @@ function blocked():Backend16ReleaseEvidenceVerdict{
 function dataArray<T>(value:readonly T[],length:number):T[]{
   if(!Array.isArray(value)||Object.getPrototypeOf(value)!==Array.prototype)
     throw Error('invalid evidence array');
-  const props=Object.getOwnPropertyDescriptors(value) as PropertyDescriptorMap;
+  const props=Object.getOwnPropertyDescriptors(value) as unknown as PropertyDescriptorMap;
   if(props.length?.value!==length||Reflect.ownKeys(props).length!==length+1)
     throw Error('invalid evidence array');
   const result:T[]=[];
