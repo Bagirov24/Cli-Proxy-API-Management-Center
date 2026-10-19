@@ -34,6 +34,10 @@ test('broker endpoint, SNI and path are fixed; no secret enumeration or fallback
     "JSON.stringify({",
     "client.keyUsage?.includes('1.3.6.1.5.5.7.3.2')",
     "expected.length!==actual.length",
+    "releaseAllowed=permitted()&&isTime(settledAt)",
+    "settledAt+MIN_ROOT_REMAINING_MS<identity.rootValidUntil",
+    "settledAt+MIN_CLIENT_REMAINING_MS<identity.clientValidUntil",
+    "if(releaseAllowed)resolve(record)",
   ])assert.ok(source.includes(marker),marker);
   assert.equal((source.match(/req\.end\(\)/g)||[]).length,1);
   assert.doesNotMatch(source,
@@ -87,10 +91,12 @@ test('disposable acceptance includes authenticated mTLS and deny/revoke paths',(
     "B16_MTLS_BROKER_CI_AUTHORIZED_PASS",
     "B16_MTLS_BROKER_CI_REVOCATION_AND_MALFORMED_DENY",
     "B16_MTLS_BROKER_CI_HUNG_ABORT_DENY",
+    "B16_MTLS_BROKER_CI_INFLIGHT_APPROVAL_REVOKED_DENY",
     "B16_MTLS_BROKER_CI_UNTRUSTED_IDENTITY_DENY",
     "B16_MTLS_BROKER_CI_WRONG_SERVER_SAN_DENY",
     "B16_MTLS_BROKER_CI_WILDCARD_SERVER_SAN_DENY",
     "wrong-version","duplicate","redirect","oversize",
+    "good.waitForDeferred()","good.releaseDeferred()",
     "createBackend16StagingVersionedPrincipalVault({",
     "rmSync(dir,{recursive:true,force:true})",
   ])assert.ok(ci.includes(marker),marker);
