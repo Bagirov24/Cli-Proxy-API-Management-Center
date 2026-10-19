@@ -57,7 +57,7 @@ test('read-only PostgreSQL transaction, exact INSTALLED operator expectation and
 test('context pins private PostgreSQL16 with no public proxy, credentials or logs',()=>{
   for(const v of [
     'RAILWAY_PROJECT_ID','RAILWAY_ENVIRONMENT_ID',
-    'RAILWAY_ENVIRONMENT_NAME','RAILWAY_SERVICE_NAME',
+    'RAILWAY_ENVIRONMENT_NAME','RAILWAY_SERVICE_NAME','RAILWAY_SERVICE_ID',
     'SAAS_B16_READONLY_PREFLIGHT_EXPLICIT_ENABLE',
     "uri.hostname!=='postgres.railway.internal'",
     "uri.pathname!=='/saas_staging'",
@@ -82,6 +82,7 @@ test('disabled Railway staging read-only Function exits without DB or retries',(
     RAILWAY_ENVIRONMENT_ID:'b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b',
     RAILWAY_ENVIRONMENT_NAME:'staging',
     RAILWAY_SERVICE_NAME:'saas-b16-0008-readonly-preflight',
+    RAILWAY_SERVICE_ID:'ff2df1d3-3bca-483c-bc2a-0edea01dd3f1',
     SAAS_B16_READONLY_PREFLIGHT_EXPLICIT_ENABLE:'false',
     GITHUB_ACTIONS:'false',
   };
@@ -106,6 +107,51 @@ test('post-install staging runner cannot revert to a seven-receipt ABSENT succes
   assert.doesNotMatch(withoutImmutableSql,/const EXPECTED='absent'/);
   assert.match(source,/BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY/);
   assert.doesNotMatch(withoutImmutableSql,/(?:ALTER ROLE|CREATE FUNCTION|INSERT INTO|DELETE FROM|UPDATE saas_)/i);
+});
+
+
+test('wrong Railway staging Function ID is refused before opening a database socket',()=>{
+  const file=new URL('../scripts/saas-staging/backend16-railway-readonly-preflight.ts',
+    import.meta.url);
+  const syntheticUrl='postgres://postgres:SYNTHETIC_TEST_PASSWORD@public.example:5432/saas_staging';
+  const child=spawnSync(process.execPath,[file.pathname],{
+    encoding:'utf8',timeout:8000,env:{
+      RAILWAY_PROJECT_ID:'a9703851-6eb1-406c-bb15-7d3a89359fb7',
+      RAILWAY_ENVIRONMENT_ID:'b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b',
+      RAILWAY_ENVIRONMENT_NAME:'staging',
+      RAILWAY_SERVICE_NAME:'saas-b16-0008-readonly-preflight',
+      RAILWAY_SERVICE_ID:'00000000-0000-0000-0000-000000000000',
+      SAAS_B16_READONLY_PREFLIGHT_EXPLICIT_ENABLE:'true',
+      STAGING_POSTGRES_PRIVATE_URL:syntheticUrl,
+      GITHUB_ACTIONS:'false',
+    },
+  });
+  assert.notEqual(child.status,0);
+  const output=child.stdout+child.stderr;
+  assert.match(output,/B16_READONLY_PREFLIGHT_STOP_NO_DATABASE_WRITES/);
+  assert.doesNotMatch(output,/PASS_BACKEND16|SYNTHETIC_TEST_PASSWORD|public\.example/);
+});
+
+test('public PostgreSQL hostname is rejected even with exact Railway service ID',()=>{
+  const file=new URL('../scripts/saas-staging/backend16-railway-readonly-preflight.ts',
+    import.meta.url);
+  const child=spawnSync(process.execPath,[file.pathname],{
+    encoding:'utf8',timeout:8000,env:{
+      RAILWAY_PROJECT_ID:'a9703851-6eb1-406c-bb15-7d3a89359fb7',
+      RAILWAY_ENVIRONMENT_ID:'b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b',
+      RAILWAY_ENVIRONMENT_NAME:'staging',
+      RAILWAY_SERVICE_NAME:'saas-b16-0008-readonly-preflight',
+      RAILWAY_SERVICE_ID:'ff2df1d3-3bca-483c-bc2a-0edea01dd3f1',
+      SAAS_B16_READONLY_PREFLIGHT_EXPLICIT_ENABLE:'true',
+      STAGING_POSTGRES_PRIVATE_URL:
+        'postgres://postgres:SYNTHETIC_TEST_PASSWORD@public.example:5432/saas_staging',
+      GITHUB_ACTIONS:'false',
+    },
+  });
+  assert.notEqual(child.status,0);
+  const output=child.stdout+child.stderr;
+  assert.match(output,/B16_READONLY_PREFLIGHT_STOP_NO_DATABASE_WRITES/);
+  assert.doesNotMatch(output,/PASS_BACKEND16|SYNTHETIC_TEST_PASSWORD|public\.example/);
 });
 
 test('only reviewed SQL catalog STOP codes can reach Railway logs',()=>{
