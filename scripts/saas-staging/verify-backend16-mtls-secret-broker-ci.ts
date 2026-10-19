@@ -291,6 +291,24 @@ try{
       'revoked in-flight request must never retry the broker');
     console.info('B16_MTLS_BROKER_CI_INFLIGHT_APPROVAL_REVOKED_DENY');
 
+    // Combined vault + mTLS adapter, not an isolated reader contract:
+    // a valid private, pinned-secret response that arrives after grant
+    // revocation must not escape through vault.readPrincipal().
+    good.choose('deferred');
+    const beforeVaultRevocation=good.calls();
+    const vaultRequest=vault.readPrincipal(A,new AbortController().signal);
+    await good.waitForDeferred();
+    process.env.SAAS_B16_BROKER_MTLS_CI='false';
+    try{
+      good.releaseDeferred();
+      await assert.rejects(vaultRequest,/principal credential vault unavailable/);
+    }finally{
+      process.env.SAAS_B16_BROKER_MTLS_CI='true';
+    }
+    assert.equal(good.calls(),beforeVaultRevocation+1,
+      'integrated vault must not retry or return a stale secret');
+    console.info('B16_MTLS_VAULT_CI_INFLIGHT_APPROVAL_REVOKED_DENY');
+
     good.choose('hang');
     const controller=new AbortController();
     const request=reader.readVersion(ID,VERSION,controller.signal);
