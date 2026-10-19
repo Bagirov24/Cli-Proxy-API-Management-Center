@@ -1,6 +1,6 @@
 /**
  * Backend16.16: Railway staging SQL0008 INSTALLED postflight, no migration.
- * Runs the unmodified DO block of the immutable Backend16.8 read-only SQL.
+ * Runs the security-reviewed DO block of the authoritative read-only SQL.
  * Exact operator expectation is INSTALLED: eight receipts + exact SQL0008 gate.
  * No WRITE transaction, DDL, migration, HTTP listener, cron, public DB, retry.
  * NO positive marker if the DB is partially migrated, busy, drifted or unreadable.

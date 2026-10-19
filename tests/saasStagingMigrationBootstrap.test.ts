@@ -2,6 +2,7 @@ import {describe, expect, test} from 'bun:test';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 
 const PROGRAM = new URL('../scripts/saas-staging/plan-staging-bootstrap.mjs', import.meta.url);
 const SQL = new URL('../staging/saas-bootstrap/0001_ledger_only.sql', import.meta.url);
@@ -9,7 +10,7 @@ const SECRET = 'SENSITIVE_DB_PASSWORD_NOT_FOR_LOGS';
 
 function run(command: string, changes: Record<string, string | undefined> = {}) {
   const env = {...process.env, DATABASE_URL: SECRET, PGPASSWORD: SECRET, ...changes};
-  const result = spawnSync('node', [PROGRAM.pathname, command], {
+  const result = spawnSync('node', [fileURLToPath(PROGRAM), command], {
     encoding: 'utf8', env, timeout: 8000,
   });
   return {status: result.status, stdout: result.stdout, stderr: result.stderr};
