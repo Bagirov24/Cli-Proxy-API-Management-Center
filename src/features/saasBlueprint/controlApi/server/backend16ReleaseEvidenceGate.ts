@@ -135,6 +135,21 @@ function blocked():Backend16ReleaseEvidenceVerdict{
     productionAuthorized:false,
   });
 }
+/** Copy dense data arrays without invoking caller methods or element getters. */
+function dataArray<T>(value:readonly T[],length:number):T[]{
+  if(!Array.isArray(value)||Object.getPrototypeOf(value)!==Array.prototype)
+    throw Error('invalid evidence array');
+  const props=Object.getOwnPropertyDescriptors(value);
+  if(props.length?.value!==length||Reflect.ownKeys(props).length!==length+1)
+    throw Error('invalid evidence array');
+  const result:T[]=[];
+  for(let i=0;i<length;i++){
+    const descriptor=props[String(i)];
+    if(!descriptor||!('value' in descriptor))throw Error('invalid evidence array');
+    result.push(descriptor.value);
+  }
+  return result;
+}
 function verdict(missing:readonly Backend16StagingGate[]):
   Backend16ReleaseEvidenceVerdict{
   return Object.freeze({
@@ -296,19 +311,25 @@ export async function verifyBackend16ReleaseEvidence(input:Readonly<{
     // the first await. A mutable external config/evidence object must not
     // change the keyset or signed proof while WebCrypto is verifying it.
     const rawPolicy=input.policy;
-    if(!Array.isArray(rawPolicy.signers))return blocked();
-    const signers=Object.freeze(rawPolicy.signers.map(k=>{
+    // Pin authority scalars before inspecting collections. Caller-owned map
+    // overrides must never rewrite the approved source or reviewer keyset.
+    const expectedSourceCommitSha=rawPolicy.expectedSourceCommitSha;
+    const approvedSignerKeysetSha256=rawPolicy.approvedSignerKeysetSha256;
+    const rawSigners=dataArray(rawPolicy.signers,OPERATOR_ROLES.length);
+    const rawAttestations=dataArray(input.attestations,
+      BACKEND16_REQUIRED_STAGING_GATES.length);
+    const signers=Object.freeze(rawSigners.map(k=>{
       if(!plainExact(k,SIGNER_KEYS))throw Error('invalid signer');
       return Object.freeze({
         role:k.role,signerId:k.signerId,publicKeyHex:k.publicKeyHex,
       });
     }));
     const policy:Backend16ReleaseEvidencePolicy=Object.freeze({
-      expectedSourceCommitSha:rawPolicy.expectedSourceCommitSha,
-      approvedSignerKeysetSha256:rawPolicy.approvedSignerKeysetSha256,
+      expectedSourceCommitSha,
+      approvedSignerKeysetSha256,
       signers,
     });
-    const attestations=Object.freeze(input.attestations.map(item=>{
+    const attestations=Object.freeze(rawAttestations.map(item=>{
       if(!plainExact(item,SIGNED_KEYS)||
          !plainExact(item.evidence,EVIDENCE_KEYS))
         throw Error('invalid signed evidence');

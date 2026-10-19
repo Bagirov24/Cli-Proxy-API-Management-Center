@@ -381,6 +381,24 @@ test('operator key and proof mutations after invocation cannot race WebCrypto aw
     'a forged field PRESENT before invocation is never signed');
 });
 
+test('array callbacks cannot replace an unapproved reviewer keyset pin',async()=>{
+  const f=await fixture();
+  const actualPin=f.policy.approvedSignerKeysetSha256;
+  const policy={...f.policy,approvedSignerKeysetSha256:'0'.repeat(64)};
+  const signers=[...policy.signers];
+  let invoked=false;
+  Object.defineProperty(signers,'map',{value:(callback:never)=>{
+    invoked=true;
+    policy.approvedSignerKeysetSha256=actualPin;
+    return Array.prototype.map.call(signers,callback);
+  }});
+  policy.signers=signers;
+  assert.equal((await verifyBackend16ReleaseEvidence({
+    policy,attestations:f.attestations,
+  })).result,'BLOCKED');
+  assert.equal(invoked,false,'evidence validation never invokes caller array methods');
+});
+
 test('invalid key crypto, caller time injection and absent operator policy block',async()=>{
   const x=await fixture();
   x.policy={...x.policy,signers:x.policy.signers.map((k,i)=>i===0?
