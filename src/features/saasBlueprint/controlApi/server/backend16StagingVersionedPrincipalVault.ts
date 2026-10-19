@@ -124,15 +124,15 @@ export async function createBackend16StagingVersionedPrincipalVault(
     // Extra fields including a caller-provided nowMs are never accepted.
     if(!exactKeys(options,OPTIONS_KEYS))refuse();
     const {manifest,source}=options;
+    const readVersion=source?.readVersion; // read exactly once, no getter TOCTOU
     if(!exactKeys(manifest,MANIFEST_KEYS)||
-       !source||typeof source.readVersion!=='function'||
+       typeof readVersion!=='function'||
        !Array.isArray(manifest.entries)||
        manifest.entries.length<1||
        manifest.entries.length>MAX_PRINCIPALS||
        typeof manifest.approvedManifestSha256!=='string'||
        !SHA256.test(manifest.approvedManifestSha256))refuse();
     const approvedManifestSha256=manifest.approvedManifestSha256;
-    const readVersion=source.readVersion; // immutable function reference
 
     const entries:Backend16StagingVaultEntry[]=[];
     const ids=new Set<string>();
