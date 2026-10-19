@@ -225,7 +225,12 @@ describe('cooldown section rendering', () => {
 
     const available = render(snapshot, { onReset: () => {} });
     expect(available).toContain(i18n.t('auth_files.cooldown_reset_button'));
-    expect(available).toContain(i18n.t('auth_files.cooldown_reset_hint'));
+    const hintMarkup = renderToStaticMarkup(createElement('span', {
+      title: i18n.t('auth_files.cooldown_reset_hint'),
+    }));
+    const hintAttribute = hintMarkup.match(/title="[^"]*"/)?.[0];
+    expect(hintAttribute).toBeDefined();
+    expect(available).toContain(hintAttribute!);
     expect(available).not.toContain('disabled=""');
 
     const pending = render(snapshot, { onReset: () => {}, resetting: true });

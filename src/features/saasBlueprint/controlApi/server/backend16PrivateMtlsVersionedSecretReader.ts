@@ -236,7 +236,22 @@ function buildReader(
             clearTimeout(deadline);
             signal.removeEventListener('abort',onAbort);
             try{req?.destroy();}catch{/* fail closed */}
-            if(record!==undefined&&!signal.aborted)resolve(record);
+            // A successful mTLS handshake at request start is insufficient:
+            // the workload grant can be revoked while the broker responds.
+            // Recheck local approval AND both certificates' time validity
+            // immediately before returning any credential to the caller.
+            let releaseAllowed=false;
+            if(record!==undefined&&!signal.aborted){
+              try{
+                const settledAt=Date.now();
+                releaseAllowed=permitted()&&isTime(settledAt)&&
+                  settledAt>=identity.rootValidFrom&&
+                  settledAt+MIN_ROOT_REMAINING_MS<identity.rootValidUntil&&
+                  settledAt>=identity.clientValidFrom&&
+                  settledAt+MIN_CLIENT_REMAINING_MS<identity.clientValidUntil;
+              }catch{/* deny if the approval environment is unavailable */}
+            }
+            if(releaseAllowed)resolve(record);
             else reject(new Error(
               'Backend16 private versioned secret service unavailable'));
           }
@@ -281,25 +296,35 @@ function buildReader(
                    response.headers['cache-control']!=='no-store'||
                    (response.headers['content-encoding']!==undefined&&
                     response.headers['content-encoding']!=='identity')||
-                   (response.headers['content-length']!==undefined&&
-                    (!/^[1-9][0-9]{0,3}$/.test(
-                      String(response.headers['content-length']))||
-                     Number(response.headers['content-length'])>MAX_BODY_BYTES))){
+                   // A version-pinned credential is one bounded JSON
+                   // snapshot, never a chunked, streamed or trailer-
+                   // amended payload. Require one canonical body length.
+                   typeof response.headers['content-length']!=='string'||
+                   !/^[1-9][0-9]{0,3}$/.test(
+                     response.headers['content-length'])||
+                   Number(response.headers['content-length'])>MAX_BODY_BYTES||
+                   response.headers['transfer-encoding']!==undefined||
+                   response.headers.trailer!==undefined){
                   response.destroy();finish();return;
                 }
+                const expectedLength=Number(
+                  response.headers['content-length']);
                 response.on('aborted',()=>finish());
                 response.on('error',()=>finish());
                 response.on('data',(chunk?:Uint8Array)=>{
                   if(done)return;
                   if(!(chunk instanceof Uint8Array)||
-                     total+chunk.byteLength>MAX_BODY_BYTES){
+                     total+chunk.byteLength>MAX_BODY_BYTES||
+                     total+chunk.byteLength>expectedLength){
                     response.destroy();finish();return;
                   }
                   total+=chunk.byteLength;
                   chunks.push(chunk);
                 });
                 response.on('end',()=>{
-                  if(done||signal.aborted||total===0){finish();return;}
+                  if(done||signal.aborted||total!==expectedLength){
+                    finish();return;
+                  }
                   try{
                     const bytes=new Uint8Array(total);
                     let position=0;

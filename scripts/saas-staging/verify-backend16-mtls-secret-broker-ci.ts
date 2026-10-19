@@ -87,7 +87,7 @@ function secret(version=VERSION,expiry=Date.now()+120_000){
   });
 }
 type Behaviour='pass'|'wrong-version'|'expired'|'extra'|'duplicate'|
-  'redirect'|'absent'|'oversize'|'hang';
+  'redirect'|'absent'|'oversize'|'hang'|'deferred'|'chunked';
 async function runBunClient(port:number):Promise<void>{
   const target=fileURLToPath(new URL(
     './verify-backend16-bun-mtls-secret-client-ci.ts',import.meta.url));
@@ -128,6 +128,8 @@ async function broker(
   requiredClient:string,
 ){
   let behaviour:Behaviour='pass',requests=0;
+  let deferredSend:(()=>void)|undefined;
+  let deferredReady:(()=>void)|undefined;
   const received:Array<{method?:string;path?:string;clientAuthorized:boolean}>= [];
   const server=createServer({
     key:serverCert.key,cert:serverCert.pem,ca:rootPem,
@@ -157,11 +159,31 @@ async function broker(
     if(behaviour==='duplicate')body=body.slice(0,-1)+
       ',"password":"attacker_shadow"}';
     if(behaviour==='oversize')body='x'.repeat(5000);
-    res.writeHead(200,{
-      'Content-Type':'application/json','Cache-Control':'no-store',
-      'Content-Length':Buffer.byteLength(body),
-    });
-    res.end(body);
+    if(behaviour==='chunked'){
+      // A valid signed JSON secret delivered as HTTP/1.1 chunked content
+      // must be denied before reading any credential. This lacks an
+      // exact Content-Length and carries Transfer-Encoding: chunked.
+      res.writeHead(200,{
+        'Content-Type':'application/json','Cache-Control':'no-store',
+        'Transfer-Encoding':'chunked',
+      });
+      res.write(body.slice(0,Math.floor(body.length/2)));
+      res.end(body.slice(Math.floor(body.length/2)));
+      return;
+    }
+    const send=()=>{
+      res.writeHead(200,{
+        'Content-Type':'application/json','Cache-Control':'no-store',
+        'Content-Length':Buffer.byteLength(body),
+      });
+      res.end(body);
+    };
+    if(behaviour==='deferred'){
+      deferredSend=send;
+      deferredReady?.();
+      return;
+    }
+    send();
   });
   await new Promise<void>((resolve,reject)=>{
     server.once('error',reject);
@@ -171,6 +193,20 @@ async function broker(
   return{
     port,choose:(next:Behaviour)=>{behaviour=next;},
     calls:()=>requests,received,
+    async waitForDeferred(){
+      if(deferredSend)return;
+      await new Promise<void>((resolve,reject)=>{
+        const timeout=setTimeout(()=>reject(new Error(
+          'B16 disposable CI broker deferred response missing')),1800);
+        deferredReady=()=>{clearTimeout(timeout);resolve();};
+      });
+    },
+    releaseDeferred(){
+      if(!deferredSend)throw new Error('B16 missing deferred CI response');
+      const send=deferredSend;
+      deferredSend=undefined;
+      send();
+    },
     async close(){
       server.closeAllConnections();
       await new Promise<void>(resolve=>server.close(()=>resolve()));
@@ -230,7 +266,7 @@ try{
       'revocation must make exactly one fresh request, with no cache or retry');
     for(const variant of [
       'wrong-version','expired','extra','duplicate',
-      'redirect','oversize',
+      'redirect','oversize','chunked',
     ] as const){
       good.choose(variant);
       const before=good.calls();
@@ -241,6 +277,15 @@ try{
     }
     console.info('B16_MTLS_BROKER_CI_REVOCATION_AND_MALFORMED_DENY');
 
+    good.choose('chunked');
+    const beforeChunkedVault=good.calls();
+    await assert.rejects(
+      vault.readPrincipal(A,new AbortController().signal),
+      /principal credential vault unavailable/);
+    assert.equal(good.calls(),beforeChunkedVault+1,
+      'vault must not return a chunked broker credential or retry');
+    console.info('B16_MTLS_VAULT_CI_CHUNKED_SECRET_DENY');
+
     const count=good.calls();
     await assert.rejects(reader.readVersion(
       '../root-secret',VERSION,new AbortController().signal),ERROR);
@@ -248,6 +293,42 @@ try{
       ID,'latest',new AbortController().signal),ERROR);
     assert.equal(good.calls(),count,
       'invalid inputs must never create an HTTPS request');
+
+    // Delay a fully authenticated TLS response until AFTER the local
+    // workload approval is revoked. The client must not return the valid
+    // secret even though the request passed mTLS and reached the broker.
+    good.choose('deferred');
+    const beforeInFlight=good.calls();
+    const inFlight=reader.readVersion(ID,VERSION,new AbortController().signal);
+    await good.waitForDeferred();
+    process.env.SAAS_B16_BROKER_MTLS_CI='false';
+    try{
+      good.releaseDeferred();
+      await assert.rejects(inFlight,ERROR);
+    }finally{
+      process.env.SAAS_B16_BROKER_MTLS_CI='true';
+    }
+    assert.equal(good.calls(),beforeInFlight+1,
+      'revoked in-flight request must never retry the broker');
+    console.info('B16_MTLS_BROKER_CI_INFLIGHT_APPROVAL_REVOKED_DENY');
+
+    // Combined vault + mTLS adapter, not an isolated reader contract:
+    // a valid private, pinned-secret response that arrives after grant
+    // revocation must not escape through vault.readPrincipal().
+    good.choose('deferred');
+    const beforeVaultRevocation=good.calls();
+    const vaultRequest=vault.readPrincipal(A,new AbortController().signal);
+    await good.waitForDeferred();
+    process.env.SAAS_B16_BROKER_MTLS_CI='false';
+    try{
+      good.releaseDeferred();
+      await assert.rejects(vaultRequest,/principal credential vault unavailable/);
+    }finally{
+      process.env.SAAS_B16_BROKER_MTLS_CI='true';
+    }
+    assert.equal(good.calls(),beforeVaultRevocation+1,
+      'integrated vault must not retry or return a stale secret');
+    console.info('B16_MTLS_VAULT_CI_INFLIGHT_APPROVAL_REVOKED_DENY');
 
     good.choose('hang');
     const controller=new AbortController();

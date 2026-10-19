@@ -85,6 +85,32 @@ A separate disposable-CI constructor accepts **loopback only** under
 explicit GitHub Actions guards and keeps the same private SNI/SAN. It is
 not an Internet, Railway or production fallback.
 
+## Backend16.20 — permission and PKI recheck after mTLS response
+
+Even a previously authorized, genuine broker request must not return a
+credential once the local workload's explicit approval has been revoked
+**during the request**. The client now evaluates its environment authorization
+predicate a second time immediately before resolving a successful response,
+along with the approved CA/client-certificate validity and minimum remaining
+lifetime requirements. A revoked flag, clock/identity failure or caller abort
+returns only the generic unavailable error; it never retries, caches or logs
+secret material. This is a local **fail-closed release gate**, not proof of
+broker-enforced IAM revocation or certificate revocation checking.
+
+The disposable acceptance script uses **real TLS 1.2/1.3 mTLS** with
+client-certificate verification and a broker response held after successful
+handshake. It disables `SAAS_B16_BROKER_MTLS_CI` while the authenticated
+request is in flight, then releases a well-formed version-pinned secret.
+The reader must refuse to return the password and make exactly one request.
+The test restores its CI-only flag and deletes ephemeral private keys.
+The probe does not contact Railway, a real vault, a production root or a
+physical PostgreSQL service.
+
+This defense does not revoke credentials already returned before flag
+revocation; durable vault-side authorization, workload revocation, short
+leases, off-host audit and physical PostgreSQL session containment remain
+mandatory independent release gates.
+
 ## Actual acceptance versus remaining evidence
 
 The CI script
@@ -96,7 +122,9 @@ Backend16.11 version-pinned vault adapter.
 An additional child process runs the **actual Bun 1.3.14 mTLS client**
 against the Node24 private HTTPS broker using the same temporary PKI,
 without revealing certificate private keys in CI logs. This is a real
-local mTLS read, not merely a Bun bundling/TypeScript check. It then exercises physical
+local mTLS read, not merely a Bun bundling/TypeScript check.
+Backend16.20 additionally tests refusal when the approval flag is revoked
+between authenticated broker request arrival and a deferred HTTP 200 reply. It then exercises physical
 revocation on the next request, wrong immutable version, expired
 credentials, extra or duplicate fields, redirect, 404, oversized body,
 hung/aborted response, invalid ID/version before network, wrong root
@@ -109,8 +137,11 @@ credential, end-to-end PostgreSQL read, TLS trust approval or release
 authorization.** Before mounting, operators must provision a broker,
 review its implementation, verify mTLS peer identity and workload
 authorization in permanent staging, rotate secrets with a reviewed
-manifest update, archive broker audit evidence, and complete SQL0008
+manifest update, archive broker audit evidence, and independently attest existing SQL0008
 installed-mode, OIDC, off-host audit, recovery and two-tenant canary
-gates. PR #62's signed evidence verifier cannot manufacture those
+gates. SQL0008 was installed once on permanent Railway staging
+(2026-10-19) with an independently successful read-only postflight;
+never re-run or recreate its one-shot installer. These observations are
+not themselves signed release approvals. PR #62's signed evidence verifier cannot manufacture those
 proofs. Keep production Core/Gateway, `custom-no-apikey-fun`, and
 `/data` unchanged until separately approved production deployment.
