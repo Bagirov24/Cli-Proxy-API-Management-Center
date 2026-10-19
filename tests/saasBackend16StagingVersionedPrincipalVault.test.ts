@@ -189,7 +189,7 @@ test('dynamic provider method is read once and original receiver is retained',as
     get readVersion(){
       getterReads++;
       if(getterReads===1){
-        return async function(this:typeof source){
+        return async function(this:unknown){
           assert.equal(this,source);
           approvedCalls++;
           return expires();
