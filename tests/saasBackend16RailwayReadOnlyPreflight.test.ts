@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 
 const source=readFileSync(new URL(
   '../scripts/saas-staging/backend16-railway-readonly-preflight.ts',
@@ -22,7 +23,7 @@ test('Railway read-only function embeds exactly the immutable verified SQL DO bl
   assert.match(expected[0],/B16_READONLY_STOP_FORCE_RLS/);
   assert.match(expected[0],/B16_READONLY_STOP_SQL0008_FUNCTION_DRIFT/);
 });
-test('read-only PostgreSQL transaction, exact operator expectation and no retry',()=>{
+test('read-only PostgreSQL transaction, exact INSTALLED operator expectation and no retry',()=>{
   const index=(s:string)=>source.indexOf(s);
   assert.ok(index("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")>=0);
   assert.ok(index('RECONCILE_DO_SQL,[]')>
@@ -32,15 +33,15 @@ test('read-only PostgreSQL transaction, exact operator expectation and no retry'
   assert.ok(index('if(failed||!closed||EXPECTED')>index("connection.unsafe('COMMIT',[])"));
   assert.match(source,/commitSent=true/);
   assert.match(source,/if\(transaction&&!commitSent&&connection\)/);
-  assert.match(source,/const EXPECTED='absent'/);
-  assert.match(source,/saas\.b16\.reconcile_expected','absent',true/);
+  assert.match(source,/const EXPECTED='installed'/);
+  assert.match(source,/saas\.b16\.reconcile_expected','installed',true/);
   assert.match(source,/set_config\('saas\.staging_only','true',true\)/);
   assert.ok(index("set_config('saas.staging_only','true',true)")>
             index("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"));
   assert.ok(index("set_config('saas.staging_only','true',true)")<
             index('RECONCILE_DO_SQL,[]'));
 
-  assert.match(source,/READONLY_ABSENT_SEALED_NEVER_AUTO_INSTALL/);
+  assert.match(source,/READONLY_INSTALLED_SEALED/);
   assert.match(source,/failurePhase=phase/);
   assert.match(source,/failurePhase='CLOSE'/);
   assert.match(source,/B16_READONLY_PREFLIGHT_STOP_PHASE_/);
@@ -48,7 +49,7 @@ test('read-only PostgreSQL transaction, exact operator expectation and no retry'
   assert.match(source,/catalogStopCode\?\?'UNSPECIFIED'/);
   assert.doesNotMatch(source,/console\.(?:error|log|warn)\(error\)/);
 
-  assert.match(source,/if\(failed\|\|!closed\|\|EXPECTED!=='absent'\)/);
+  assert.match(source,/if\(failed\|\|!closed\|\|EXPECTED!=='installed'\)/);
   assert.doesNotMatch(source,/throw Error\('B16_READONLY_PREFLIGHT_FAILED/);
 
   assert.doesNotMatch(source,/retry\s*\(/);
@@ -57,13 +58,13 @@ test('read-only PostgreSQL transaction, exact operator expectation and no retry'
 test('context pins private PostgreSQL16 with no public proxy, credentials or logs',()=>{
   for(const v of [
     'RAILWAY_PROJECT_ID','RAILWAY_ENVIRONMENT_ID',
-    'RAILWAY_ENVIRONMENT_NAME','RAILWAY_SERVICE_NAME',
+    'RAILWAY_ENVIRONMENT_NAME','RAILWAY_SERVICE_NAME','RAILWAY_SERVICE_ID',
     'SAAS_B16_READONLY_PREFLIGHT_EXPLICIT_ENABLE',
     "uri.hostname!=='postgres.railway.internal'",
     "uri.pathname!=='/saas_staging'",
     "decodeURIComponent(uri.username)!=='postgres'",
     "uri.port!=='5432'","uri.search||uri.hash",
-    "tls:'require'","max:1,connectionTimeout:4",
+    "tls:tlsTrust","max:1,connectionTimeout:4",
     "connection?.release()","pool.close({timeout:0})",
   ])assert.ok(source.includes(v),v);
   assert.doesNotMatch(source,/DATABASE_PUBLIC_URL|RAILWAY_TCP_PROXY|setInterval|cronSchedule/);
@@ -82,16 +83,80 @@ test('disabled Railway staging read-only Function exits without DB or retries',(
     RAILWAY_ENVIRONMENT_ID:'b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b',
     RAILWAY_ENVIRONMENT_NAME:'staging',
     RAILWAY_SERVICE_NAME:'saas-b16-0008-readonly-preflight',
+    RAILWAY_SERVICE_ID:'ff2df1d3-3bca-483c-bc2a-0edea01dd3f1',
     SAAS_B16_READONLY_PREFLIGHT_EXPLICIT_ENABLE:'false',
     GITHUB_ACTIONS:'false',
   };
-  const child=spawnSync(process.execPath,[file.pathname],{
+  const child=spawnSync(process.execPath,[fileURLToPath(file)],{
     encoding:'utf8',timeout:8000,env,
   });
   assert.equal(child.status,0,String(child.stderr).slice(-500));
   assert.match(child.stdout,/B16_READONLY_PREFLIGHT_DISABLED_NO_DATABASE/);
   assert.doesNotMatch(child.stdout,/PASS_BACKEND16/);
   assert.doesNotMatch(child.stdout+child.stderr,/password|DATABASE_URL|PGPASSWORD/i);
+});
+
+
+test('post-install staging runner cannot revert to a seven-receipt ABSENT success',()=>{
+  const withoutImmutableSql=source.replace(/^const RECONCILE_DO_SQL=.+;$/m,'');
+  assert.match(withoutImmutableSql,/const EXPECTED='installed'/);
+  assert.match(withoutImmutableSql,
+    /const MARKER='PASS_BACKEND16_SQL0008_READONLY_INSTALLED_SEALED'/);
+  assert.match(withoutImmutableSql,/reconcile_expected','installed',true/);
+  assert.doesNotMatch(withoutImmutableSql,
+    /PASS_BACKEND16_SQL0008_READONLY_ABSENT_SEALED_NEVER_AUTO_INSTALL/);
+  assert.doesNotMatch(withoutImmutableSql,/const EXPECTED='absent'/);
+  assert.match(source,/BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY/);
+  assert.doesNotMatch(withoutImmutableSql,/(?:ALTER ROLE|CREATE FUNCTION|INSERT INTO|DELETE FROM|UPDATE saas_)/i);
+});
+
+
+test('wrong Railway staging Function ID is refused before opening a database socket',()=>{
+  const file=new URL('../scripts/saas-staging/backend16-railway-readonly-preflight.ts',
+    import.meta.url);
+  const syntheticUrl='postgres://postgres:SYNTHETIC_TEST_PASSWORD@public.example:5432/saas_staging';
+  const child=spawnSync(process.execPath,[fileURLToPath(file)],{
+    encoding:'utf8',timeout:8000,env:{
+      RAILWAY_PROJECT_ID:'a9703851-6eb1-406c-bb15-7d3a89359fb7',
+      RAILWAY_ENVIRONMENT_ID:'b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b',
+      RAILWAY_ENVIRONMENT_NAME:'staging',
+      RAILWAY_SERVICE_NAME:'saas-b16-0008-readonly-preflight',
+      RAILWAY_SERVICE_ID:'00000000-0000-0000-0000-000000000000',
+      SAAS_B16_READONLY_PREFLIGHT_EXPLICIT_ENABLE:'true',
+      STAGING_POSTGRES_PRIVATE_URL:syntheticUrl,
+      GITHUB_ACTIONS:'false',
+    },
+  });
+  assert.notEqual(child.status,0);
+  const output=child.stdout+child.stderr;
+  assert.match(output,/B16_READONLY_PREFLIGHT_STOP_NO_DATABASE_WRITES/);
+  assert.doesNotMatch(output,/^PASS_BACKEND16_[A-Z0-9_]+$/m);
+  assert.doesNotMatch(output,/SYNTHETIC_TEST_PASSWORD|public\.example/);
+  assert.doesNotMatch(output,/RECONCILE_DO_SQL|at stop\s*\(|Bun v[0-9]+/);
+});
+
+test('public PostgreSQL hostname is rejected even with exact Railway service ID',()=>{
+  const file=new URL('../scripts/saas-staging/backend16-railway-readonly-preflight.ts',
+    import.meta.url);
+  const child=spawnSync(process.execPath,[fileURLToPath(file)],{
+    encoding:'utf8',timeout:8000,env:{
+      RAILWAY_PROJECT_ID:'a9703851-6eb1-406c-bb15-7d3a89359fb7',
+      RAILWAY_ENVIRONMENT_ID:'b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b',
+      RAILWAY_ENVIRONMENT_NAME:'staging',
+      RAILWAY_SERVICE_NAME:'saas-b16-0008-readonly-preflight',
+      RAILWAY_SERVICE_ID:'ff2df1d3-3bca-483c-bc2a-0edea01dd3f1',
+      SAAS_B16_READONLY_PREFLIGHT_EXPLICIT_ENABLE:'true',
+      STAGING_POSTGRES_PRIVATE_URL:
+        'postgres://postgres:SYNTHETIC_TEST_PASSWORD@public.example:5432/saas_staging',
+      GITHUB_ACTIONS:'false',
+    },
+  });
+  assert.notEqual(child.status,0);
+  const output=child.stdout+child.stderr;
+  assert.match(output,/B16_READONLY_PREFLIGHT_STOP_NO_DATABASE_WRITES/);
+  assert.doesNotMatch(output,/^PASS_BACKEND16_[A-Z0-9_]+$/m);
+  assert.doesNotMatch(output,/SYNTHETIC_TEST_PASSWORD|public\.example/);
+  assert.doesNotMatch(output,/RECONCILE_DO_SQL|at stop\s*\(|Bun v[0-9]+/);
 });
 
 test('only reviewed SQL catalog STOP codes can reach Railway logs',()=>{
@@ -117,4 +182,30 @@ test('staging-only context label exactly matches original approved operator PGOP
     'one constant LOCAL tag; never derive authorization from client input');
   assert.match(source,/current_setting\('saas\.staging_only'/);
   assert.doesNotMatch(source,/set_config\('saas\.tenant_id'/);
+});
+
+test('standalone postflight cannot authenticate without independently approved TLS',()=>{
+  const file=new URL('../scripts/saas-staging/backend16-railway-readonly-preflight.ts',
+    import.meta.url);
+  const child=spawnSync(process.execPath,[fileURLToPath(file)],{
+    encoding:'utf8',timeout:3000,env:{
+      RAILWAY_PROJECT_ID:'a9703851-6eb1-406c-bb15-7d3a89359fb7',
+      RAILWAY_ENVIRONMENT_ID:'b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b',
+      RAILWAY_ENVIRONMENT_NAME:'staging',
+      RAILWAY_SERVICE_NAME:'saas-b16-0008-readonly-preflight',
+      RAILWAY_SERVICE_ID:'ff2df1d3-3bca-483c-bc2a-0edea01dd3f1',
+      SAAS_B16_READONLY_PREFLIGHT_EXPLICIT_ENABLE:'true',
+      STAGING_POSTGRES_PRIVATE_URL:
+        'postgres://postgres:SYNTHETIC_NEVER_SENT@postgres.railway.internal:5432/saas_staging',
+      GITHUB_ACTIONS:'false',
+    },
+  });
+  assert.equal(child.status,0);
+  const output=child.stdout+child.stderr;
+  assert.match(output,/B16_READONLY_POSTFLIGHT_BLOCKED_OPERATOR_TLS_APPROVAL_REQUIRED/);
+  assert.doesNotMatch(output,/PASS_BACKEND16|SYNTHETIC_NEVER_SENT|postgres:\/\//);
+  assert.doesNotMatch(source,/tls:'require'|rejectUnauthorized:false/);
+  assert.ok(source.indexOf('if(!backend16IsApprovedStagingPgTlsTrust(tlsTrust))')<
+    source.indexOf('password=decodeURIComponent(uri.password)'));
+  assert.ok(source.includes("e.NODE_TLS_REJECT_UNAUTHORIZED==='0'"));
 });
