@@ -9,6 +9,10 @@
  * This is NOT authorization to run SQL0008 or to retry an UNKNOWN COMMIT.
  */
 import {SQL} from 'bun';
+import {
+  backend16IsApprovedStagingPgTlsTrust,
+  type Backend16StagingPgTlsTrust,
+} from '../../src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts';
 const PROJECT='a9703851-6eb1-406c-bb15-7d3a89359fb7';
 const ENV='b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b';
 const SERVICE='saas-b16-0008-readonly-preflight';
@@ -24,10 +28,15 @@ function stop():never{
   console.error('B16_READONLY_PREFLIGHT_STOP_NO_DATABASE_WRITES');
   process.exit(1);
 }
+/** A separately reviewed operator wrapper must supply the branded CA policy. */
+export async function runBackend16RailwayReadOnlyPostflight(
+  tlsTrust?:Backend16StagingPgTlsTrust,
+):Promise<void>{
 const e=Bun.env;
 if(e.RAILWAY_PROJECT_ID!==PROJECT||e.RAILWAY_ENVIRONMENT_ID!==ENV||
    e.RAILWAY_ENVIRONMENT_NAME!=='staging'||e.RAILWAY_SERVICE_NAME!==SERVICE||
-   e.RAILWAY_SERVICE_ID!==SERVICE_ID||e.GITHUB_ACTIONS==='true')stop();
+   e.RAILWAY_SERVICE_ID!==SERVICE_ID||e.GITHUB_ACTIONS==='true'||
+   e.NODE_TLS_REJECT_UNAUTHORIZED==='0')stop();
 // Absence of explicit operator enablement must be a silent NO-DB terminal
 // path, not a crashing Railway restart loop. Never print secret values.
 if(e.SAAS_B16_READONLY_PREFLIGHT_EXPLICIT_ENABLE!=='true'||
@@ -42,11 +51,18 @@ if(!['postgres:','postgresql:'].includes(uri.protocol)||
    uri.port!=='5432'||uri.pathname!=='/saas_staging'||
    decodeURIComponent(uri.username)!=='postgres'||
    !uri.password||uri.search||uri.hash)stop();
+// Private DNS and encryption alone do not authenticate PostgreSQL. Refuse
+// before reading the password or constructing SQL unless a separate operator
+// policy supplied a current branded CA. No CA is discovered or auto-approved.
+if(!backend16IsApprovedStagingPgTlsTrust(tlsTrust)){
+  console.error('B16_READONLY_POSTFLIGHT_BLOCKED_OPERATOR_TLS_APPROVAL_REQUIRED');
+  return;
+}
 let password:string;
 try{password=decodeURIComponent(uri.password)}catch{stop()}
 const pool=new SQL({adapter:'postgres',hostname:'postgres.railway.internal',
   port:5432,database:'saas_staging',username:'postgres',password,
-  tls:'require',max:1,connectionTimeout:4,idleTimeout:0,prepare:false});
+  tls:tlsTrust,max:1,connectionTimeout:4,idleTimeout:0,prepare:false});
 let connection:Awaited<ReturnType<typeof pool.reserve>>|undefined;
 type Phase='RESERVE'|'BEGIN'|'SCOPED'|'CATALOG'|'COMMIT'|'CLOSE';
 let phase:Phase='RESERVE';
@@ -103,3 +119,7 @@ if(failed||!closed||EXPECTED!=='installed'){
   process.exit(0);
 }
 console.info(MARKER);
+}
+// The standalone Function has no approved CA policy. Keep it blocked until
+// an independent operator reviews a concrete wrapper; never infer trust.
+if(import.meta.main)await runBackend16RailwayReadOnlyPostflight();

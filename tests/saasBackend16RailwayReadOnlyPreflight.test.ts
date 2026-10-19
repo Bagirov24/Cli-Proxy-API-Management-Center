@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 
 const source=readFileSync(new URL(
   '../scripts/saas-staging/backend16-railway-readonly-preflight.ts',
@@ -63,7 +64,7 @@ test('context pins private PostgreSQL16 with no public proxy, credentials or log
     "uri.pathname!=='/saas_staging'",
     "decodeURIComponent(uri.username)!=='postgres'",
     "uri.port!=='5432'","uri.search||uri.hash",
-    "tls:'require'","max:1,connectionTimeout:4",
+    "tls:tlsTrust","max:1,connectionTimeout:4",
     "connection?.release()","pool.close({timeout:0})",
   ])assert.ok(source.includes(v),v);
   assert.doesNotMatch(source,/DATABASE_PUBLIC_URL|RAILWAY_TCP_PROXY|setInterval|cronSchedule/);
@@ -86,7 +87,7 @@ test('disabled Railway staging read-only Function exits without DB or retries',(
     SAAS_B16_READONLY_PREFLIGHT_EXPLICIT_ENABLE:'false',
     GITHUB_ACTIONS:'false',
   };
-  const child=spawnSync(process.execPath,[file.pathname],{
+  const child=spawnSync(process.execPath,[fileURLToPath(file)],{
     encoding:'utf8',timeout:8000,env,
   });
   assert.equal(child.status,0,String(child.stderr).slice(-500));
@@ -114,7 +115,7 @@ test('wrong Railway staging Function ID is refused before opening a database soc
   const file=new URL('../scripts/saas-staging/backend16-railway-readonly-preflight.ts',
     import.meta.url);
   const syntheticUrl='postgres://postgres:SYNTHETIC_TEST_PASSWORD@public.example:5432/saas_staging';
-  const child=spawnSync(process.execPath,[file.pathname],{
+  const child=spawnSync(process.execPath,[fileURLToPath(file)],{
     encoding:'utf8',timeout:8000,env:{
       RAILWAY_PROJECT_ID:'a9703851-6eb1-406c-bb15-7d3a89359fb7',
       RAILWAY_ENVIRONMENT_ID:'b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b',
@@ -137,7 +138,7 @@ test('wrong Railway staging Function ID is refused before opening a database soc
 test('public PostgreSQL hostname is rejected even with exact Railway service ID',()=>{
   const file=new URL('../scripts/saas-staging/backend16-railway-readonly-preflight.ts',
     import.meta.url);
-  const child=spawnSync(process.execPath,[file.pathname],{
+  const child=spawnSync(process.execPath,[fileURLToPath(file)],{
     encoding:'utf8',timeout:8000,env:{
       RAILWAY_PROJECT_ID:'a9703851-6eb1-406c-bb15-7d3a89359fb7',
       RAILWAY_ENVIRONMENT_ID:'b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b',
@@ -181,4 +182,30 @@ test('staging-only context label exactly matches original approved operator PGOP
     'one constant LOCAL tag; never derive authorization from client input');
   assert.match(source,/current_setting\('saas\.staging_only'/);
   assert.doesNotMatch(source,/set_config\('saas\.tenant_id'/);
+});
+
+test('standalone postflight cannot authenticate without independently approved TLS',()=>{
+  const file=new URL('../scripts/saas-staging/backend16-railway-readonly-preflight.ts',
+    import.meta.url);
+  const child=spawnSync(process.execPath,[fileURLToPath(file)],{
+    encoding:'utf8',timeout:3000,env:{
+      RAILWAY_PROJECT_ID:'a9703851-6eb1-406c-bb15-7d3a89359fb7',
+      RAILWAY_ENVIRONMENT_ID:'b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b',
+      RAILWAY_ENVIRONMENT_NAME:'staging',
+      RAILWAY_SERVICE_NAME:'saas-b16-0008-readonly-preflight',
+      RAILWAY_SERVICE_ID:'ff2df1d3-3bca-483c-bc2a-0edea01dd3f1',
+      SAAS_B16_READONLY_PREFLIGHT_EXPLICIT_ENABLE:'true',
+      STAGING_POSTGRES_PRIVATE_URL:
+        'postgres://postgres:SYNTHETIC_NEVER_SENT@postgres.railway.internal:5432/saas_staging',
+      GITHUB_ACTIONS:'false',
+    },
+  });
+  assert.equal(child.status,0);
+  const output=child.stdout+child.stderr;
+  assert.match(output,/B16_READONLY_POSTFLIGHT_BLOCKED_OPERATOR_TLS_APPROVAL_REQUIRED/);
+  assert.doesNotMatch(output,/PASS_BACKEND16|SYNTHETIC_NEVER_SENT|postgres:\/\//);
+  assert.doesNotMatch(source,/tls:'require'|rejectUnauthorized:false/);
+  assert.ok(source.indexOf('if(!backend16IsApprovedStagingPgTlsTrust(tlsTrust))')<
+    source.indexOf('password=decodeURIComponent(uri.password)'));
+  assert.ok(source.includes("e.NODE_TLS_REJECT_UNAUTHORIZED==='0'"));
 });
