@@ -92,11 +92,24 @@ describe('Backend16.8 independent SQL0008 READ ONLY reconciler',()=>{
       "f.provolatile IS DISTINCT FROM 'v'",
       "f.owner_name IS DISTINCT FROM 'saas_schema_migrator'",
       "f.prorettype IS DISTINCT FROM 'boolean'::regtype",
-      "f.proconfig @> ARRAY['search_path=pg_catalog, pg_temp']",
+      "f.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog, pg_temp']",
       'f.foreign_grants<>0',
       "f.definition NOT LIKE '%s.session_id=p_session%'",
       "f.definition NOT LIKE '%b.subject_fingerprint=p_subject_sha256%'",
     ])expect(SQL).toContain(marker);
+  });
+
+  test('installed gate body must match original SQL0008, not just comment fragments',()=>{
+    const body=SQL8.toString('utf8').match(/AS \$exact\$([\s\S]*?)\$exact\$;/)?.[1];
+    expect(body).toBeDefined();
+    const digest=createHash('sha256').update(body!).digest('hex');
+    expect(SQL).toContain(`f.body_sha256 IS DISTINCT FROM '${digest}'`);
+    expect(SQL).toContain("pg_catalog.sha256(pg_catalog.convert_to(p.prosrc,'UTF8'))");
+    expect(SQL).toContain("f.language_name IS DISTINCT FROM 'plpgsql'");
+    expect(SQL).toContain("f.proargnames IS DISTINCT FROM ARRAY['p_tenant','p_session','p_binding','p_subject_sha256']");
+    const spoof='BEGIN /* s.session_id=p_session s.identity_binding_id=p_binding '+
+      'b.subject_fingerprint=p_subject_sha256 FOR SHARE */ RETURN true; END';
+    expect(createHash('sha256').update(spoof).digest('hex')).not.toBe(digest);
   });
 
   test('real disposable PG16 runs both snapshots with sealed migrator',()=>{
@@ -116,5 +129,6 @@ describe('Backend16.8 independent SQL0008 READ ONLY reconciler',()=>{
     expect(install).toBeGreaterThan(pre);
     expect(post).toBeGreaterThan(install);
     expect(E2E).not.toContain('postgres.railway.internal');
+    expect(E2E).toContain('verify-backend16-readonly-drift-ci.sh');
   });
 });
