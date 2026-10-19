@@ -58,6 +58,20 @@ test('mismatched, noncanonical, multiple and unparseable CAs refuse',()=>{
   },syntheticClock));
 });
 
+test('accessor CA substitution cannot receive an approved trust brand',()=>{
+  let reads=0;
+  const mutable={
+    get caPem(){return ++reads<=5?ca:'UNVALIDATED_CA_AFTER_PIN_CHECK';},
+    approvedCaDerSha256:pin,
+  };
+  refuse(()=>createBackend16StagingPgTlsTrust(mutable,syntheticClock));
+  assert.equal(reads,0,'reject accessors without invoking provider code');
+  refuse(()=>createBackend16StagingPgTlsTrust(
+    Object.assign(Object.create({}),input()),syntheticClock));
+  refuse(()=>createBackend16StagingPgTlsTrust(
+    {...input(),extra:true} as never,syntheticClock));
+});
+
 test('CA not yet valid, soon expiring or bogus clock are fail-closed',()=>{
   refuse(()=>createBackend16StagingPgTlsTrust(input(),Date.UTC(2026,9,16)));
   refuse(()=>createBackend16StagingPgTlsTrust(input(),Date.UTC(2036,9,13)));

@@ -1,6 +1,15 @@
 # Backend16.5 — SQL0008 staging-only one-shot
 
-**Status 2026-10-17:** installer source candidate, not deployed. SQL0008 **NOT INSTALLED** on permanent Railway staging. Staged Railway service contains only a **non-deployed, no-database placeholder**.
+**Status 2026-10-19 — INSTALLED, INDEPENDENTLY VERIFIED, NO REPLAY.**
+SQL0008 was applied **once** to permanent staging PostgreSQL16, with one-shot
+installer deployment `36fb4858-3d5b-4c15-a115-ba4a2a56cba6` (SUCCESS,
+`PASS_BACKEND16_STAGING_PG16_0008_EXACT_SESSION_NOLOGIN`) and independent
+read-only installed-mode postflight `623f00ff-92f0-4fb5-9a91-d7ba0d33a3df`
+(SUCCESS, `PASS_BACKEND16_SQL0008_READONLY_INSTALLED_SEALED`).
+The temporary installer has been removed from Railway staging after dashboard
+approval. **Never recreate or rerun the one-shot code or SQL0008, even if
+subsequent readback is ambiguous or shows ABSENT.** This document preserves
+the historical original procedure solely for forensic provenance.
 
 ## Exact operator pins
 
@@ -10,8 +19,8 @@
 | Environment | staging / b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b |
 | Existing PG16 service | 37f8f166-75a6-4617-b243-8e681181c16d |
 | Database/private network | saas_staging / postgres.railway.internal:5432, postgres operator |
-| New Function, staged only | saas-b16-0008-once / 302e9762-7451-4999-a657-f5b3624dab63 |
-| Staged patch | fb17a10c-2167-4c74-ab07-4caa1f7034fe (only Function placeholder) |
+| Historical one-shot Function, now deleted | saas-b16-0008-once / 302e9762-7451-4999-a657-f5b3624dab63 |
+| Historical installer commit patch | b1a8606b-c9fc-44b9-8bc1-b00afc26b844 (only Function source/variables, already committed) |
 | Immutable SQL0008 source GitHub commit | 314f0962f2d955241fb5ee7a29175bddb648c130 |
 | SQL0008 byte size | 9818 UTF-8 |
 | SQL0008 SHA-256 | ef4858975fea0842ae16d1b572457641c0359fa9630f02a1d52ea972007c632b |
@@ -19,7 +28,7 @@
 
 **Scope:** synthetic isolated staging PostgreSQL only. NEVER production CPA Core/Gateway, branch custom-no-apikey-fun, volume /data, real customer tokens/credentials or any production database. The synthetic-data waiver does not permit production backup/PITR waivers.
 
-## Operator preflight — ALL mandatory
+## Archived 2026-10-17 preflight procedure — historical ONLY; DO NOT EXECUTE AGAIN
 
 1. Installer PR merged after all exact-HEAD CI SUCCESS (Main CI, disposable PG16 SQL0008 two-principal/revoke E2E, Browser QA, Management release guard, installer contract). Pin the immutable source and inspect every byte; do not run from a draft PR.
 2. Fresh independent READ-ONLY SQL check on actual persistent staging proves exactly SQL0001–0007 receipts with pinned authors and hashes, SQL0008 receipt and exact function absent, sealed migrator NOLOGIN and PASSWORD NULL, zero unexpected roles, memberships, client connections, tenants/projects/grants/sessions/bindings, FORCE RLS and two SELECT policies unchanged, no privilege drift. Railway PostgreSQL deployment SUCCESS does NOT prove a migration state.
@@ -28,9 +37,13 @@
 5. Review pending Railway patch: only this temporary Function source, its own variables and restart policy. No modification to PostgreSQL, volume, saas-control-api, shared variables, production, network or cron. Before the **single** deployment, require explicit true kill switch and independently verified Never, fresh staging-only DB catalog gate and source SHA.
 6. Deploy the reviewed staging-only Function once. Never retry, restart or redeploy after UNKNOWN COMMIT or missing deployment marker. No cron/restart permitted.
 
-**CURRENT STOP GATE:** Restart Policy Never has not been confirmed for the staged service. It contains the no-database placeholder only; there has been NO SQL0008 execution on permanent staging. Do NOT accept its patch as the real installer before the listed gates.
+**CURRENT HARD STOP:** SQL0008 is **already installed**. The historical
+readback requirement `restartPolicyType=NEVER` was independently confirmed
+before the single deployment; this does **not** authorize another run. The
+previous staged placeholder patch is obsolete; current Railway staging has
+no installer service and no pending patch. Verify current state read-only only.
 
-## Runtime acceptance
+## Historical runtime acceptance — observed on 2026-10-19
 
 The exact installer code is scripts/saas-staging/backend16-exact-session-once.ts. Before any DB connection it checks the exact service ID, project/environment ID, explicit enable flags and the private PostgreSQL URL, downloads immutable GitHub SQL with no redirects, verifies 9818 bytes and SHA-256.
 
@@ -46,7 +59,12 @@ Any failure (including lost COMMIT ACK) emits only:
 
 The STOP marker does **not** establish either success or absence. For a successful acceptance require terminal Railway deployment SUCCESS, positive marker in exact deployment logs, PLUS independent read-only SQL readback of eight receipts, SQL0008 definer privileges, and sealed migrator. On any other observation, STOP and manually reconcile without retries. If manual repair is needed for a failed migrator seal, do it only through a separately approved operator action.
 
-Once full evidence is archived in PR Conversation, delete **only** the temporary staging Function; verify the PostgreSQL service and existing persistent volume remain intact.
+Evidence has been archived in
+[PR #53](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/pull/53#issuecomment-6265741781).
+The temporary staging installer was removed, and independent Railway
+inventory confirmed PostgreSQL service `37f8f166-75a6-4617-b243-8e681181c16d`
+and volume `5a94361a-10c4-423a-a751-19271aa10fe6` remained intact.
+This is a **completed historical operation**, not a pending action.
 
 ## Production blockers after SQL0008
 

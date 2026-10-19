@@ -46,16 +46,26 @@ export function createBackend16StagingPgTlsTrust(
   input:Backend16OperatorApprovedPgCa,
   nowMs:number=Date.now(),
 ):Backend16StagingPgTlsTrust {
-  if(!input||typeof input.caPem!=='string'||
-     input.caPem.length<300||input.caPem.length>8192||
-     !SINGLE_PEM.test(input.caPem)||
-     typeof input.approvedCaDerSha256!=='string'||
-     !HEX.test(input.approvedCaDerSha256)||
+  // Validate data descriptors and snapshot before any certificate check.
+  // Re-reading caller accessors after pinning could substitute another CA.
+  if(!input||typeof input!=='object'||Array.isArray(input))refuse();
+  const prototype=Object.getPrototypeOf(input);
+  const props=Object.getOwnPropertyDescriptors(input);
+  if((prototype!==Object.prototype&&prototype!==null)||
+     Object.keys(props).sort().join(',')!=='approvedCaDerSha256,caPem'||
+     !Object.values(props).every(d=>'value' in d))refuse();
+  const caPem=props.caPem.value;
+  const approvedCaDerSha256=props.approvedCaDerSha256.value;
+  if(typeof caPem!=='string'||
+     caPem.length<300||caPem.length>8192||
+     !SINGLE_PEM.test(caPem)||
+     typeof approvedCaDerSha256!=='string'||
+     !HEX.test(approvedCaDerSha256)||
      !Number.isSafeInteger(nowMs)||nowMs<=0)refuse();
   try{
-    const cert=new X509Certificate(input.caPem);
+    const cert=new X509Certificate(caPem);
     const candidate=createHash('sha256').update(cert.raw).digest();
-    const pairs=input.approvedCaDerSha256.match(/[a-f0-9]{2}/g)??[];
+    const pairs=approvedCaDerSha256.match(/[a-f0-9]{2}/g)??[];
     const pin=Uint8Array.from(pairs,hex=>Number.parseInt(hex,16));
     const notBefore=Date.parse(cert.validFrom);
     const notAfter=Date.parse(cert.validTo);
@@ -76,7 +86,7 @@ export function createBackend16StagingPgTlsTrust(
     // The hostname is hardcoded and cannot be selected by client inputs.
     // No "rejectUnauthorized:false", TLS downgrade or public proxy fallback.
     const tls=Object.freeze({
-      ca:input.caPem,
+      ca:caPem,
       serverName:BACKEND16_STAGING_PG_TLS_HOST,
       rejectUnauthorized:true as const,
     });
