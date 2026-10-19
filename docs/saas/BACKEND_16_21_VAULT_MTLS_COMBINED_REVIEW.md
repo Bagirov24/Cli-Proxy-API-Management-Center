@@ -48,6 +48,33 @@ The evidence markers are:
 and `B16_MTLS_VAULT_CI_INFLIGHT_APPROVAL_REVOKED_DENY`.
 Neither marker alone is a production credential-vault acceptance.
 
+## Backend16.22 — exact HTTP framing for one secret
+
+This follow-up is **stacked on integration-only PR #70**. A pinned broker
+secret is one bounded canonical JSON snapshot, **not** a streaming API.
+The mTLS client now requires a single decimal `Content-Length` of
+1–2048 bytes, rejects `Transfer-Encoding` and `Trailer` headers,
+checks each data chunk against both the declared length and the hard
+maximum, and requires the final number of received bytes to equal the
+declared length before parsing any credential.
+
+A chunked HTTP/1.1 response that contains an otherwise valid,
+CA-authenticated, client-authenticated secret must be denied, even though
+the same JSON with valid exact framing is accepted. Native local Node24
+mTLS tests exercise both the direct `reader.readVersion` boundary and
+the integrated `vault.readPrincipal` boundary; the latter requires
+one GET, generic refusal and no retry or returned password.
+The positive, fixed-length exchange and earlier in-flight-revocation
+tests must continue to pass. This is an intentionally strict
+**private broker contract** that may require its future operator to
+configure the broker to emit exact Content-Length; do not relax the
+parser to accommodate an unreviewed streaming proxy.
+
+No live broker exists in this PR, and these disposable tests cannot
+prove real IAM, external root trust, revocation or production readiness.
+CI must pass on this exact stacked commit, followed by independent
+security approval of parents and a deliberate final integrated merge.
+
 ## Release sequence and non-negotiable stops
 
 Review PR #60 and its vault changes independently, along with PR #68.
