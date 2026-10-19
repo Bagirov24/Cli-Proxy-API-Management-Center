@@ -12,6 +12,7 @@ import {SQL} from 'bun';
 const PROJECT='a9703851-6eb1-406c-bb15-7d3a89359fb7';
 const ENV='b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b';
 const SERVICE='saas-b16-0008-readonly-preflight';
+const SERVICE_ID='ff2df1d3-3bca-483c-bc2a-0edea01dd3f1';
 const EXPECTED='installed';
 const MARKER='PASS_BACKEND16_SQL0008_READONLY_INSTALLED_SEALED';
 // Only pre-reviewed constant failure codes may appear in logs. Never raw SQL,
@@ -22,7 +23,7 @@ function stop():never{throw Error('B16_READONLY_PREFLIGHT_STOP_NO_DATABASE_WRITE
 const e=Bun.env;
 if(e.RAILWAY_PROJECT_ID!==PROJECT||e.RAILWAY_ENVIRONMENT_ID!==ENV||
    e.RAILWAY_ENVIRONMENT_NAME!=='staging'||e.RAILWAY_SERVICE_NAME!==SERVICE||
-   e.GITHUB_ACTIONS==='true')stop();
+   e.RAILWAY_SERVICE_ID!==SERVICE_ID||e.GITHUB_ACTIONS==='true')stop();
 // Absence of explicit operator enablement must be a silent NO-DB terminal
 // path, not a crashing Railway restart loop. Never print secret values.
 if(e.SAAS_B16_READONLY_PREFLIGHT_EXPLICIT_ENABLE!=='true'||
