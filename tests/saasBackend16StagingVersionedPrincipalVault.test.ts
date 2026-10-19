@@ -183,6 +183,36 @@ test('operator digest and provider method are snapshotted before asynchronous SH
   assert.equal(approvedCalls,1,'failed manifest never calls external secret provider');
 });
 
+test('dynamic provider method is read once and original receiver is retained',async()=>{
+  let getterReads=0,approvedCalls=0,substitutedCalls=0;
+  const source={
+    get readVersion(){
+      getterReads++;
+      if(getterReads===1){
+        return async function(this:typeof source){
+          assert.equal(this,source);
+          approvedCalls++;
+          return expires();
+        };
+      }
+      return async()=>{
+        substitutedCalls++;
+        return {...expires(),password:'z'.repeat(64)};
+      };
+    },
+  };
+  const vault=await createBackend16StagingVersionedPrincipalVault({
+    manifest:pinned([first()]),source,
+  });
+  assert.equal(getterReads,1,'untrusted provider getter cannot switch method after validation');
+  assert.deepEqual(await vault.readPrincipal(A,signal()),{
+    username:A,password:PASS,
+  });
+  assert.equal(getterReads,1,'readPrincipal never re-reads provider method');
+  assert.equal(approvedCalls,1);
+  assert.equal(substitutedCalls,0);
+});
+
 test('caller-supplied release clock and accessor/prototype manifests fail closed',async()=>{
   const manifest=pinned([first()]);
   const source={async readVersion(){return expires();}};
