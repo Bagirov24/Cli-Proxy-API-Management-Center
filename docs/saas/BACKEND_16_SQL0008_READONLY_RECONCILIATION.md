@@ -1,6 +1,11 @@
 # Backend16.8 — SQL0008 independent READ ONLY reconciliation
 
-**Status:** separate operator diagnostic and disposable PostgreSQL16 E2E. It is NOT a migration installer, automatic recovery step, role repair, or permission to rerun SQL0008.
+**Status 2026-10-19: permanent Railway staging SQL0008 INSTALLED and
+independently reconciled.** This is a separate operator diagnostic and
+disposable PostgreSQL16 E2E, **not** a migration installer, automatic recovery
+step, role repair, or permission to rerun SQL0008. The single-use installer
+was deleted after successfully completing its operation. Evidence:
+[GitHub PR #53](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/pull/53#issuecomment-6265741781).
 
 The existing isolated Railway staging database is `saas_staging`, private endpoint `postgres.railway.internal:5432`, PostgreSQL16 service `37f8f166-75a6-4617-b243-8e681181c16d`, project `a9703851-6eb1-406c-bb15-7d3a89359fb7`, environment `b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b`. Never connect to production Core/Gateway, any customer database, public SQL proxy, or `/data`.
 
@@ -15,7 +20,7 @@ Every unexpected state or privilege drift raises a generic `B16_READONLY_STOP_..
 
 ## Operator commands (ONLY within an already authenticated PRIVATE PG16 shell)
 
-Run the absent inspection **before** any one-shot SQL0008 deployment, after verifying the Railway Function's restart policy, staged patch scope and private database connection. Do NOT paste credentials into GitHub or chat:
+**Historical example only (before 2026-10-19 installation, or in disposable CI):** The following `absent` invocation was valid before the one-shot migration. **Do not use this historical ABSENT workflow to authorize a migration retry on permanent staging.** Never paste credentials into GitHub or chat:
 
 ```bash
 PGOPTIONS='-c saas.staging_only=true' \
@@ -24,7 +29,19 @@ PGOPTIONS='-c saas.staging_only=true' \
   -f scripts/saas-staging/backend16-0008-readonly-reconcile.sql
 ```
 
-After the single reviewed installer execution and independent migration ledger evidence, run with `-v b16_expected_state=installed` on the same isolated private DB through the privileged operator connection. Preserve only the PASS/STOP marker, never raw database URLs or secret values. In the absence of a private authenticated PostgreSQL shell, this repo cannot run the check and **must not** infer database state from Railway deployment SUCCESS.
+**Current operator expectation: INSTALLED.** For any future, separately
+approved, read-only audit on permanent staging, use the same pinned script with
+`-v b16_expected_state=installed` through an independently authenticated
+private PG16 shell. Archive PASS/STOP only; never print DB URLs or passwords.
+
+On 2026-10-19, the separate installed-mode Railway read-only diagnostic
+reported `PASS_BACKEND16_SQL0008_READONLY_INSTALLED_SEALED` in deployment
+`623f00ff-92f0-4fb5-9a91-d7ba0d33a3df`, after the **single** one-shot
+installer deployment `36fb4858-3d5b-4c15-a115-ba4a2a56cba6`. Both were
+Railway SUCCESS; the installed read-only check also verified receipt SHA/source
+commit, SQL0008 definer/EXECUTE, FORCE RLS and sealed migrator. Neither CI nor
+a deployment's SUCCESS status alone is an acceptable replacement for the
+specific verified read-only marker.
 
 **Critical:** an ABSENT observation is historical and does not authorize a retry after an UNKNOWN COMMIT. Another concurrent operator could change the catalog immediately after the snapshot. The single-use installer must still perform its *own* strict preflight just before its one and only SQL0008 submission. If COMMIT acknowledgement, readback, or migrator NOLOGIN seal is unknown, STOP and manually reconcile. Never redeploy, replay or automatically repair the migrator.
 
@@ -32,6 +49,12 @@ After the single reviewed installer execution and independent migration ledger e
 
 The real disposable PostgreSQL16 pipeline executes the same exact SQL file twice, with the migrator sealed before each observation: first on seven-receipt SQL0007 state, then after one SQL0008 application on eight receipts, ahead of synthetic two-LOGIN/tenant/session revocation tests. A Bun static contract verifies source pins, absence of DML/DDL statements and required markers. CI results **do not establish the state of persistent Railway staging**.
 
-SQL0008 staging installer `saas-b16-0008-once` (`302e9762-7451-4999-a657-f5b3624dab63`) is still a **staged-only no-DB placeholder** until an operator confirms its `restartPolicyType=NEVER` via Railway UI and independent readback. Previous tool safety blocks may not be bypassed. No URL/domain/TCP proxy or public HTTP listener is required to perform a private DB read-only review.
+**Current operational state:** The `saas-b16-0008-once` installer
+(`302e9762-7451-4999-a657-f5b3624dab63`) was deleted after the verified
+one-time installation. Its historical `restartPolicyType=NEVER` gate was
+confirmed before execution. It must never be recreated, restarted or replayed,
+including after any future uncertain readback. Railway safety/2FA controls
+must never be bypassed. No URL/domain/TCP proxy or public listener is
+required for a separately authorized private read-only audit.
 
 Production needs separate live IdP, bearer-bound session authority, private PG credential-vault driver, durable off-host audit, FORCE RLS same-transaction end-to-end, delivery/revocation semantics, backup/restore and canary approvals. Production Core/Gateway and `/data` remain untouched by this increment.
