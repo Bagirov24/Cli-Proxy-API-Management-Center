@@ -150,3 +150,17 @@ The 18:18 UTC redeployment put the probe back in its disabled/no-database state.
 19 October one-shot install. Its earlier `Restart Policy` uncertainty was
 resolved by direct Railway configuration readback before the one and only
 migration. The current verified state is **INSTALLED**, not ABSENT.
+# Security review 2026-10-19: authenticated postflight is blocked
+
+The source runner now requires a current branded `Backend16StagingPgTlsTrust`
+on the same Bun.SQL connection that authenticates PostgreSQL. Encryption-only
+`tls: 'require'` is forbidden. The standalone Function has no independently
+approved CA policy and exits before reading the password or constructing SQL.
+A future operator-reviewed wrapper must supply the approved CA and its separate
+DER pin through `runBackend16RailwayReadOnlyPostflight(tlsTrust)`. No CA is
+discovered, inferred from the unauthenticated probe, or installed by this change.
+
+This source change does not update the existing Railway Function, re-run its
+postflight, authorize deployment, or invalidate the historical independent
+SQL0008 installation evidence. SQL0008 remains installed and must never replay.
+
