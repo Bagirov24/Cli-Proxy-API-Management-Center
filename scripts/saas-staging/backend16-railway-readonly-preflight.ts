@@ -1,7 +1,7 @@
 /**
- * Backend16.8.1: standalone Railway staging SQL0008 PRE-FLIGHT, no migration.
+ * Backend16.16: Railway staging SQL0008 INSTALLED postflight, no migration.
  * Runs the unmodified DO block of the immutable Backend16.8 read-only SQL.
- * Exact operator expectation is ABSENT: seven receipts + no SQL0008 gate.
+ * Exact operator expectation is INSTALLED: eight receipts + exact SQL0008 gate.
  * No WRITE transaction, DDL, migration, HTTP listener, cron, public DB, retry.
  * NO positive marker if the DB is partially migrated, busy, drifted or unreadable.
  * Source: 0df48301c16e29a23c5df56d5ed456cb03b8ec13
@@ -12,8 +12,8 @@ import {SQL} from 'bun';
 const PROJECT='a9703851-6eb1-406c-bb15-7d3a89359fb7';
 const ENV='b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b';
 const SERVICE='saas-b16-0008-readonly-preflight';
-const EXPECTED='absent';
-const MARKER='PASS_BACKEND16_SQL0008_READONLY_ABSENT_SEALED_NEVER_AUTO_INSTALL';
+const EXPECTED='installed';
+const MARKER='PASS_BACKEND16_SQL0008_READONLY_INSTALLED_SEALED';
 // Only pre-reviewed constant failure codes may appear in logs. Never raw SQL,
 // error objects, credentials, connection URL, or server-provided free text.
 const ALLOWED_CATALOG_STOP_MARKERS=new Set(["B16_READONLY_STOP_B14_TRIGGERS","B16_READONLY_STOP_B15_TRIGGERS","B16_READONLY_STOP_BINDING_CATALOG","B16_READONLY_STOP_CONCURRENT_STAGING_CLIENT","B16_READONLY_STOP_CONTEXT","B16_READONLY_STOP_FORCE_RLS","B16_READONLY_STOP_MIGRATOR_NOT_SEALED","B16_READONLY_STOP_NONEMPTY_OR_ROLE_DRIFT","B16_READONLY_STOP_PARTIAL_SQL0008","B16_READONLY_STOP_PREVIOUS_RECEIPTS","B16_READONLY_STOP_RECEIPT_COUNT","B16_READONLY_STOP_RUNTIME_PRIVILEGES","B16_READONLY_STOP_SQL0007_PROVENANCE","B16_READONLY_STOP_SQL0008_FUNCTION_DRIFT","B16_READONLY_STOP_SQL0008_PROVENANCE","B16_READONLY_STOP_TEMPLATE_ROLES","B16_READONLY_STOP_UNEXPECTED_TABLE_GRANTS"]);
@@ -62,7 +62,7 @@ try{
   // never a database role, tenant claim, grant, schema mutation or proof.
   // Private host+DB+Railway IDs and catalog guards are separately pinned.
   await connection.unsafe("SELECT pg_catalog.set_config('saas.staging_only','true',true)",[]).execute();
-  await connection.unsafe("SELECT pg_catalog.set_config('saas.b16.reconcile_expected','absent',true)",[]).execute();
+  await connection.unsafe("SELECT pg_catalog.set_config('saas.b16.reconcile_expected','installed',true)",[]).execute();
   phase='CATALOG';
   await connection.unsafe(RECONCILE_DO_SQL,[]).execute();
   commitSent=true;
@@ -91,7 +91,7 @@ try{
 }
 // Negative/uncertain observations MUST terminate without a Railway crash
 // restart and without ever producing the positive verification marker.
-if(failed||!closed||EXPECTED!=='absent'){
+if(failed||!closed||EXPECTED!=='installed'){
   console.error('B16_READONLY_PREFLIGHT_STOP_PHASE_'+
     (failurePhase??'CLOSE')+'_REASON_'+
     (catalogStopCode??'UNSPECIFIED')+'_NO_DATABASE_WRITES');
