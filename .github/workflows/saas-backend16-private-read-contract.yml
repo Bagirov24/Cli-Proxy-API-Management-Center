@@ -1,88 +1,92 @@
 name: SaaS Backend16 Private Read Contract
+
 on:
   pull_request:
     paths:
-      - src/features/saasBlueprint/controlApi/server/backend16PrivateTenantProjectRead.ts
-      - tests/saasBackend16PrivateTenantProjectRead.test.ts
-      - src/features/saasBlueprint/controlApi/server/backend16PinnedSessionAuthenticator.ts
-      - tests/saasBackend16PinnedSessionAuthenticator.test.ts
-      - src/features/saasBlueprint/controlApi/server/backend16PhysicalPgAdmission.ts
-      - tests/saasBackend16PhysicalPgAdmission.test.ts
-      - src/features/saasBlueprint/controlApi/server/backend16ExactSessionSqlRead.ts
-      - tests/saasBackend16ExactSessionSqlRead.test.ts
-      - src/features/saasBlueprint/controlApi/server/backend16CiBunPhysicalPgPool.ts
-      - tests/saasBackend16CiBunPhysicalPgPool.test.ts
-      - src/features/saasBlueprint/controlApi/server/backend16StagingBunPhysicalPgPool.ts
-      - tests/saasBackend16StagingBunPhysicalPgPool.test.ts
-      - src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts
-      - tests/saasBackend16StagingPgTlsTrust.test.ts
-      - scripts/saas-staging/backend16-pg-tls-peer-observation.ts
-      - tests/saasBackend16TlsPeerProbe.test.ts
-      - docs/saas/BACKEND_16_12_TLS_PEER_OBSERVATION.md
-      - tests/fixtures/backend16-synthetic-root-ca.pem
-      - docs/saas/BACKEND_16_10_OPERATOR_PINNED_PG_TLS.md
-      - scripts/saas-staging/verify-backend16-bun-physical-pid-ci.ts
-      - docs/saas/BACKEND_16_7_BUN_PHYSICAL_PG_PID_CI.md
-      - docs/saas/BACKEND_16_9_STAGING_PHYSICAL_PG16_E2E.md
-      - docs/saas/BACKEND_16_EXACT_SQL_READ_PORT.md
-      - staging/saas-bootstrap/0008_exact_subject_session_gate.sql
-      - tests/sql/saas_backend16_exact_session_gate.test.sql
-      - tests/saasBackend16ExactSessionGate.test.ts
-      - scripts/saas-staging/backend16-0008-readonly-reconcile.sql
-      - tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts
-      - scripts/saas-staging/verify-backend16-exact-session-pg16.sh
-      - docs/saas/BACKEND_16_SQL0008_EXACT_SESSION.md
-      - docs/saas/BACKEND_16_PHYSICAL_PG_ADMISSION.md
-      - docs/saas/BACKEND_16_PINNED_SESSION_AUTH.md
-      - docs/saas/BACKEND_16_PRIVATE_READ_BOUNDARY.md
-      - .github/workflows/saas-backend16-private-read-contract.yml
-      - src/features/saasBlueprint/controlApi/server/backend16ReleaseEvidenceGate.ts
-      - tests/saasBackend16ReleaseEvidenceGate.test.ts
-      - docs/saas/BACKEND_16_13_SIGNED_RELEASE_EVIDENCE.md
-      - src/features/saasBlueprint/controlApi/server/backend16VerifiedPrivatePgTls.ts
-      - scripts/saas-staging/verify-backend16-verified-private-pg-tls-ci.ts
-      - scripts/saas-staging/backend16-ci-node-pg-ssl-sidecar.cjs
-      - scripts/saas-staging/verify-backend16-bun-tls-client-ci.ts
-      - docs/saas/BACKEND_16_14_VERIFIED_PRIVATE_PG_TLS.md
-      - src/features/saasBlueprint/controlApi/server/backend16StagingVersionedPrincipalVault.ts
-      - tests/saasBackend16StagingVersionedPrincipalVault.test.ts
-      - docs/saas/BACKEND_16_11_VERSIONED_PRINCIPAL_VAULT.md
-      - src/features/saasBlueprint/controlApi/server/backend16PrivateMtlsVersionedSecretReader.ts
-      - tests/saasBackend16PrivateMtlsVersionedSecretReader.test.ts
-      - scripts/saas-staging/verify-backend16-mtls-secret-broker-ci.ts
-      - scripts/saas-staging/verify-backend16-bun-mtls-secret-client-ci.ts
-      - docs/saas/BACKEND_16_15_PRIVATE_MTLS_SECRET_BROKER.md
-  workflow_dispatch: null
+      - 'src/features/saasBlueprint/controlApi/server/backend16PrivateTenantProjectRead.ts'
+      - 'tests/saasBackend16PrivateTenantProjectRead.test.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16PinnedSessionAuthenticator.ts'
+      - 'tests/saasBackend16PinnedSessionAuthenticator.test.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16PhysicalPgAdmission.ts'
+      - 'tests/saasBackend16PhysicalPgAdmission.test.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16ExactSessionSqlRead.ts'
+      - 'tests/saasBackend16ExactSessionSqlRead.test.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16CiBunPhysicalPgPool.ts'
+      - 'tests/saasBackend16CiBunPhysicalPgPool.test.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16StagingBunPhysicalPgPool.ts'
+      - 'tests/saasBackend16StagingBunPhysicalPgPool.test.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts'
+      - 'tests/saasBackend16StagingPgTlsTrust.test.ts'
+      - 'tests/saasBackend16IntegrationWorkflow.test.ts'
+      - 'scripts/saas-staging/backend16-pg-tls-peer-observation.ts'
+      - 'tests/saasBackend16TlsPeerProbe.test.ts'
+      - 'docs/saas/BACKEND_16_12_TLS_PEER_OBSERVATION.md'
+      - 'src/features/saasBlueprint/controlApi/server/backend16ReleaseEvidenceGate.ts'
+      - 'tests/saasBackend16ReleaseEvidenceGate.test.ts'
+      - 'docs/saas/BACKEND_16_13_SIGNED_RELEASE_EVIDENCE.md'
+      - 'src/features/saasBlueprint/controlApi/server/backend16VerifiedPrivatePgTls.ts'
+      - 'scripts/saas-staging/verify-backend16-verified-private-pg-tls-ci.ts'
+      - 'scripts/saas-staging/backend16-ci-node-pg-ssl-sidecar.cjs'
+      - 'scripts/saas-staging/verify-backend16-bun-tls-client-ci.ts'
+      - 'docs/saas/BACKEND_16_14_VERIFIED_PRIVATE_PG_TLS.md'
+      - 'src/features/saasBlueprint/controlApi/server/backend16StagingVersionedPrincipalVault.ts'
+      - 'tests/saasBackend16StagingVersionedPrincipalVault.test.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16PrivateMtlsVersionedSecretReader.ts'
+      - 'tests/saasBackend16PrivateMtlsVersionedSecretReader.test.ts'
+      - 'scripts/saas-staging/verify-backend16-mtls-secret-broker-ci.ts'
+      - 'scripts/saas-staging/verify-backend16-bun-mtls-secret-client-ci.ts'
+      - 'docs/saas/BACKEND_16_15_PRIVATE_MTLS_SECRET_BROKER.md'
+      - 'docs/saas/BACKEND_16_11_VERSIONED_PRINCIPAL_VAULT.md'
+      - 'tests/fixtures/backend16-synthetic-root-ca.pem'
+      - 'docs/saas/BACKEND_16_10_OPERATOR_PINNED_PG_TLS.md'
+      - 'scripts/saas-staging/verify-backend16-bun-physical-pid-ci.ts'
+      - 'docs/saas/BACKEND_16_7_BUN_PHYSICAL_PG_PID_CI.md'
+      - 'docs/saas/BACKEND_16_9_STAGING_PHYSICAL_PG16_E2E.md'
+      - 'docs/saas/BACKEND_16_EXACT_SQL_READ_PORT.md'
+      - 'staging/saas-bootstrap/0008_exact_subject_session_gate.sql'
+      - 'tests/sql/saas_backend16_exact_session_gate.test.sql'
+      - 'tests/saasBackend16ExactSessionGate.test.ts'
+      - 'scripts/saas-staging/backend16-0008-readonly-reconcile.sql'
+      - 'tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts'
+      - 'scripts/saas-staging/verify-backend16-exact-session-pg16.sh'
+      - 'docs/saas/BACKEND_16_SQL0008_EXACT_SESSION.md'
+      - 'docs/saas/BACKEND_16_PHYSICAL_PG_ADMISSION.md'
+      - 'docs/saas/BACKEND_16_PINNED_SESSION_AUTH.md'
+      - 'docs/saas/BACKEND_16_PRIVATE_READ_BOUNDARY.md'
+      - '.github/workflows/saas-backend16-private-read-contract.yml'
+  workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
   private-read-contract:
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
       - name: Fail-closed HTTP and origin-injection contracts
-        run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts tests/saasBackend16PinnedSessionAuthenticator.test.ts tests/saasBackend16PhysicalPgAdmission.test.ts tests/saasBackend16ExactSessionGate.test.ts tests/saasBackend16ExactSessionSqlRead.test.ts tests/saasBackend16CiBunPhysicalPgPool.test.ts tests/saasBackend16StagingBunPhysicalPgPool.test.ts tests/saasBackend16StagingPgTlsTrust.test.ts tests/saasBackend16TlsPeerProbe.test.ts tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts tests/saasBackend16ReleaseEvidenceGate.test.ts tests/saasBackend16StagingVersionedPrincipalVault.test.ts tests/saasBackend16PrivateMtlsVersionedSecretReader.test.ts
+        run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts tests/saasBackend16PinnedSessionAuthenticator.test.ts tests/saasBackend16PhysicalPgAdmission.test.ts tests/saasBackend16ExactSessionGate.test.ts tests/saasBackend16ExactSessionSqlRead.test.ts tests/saasBackend16CiBunPhysicalPgPool.test.ts tests/saasBackend16StagingBunPhysicalPgPool.test.ts tests/saasBackend16StagingPgTlsTrust.test.ts tests/saasBackend16TlsPeerProbe.test.ts tests/saasBackend16ReleaseEvidenceGate.test.ts tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts tests/saasBackend16StagingVersionedPrincipalVault.test.ts tests/saasBackend16PrivateMtlsVersionedSecretReader.test.ts
+      - name: Real disposable Node24 mutual TLS versioned secret service acceptance
+        run: node --experimental-strip-types scripts/saas-staging/verify-backend16-mtls-secret-broker-ci.ts
+      - name: Bun build of broker mTLS transport module
+        run: bun build --target=bun src/features/saasBlueprint/controlApi/server/backend16PrivateMtlsVersionedSecretReader.ts --outdir /tmp/b16-mtls-secret-transport
       - name: Validate Backend16.4 disposable PG16 runner syntax
         run: bash -n scripts/saas-staging/verify-backend16-exact-session-pg16.sh
       - name: Bundle isolated, no-credential Bun TLS peer observation
         run: bun build --target=bun scripts/saas-staging/backend16-pg-tls-peer-observation.ts --outdir /tmp/b16-pg-tls-peer-probe
-      - name: Strict TypeScript for full source
-        run: bun run type-check
       - name: Real loopback verified-full PostgreSQL TLS (Node24, isolated)
         run: node --experimental-strip-types scripts/saas-staging/verify-backend16-verified-private-pg-tls-ci.ts
       - name: Actual Bun verify-full against isolated Node SSLRequest TLS server
         run: bun scripts/saas-staging/verify-backend16-bun-tls-client-ci.ts
       - name: Bundle no-credential PostgreSQL verify-full handshake
         run: bun build --target=bun src/features/saasBlueprint/controlApi/server/backend16VerifiedPrivatePgTls.ts --outdir /tmp/b16-pg-verify-full
-      - name: Real disposable Node24 mutual TLS versioned secret service acceptance
-        run: node --experimental-strip-types scripts/saas-staging/verify-backend16-mtls-secret-broker-ci.ts
-      - name: Bun build of broker mTLS transport module
-        run: bun build --target=bun src/features/saasBlueprint/controlApi/server/backend16PrivateMtlsVersionedSecretReader.ts --outdir /tmp/b16-mtls-secret-transport
+      - name: Strict TypeScript for full source
+        run: bun run type-check
