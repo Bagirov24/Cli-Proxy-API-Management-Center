@@ -44,6 +44,9 @@ on:
       - scripts/saas-staging/backend16-ci-node-pg-ssl-sidecar.cjs
       - scripts/saas-staging/verify-backend16-bun-tls-client-ci.ts
       - docs/saas/BACKEND_16_14_VERIFIED_PRIVATE_PG_TLS.md
+      - src/features/saasBlueprint/controlApi/server/backend16StagingVersionedPrincipalVault.ts
+      - tests/saasBackend16StagingVersionedPrincipalVault.test.ts
+      - docs/saas/BACKEND_16_11_VERSIONED_PRINCIPAL_VAULT.md
   workflow_dispatch: null
 permissions:
   contents: read
@@ -61,7 +64,7 @@ jobs:
         with:
           node-version: "24"
       - name: Fail-closed HTTP and origin-injection contracts
-        run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts tests/saasBackend16PinnedSessionAuthenticator.test.ts tests/saasBackend16PhysicalPgAdmission.test.ts tests/saasBackend16ExactSessionGate.test.ts tests/saasBackend16ExactSessionSqlRead.test.ts tests/saasBackend16CiBunPhysicalPgPool.test.ts tests/saasBackend16StagingBunPhysicalPgPool.test.ts tests/saasBackend16StagingPgTlsTrust.test.ts tests/saasBackend16TlsPeerProbe.test.ts tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts tests/saasBackend16ReleaseEvidenceGate.test.ts
+        run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts tests/saasBackend16PinnedSessionAuthenticator.test.ts tests/saasBackend16PhysicalPgAdmission.test.ts tests/saasBackend16ExactSessionGate.test.ts tests/saasBackend16ExactSessionSqlRead.test.ts tests/saasBackend16CiBunPhysicalPgPool.test.ts tests/saasBackend16StagingBunPhysicalPgPool.test.ts tests/saasBackend16StagingPgTlsTrust.test.ts tests/saasBackend16TlsPeerProbe.test.ts tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts tests/saasBackend16ReleaseEvidenceGate.test.ts tests/saasBackend16StagingVersionedPrincipalVault.test.ts
       - name: Validate Backend16.4 disposable PG16 runner syntax
         run: bash -n scripts/saas-staging/verify-backend16-exact-session-pg16.sh
       - name: Bundle isolated, no-credential Bun TLS peer observation

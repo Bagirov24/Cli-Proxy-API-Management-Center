@@ -4,11 +4,14 @@
  * No external host, production, Railway, real credentials or HTTP listener.
  */
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {SQL} from 'bun';
 import {createBackend16CiBunPhysicalPgPool}
   from '../../src/features/saasBlueprint/controlApi/server/backend16CiBunPhysicalPgPool.ts';
 import {createBackend16StagingDisposableCiPhysicalPgPool}
   from '../../src/features/saasBlueprint/controlApi/server/backend16StagingBunPhysicalPgPool.ts';
+import {createBackend16StagingVersionedPrincipalVault}
+  from '../../src/features/saasBlueprint/controlApi/server/backend16StagingVersionedPrincipalVault.ts';
 import {createBackend16ExactSqlReadPort,BACKEND16_EXACT_READ_SQL}
   from '../../src/features/saasBlueprint/controlApi/server/backend16ExactSessionSqlRead.ts';
 import type {VerifiedPrincipal}
@@ -182,9 +185,42 @@ try{
   // uses, but under the separate local-only CI profile on disposable PG16.
   // Host/database/TLS cannot be supplied by users, HTTP or test assertions.
   console.info('B16_CI_PHASE_08_STAGE_CREATE');
-  const stagingPool=createBackend16StagingDisposableCiPhysicalPgPool({
-    readPrincipal:(login)=>credentials(login),
+  // Backend16.11: actual disposable PG16 physical LOGINs use the same
+  // operator-pinned versioned vault adapter the unmounted staging
+  // composition would require. All secrets remain synthetic CI-only.
+  const ciVaultEntries=[
+    {pgLogin:A,secretId:'b16-stg-pg-'+('a'.repeat(20)),
+      version:'a'.repeat(32)},
+    {pgLogin:B,secretId:'b16-stg-pg-'+('b'.repeat(20)),
+      version:'b'.repeat(32)},
+  ];
+  const ciVaultPin=createHash('sha256').update(JSON.stringify({
+    schema:'backend16-staging-vault-v1',
+    entries:ciVaultEntries.map(({pgLogin,secretId,version})=>
+      [pgLogin,secretId,version]),
+  })).digest('hex');
+  const ciSecretMap=new Map(ciVaultEntries.map(item=>[item.secretId,item]));
+  const vaultCalls:Array<[string,string]>=[];
+  const pinnedVault=await createBackend16StagingVersionedPrincipalVault({
+    manifest:{entries:ciVaultEntries,approvedManifestSha256:ciVaultPin},
+    source:{
+      async readVersion(secretId,version,signal){
+        vaultCalls.push([secretId,version]);
+        const approvedSecret=ciSecretMap.get(secretId);
+        if(signal.aborted||!approvedSecret||
+           approvedSecret.version!==version)return null;
+        return {
+          username:approvedSecret.pgLogin,
+          password:approved[approvedSecret.pgLogin],
+          version,
+          expiresAtMs:Date.now()+120_000,
+        };
+      },
+    },
   });
+  const stagingPool=createBackend16StagingDisposableCiPhysicalPgPool(
+    pinnedVault,
+  );
   const stagingRead=createBackend16ExactSqlReadPort({
     pool:stagingPool,expectedDatabase:'saas_staging_ci',
   });
@@ -247,15 +283,21 @@ try{
     await assert.rejects(stagingRead(b,tb,fresh()),/unavailable/);
   }finally{await stagingPool.shutdown();}
   console.info('B16_CI_PHASE_13_STAGE_FRESH_POOL');
-  const cleanStaging=createBackend16StagingDisposableCiPhysicalPgPool({
-    readPrincipal:(login)=>credentials(login),
-  });
+  const cleanStaging=createBackend16StagingDisposableCiPhysicalPgPool(
+    pinnedVault,
+  );
   try{
     const resumed=createBackend16ExactSqlReadPort({
       pool:cleanStaging,expectedDatabase:'saas_staging_ci',
     });
     assert.equal((await resumed(b,tb,fresh())).kind,'authorized');
   }finally{await cleanStaging.shutdown();}
+
+  assert.ok(vaultCalls.length>=6,
+    'each physical auth must obtain a new exact-version vault snapshot');
+  assert.ok(vaultCalls.every(([id,version])=>
+    ciSecretMap.get(id)?.version===version),
+    'no arbitrary secret path, unpinned alias or version fallback');
 
   // A compromised/blocked external vault can ignore cancellation forever.
   // The staging physical core must settle promptly on caller abort, poison
