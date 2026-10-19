@@ -22,6 +22,7 @@ const EVIDENCE_KEYS='environmentId,gate,observedAtMs,outcome,projectId,proofSha2
 const SIGNED_KEYS='evidence,signatureHex';
 const SIGNER_KEYS='publicKeyHex,role,signerId';
 const POLICY_KEYS='approvedSignerKeysetSha256,expectedSourceCommitSha,signers';
+const INPUT_KEYS='attestations,policy';
 
 export const BACKEND16_REQUIRED_STAGING_GATES=Object.freeze([
   'sql0008-installed-catalog-readback',
@@ -280,14 +281,15 @@ async function trustedKeyset(policy:Backend16ReleaseEvidencePolicy):
 export async function verifyBackend16ReleaseEvidence(input:Readonly<{
   policy:Backend16ReleaseEvidencePolicy;
   attestations:readonly Backend16SignedReleaseEvidence[];
-  /** Injectable only for deterministic unit tests. */
-  nowMs?:()=>number;
 }>):Promise<Backend16ReleaseEvidenceVerdict>{
   try{
-    if(!input||!Array.isArray(input.attestations)||
+    // Caller-controlled clocks are forbidden. Even tests must use the
+    // system wall clock; accepting nowMs would let the caller renew stale
+    // Ed25519 attestations without obtaining fresh operator signatures.
+    if(!plainExact(input,INPUT_KEYS)||
+       !Array.isArray(input.attestations)||
        input.attestations.length!==BACKEND16_REQUIRED_STAGING_GATES.length||
-       !plainExact(input.policy,POLICY_KEYS)||
-       (input.nowMs!==undefined&&typeof input.nowMs!=='function'))
+       !plainExact(input.policy,POLICY_KEYS))
       return blocked();
 
     // Copy the complete, descriptor-validated input synchronously BEFORE
@@ -322,7 +324,7 @@ export async function verifyBackend16ReleaseEvidence(input:Readonly<{
         evidence,signatureHex:item.signatureHex,
       });
     }));
-    const now=(input.nowMs??Date.now)();
+    const now=Date.now();
     if(!Number.isSafeInteger(now)||now<=0)return blocked();
     const keyset=await trustedKeyset(policy);
     if(!keyset)return blocked();
@@ -358,9 +360,17 @@ export async function verifyBackend16ReleaseEvidence(input:Readonly<{
         technicalRecords as Backend16SignedReleaseEvidence[]));
     for(const gate of APPROVAL_GATES){
       const approval=accepted.get(gate)?.evidence;
-      if(!approval||approval.observedAtMs<maxTechnicalTime||
+      if(!approval||approval.observedAtMs<=maxTechnicalTime||
          approval.proofSha256!==technicalDigest)return blocked();
     }
+    // Verification is asynchronous. A proof that expires while Ed25519 and
+    // bundle hashing run must NOT receive a READY verdict based only on its
+    // earlier validity at invocation. Refuse backward clock jumps as well.
+    const finishedAt=Date.now();
+    if(!Number.isSafeInteger(finishedAt)||finishedAt<now||
+       attestations.some(item=>!validEvidence(
+         item.evidence,policy.expectedSourceCommitSha,finishedAt)))
+      return blocked();
     return verdict(BACKEND16_REQUIRED_STAGING_GATES.filter(
       gate=>!accepted.has(gate)));
   }catch{
