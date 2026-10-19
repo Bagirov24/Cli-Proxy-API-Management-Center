@@ -20,7 +20,9 @@ const REPO='Bagirov24/Cli-Proxy-API-Management-Center';
 const PROJECT='a9703851-6eb1-406c-bb15-7d3a89359fb7';
 const STAGING='b0f5672b-8c91-44a3-a93e-0c5b8fde8d2b';
 const COMMIT='8'.repeat(40);
-const NOW=Date.UTC(2026,9,17,20);
+// Tests validate the exported production entrypoint against the REAL clock.
+const NOW=Date.now();
+const VALID_UNTIL=NOW+10*60_000;
 const ROLES=[
   'db-operator','security-reviewer','runtime-reviewer','operations-reviewer',
 ] as const;
@@ -88,7 +90,7 @@ async function makeFixture():Promise<Fixture>{
       schema:'backend16-release-evidence-v1',gate,role,signerId,
       repo:REPO,projectId:PROJECT,environmentId:STAGING,
       sourceCommitSha:COMMIT,observedAtMs:NOW-2000,
-      validUntilMs:NOW+60_000,outcome:'pass',
+      validUntilMs:VALID_UNTIL,outcome:'pass',
       proofUri:'https://github.com/'+REPO+'/actions/runs/39062972244',
       proofSha256:proofs.get(gate)!,
     };
@@ -105,7 +107,7 @@ async function makeFixture():Promise<Fixture>{
       schema:'backend16-release-evidence-v1',gate,role,signerId,
       repo:REPO,projectId:PROJECT,environmentId:STAGING,
       sourceCommitSha:COMMIT,observedAtMs:NOW-1000,
-      validUntilMs:NOW+60_000,outcome:'pass',
+      validUntilMs:VALID_UNTIL,outcome:'pass',
       proofUri:'https://github.com/'+REPO+'/actions/runs/39062972244',
       proofSha256:approvalDigest,
     };
@@ -124,11 +126,10 @@ async function fixture():Promise<Fixture>{
     keypairs:f.keypairs,
   };
 }
-async function verify(input:Fixture,now=NOW){
+async function verify(input:Fixture){
   return verifyBackend16ReleaseEvidence({
     policy:input.policy,
     attestations:input.attestations,
-    nowMs:()=>now,
   });
 }
 function changed(
@@ -209,7 +210,7 @@ test('signature bytes, revoked keyset, wrong role and duplicated public keys are
 test('signed stale/future evidence and improper lease fail closed',async()=>{
   for(const mutation of [
     {observedAtMs:NOW-3_600_001},
-    {observedAtMs:NOW+1000},
+    {observedAtMs:NOW+60_000},
     {validUntilMs:NOW},
     {validUntilMs:NOW+3_600_001},
   ]){
@@ -220,19 +221,41 @@ test('signed stale/future evidence and improper lease fail closed',async()=>{
     f.attestations[t]=await reSign(e,f.keypairs);
     assert.equal((await verify(f)).result,'BLOCKED');
   }
-  const valid=await fixture();
-  assert.equal((await verify(valid,NOW+120_000)).result,'BLOCKED');
+});
+
+test('proof expiring during async cryptographic review cannot become READY',async()=>{
+  const f=await fixture();
+  const originalNow=Date.now;
+  let afterInitialCheck=false;
+  let clockReads=0;
+  try{
+    Date.now=()=>{
+      clockReads++;
+      // The invocation begins with fresh, authentic signed evidence.
+      // Before WebCrypto returns, the real-world clock advances past expiry.
+      return afterInitialCheck?NOW+11*60_000:NOW;
+    };
+    const verification=verify(f);
+    afterInitialCheck=true;
+    assert.equal((await verification).result,'BLOCKED');
+    assert.ok(clockReads>=2,'system clock checked at invocation and completion');
+  }finally{
+    Date.now=originalNow;
+  }
 });
 
 test('security and operations approvals must sign AFTER technical evidence',async()=>{
   for(const gate of ['security-release-review',
     'operations-release-review'] as const){
-    const f=await fixture();
-    const i=f.attestations.findIndex(t=>t.evidence.gate===gate);
-    f.attestations[i]=await reSign({
-      ...f.attestations[i].evidence,observedAtMs:NOW-2500,
-    },f.keypairs);
-    assert.equal((await verify(f)).result,'BLOCKED');
+    for(const observation of [NOW-2500,NOW-2000]){
+      const f=await fixture();
+      const i=f.attestations.findIndex(t=>t.evidence.gate===gate);
+      f.attestations[i]=await reSign({
+        ...f.attestations[i].evidence,observedAtMs:observation,
+      },f.keypairs);
+      assert.equal((await verify(f)).result,'BLOCKED',
+        'a final approval must be STRICTLY AFTER every technical record');
+    }
   }
   const f=await fixture();
   const i=f.attestations.findIndex(t=>
@@ -348,17 +371,8 @@ test('operator key and proof mutations after invocation cannot race WebCrypto aw
   (f.attestations[0].evidence as {proofSha256:string}).proofSha256='0'.repeat(64);
   assert.equal((await result).result,'READY_FOR_INDEPENDENT_REVIEW');
 
-  const g=await fixture();
-  const observed=await verifyBackend16ReleaseEvidence({
-    policy:g.policy,attestations:g.attestations,
-    nowMs:()=>{
-      (g.policy.signers[0] as {publicKeyHex:string}).publicKeyHex='0'.repeat(64);
-      (g.attestations[0].evidence as {proofSha256:string}).proofSha256='0'.repeat(64);
-      return NOW;
-    },
-  });
-  assert.equal(observed.result,'READY_FOR_INDEPENDENT_REVIEW',
-    'untrusted clock callback cannot mutate an already snapshotted proof');
+  // The exported verifier does not accept a caller-controlled nowMs hook;
+  // there is no untrusted callback between snapshot and signature verification.
 
   const tampered=await fixture();
   (tampered.attestations[0].evidence as {proofSha256:string}).proofSha256=
@@ -367,7 +381,7 @@ test('operator key and proof mutations after invocation cannot race WebCrypto aw
     'a forged field PRESENT before invocation is never signed');
 });
 
-test('invalid key crypto, invalid clocks and absent operator policy always block',async()=>{
+test('invalid key crypto, caller time injection and absent operator policy block',async()=>{
   const x=await fixture();
   x.policy={...x.policy,signers:x.policy.signers.map((k,i)=>i===0?
     {...k,publicKeyHex:'0'.repeat(64)}:k)};
@@ -375,8 +389,19 @@ test('invalid key crypto, invalid clocks and absent operator policy always block
     backend16CanonicalOperatorKeyset(x.policy.signers))};
   assert.equal((await verify(x)).result,'BLOCKED');
   const y=await fixture();
-  assert.equal((await verify(y,Number.NaN)).result,'BLOCKED');
-  assert.equal((await verify(y,-1)).result,'BLOCKED');
+  assert.equal((await verifyBackend16ReleaseEvidence({
+    policy:y.policy,attestations:y.attestations,
+    nowMs:()=>NOW,
+  } as never)).result,'BLOCKED',
+  'unexpected caller-supplied time is not an authorized release clock');
+  const payload={
+    policy:y.policy,attestations:y.attestations,
+  };
+  Object.defineProperty(payload,'nowMs',{
+    enumerable:true,get(){throw new Error('attacker time getter');},
+  });
+  assert.equal((await verifyBackend16ReleaseEvidence(payload as never)).result,
+    'BLOCKED','accessor cannot turn a caller clock into release time');
   assert.equal((await verifyBackend16ReleaseEvidence({
     policy:null as never,attestations:[],
   })).result,'BLOCKED');
@@ -395,6 +420,9 @@ test('verifier is offline, read-only and contains no release deploy or bypass pa
     'security-release-review','operations-release-review',
     'approval.proofSha256!==technicalDigest',
     'backend16CanonicalSignedTechnicalBundle',
+    "const now=Date.now();",'const finishedAt=Date.now();',
+    'plainExact(input,INPUT_KEYS)',
+    'approval.observedAtMs<=maxTechnicalTime',
   ])assert.ok(source.includes(marker),marker);
   assert.doesNotMatch(source,
     /\b(?:fetch\(|Bun\.serve|createServer|\.listen\(|\.query\(|\.unsafe\(|ALTER ROLE|CREATE ROLE|DROP ROLE|UPDATE\s+|INSERT\s+|DELETE\s+|railway up)\b/i);
