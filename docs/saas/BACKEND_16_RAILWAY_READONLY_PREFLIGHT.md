@@ -40,16 +40,19 @@ function installed and migrator resealed. This is an installed-state diagnostic,
   temporary read-only probe does not waive the separate release requirement
   for reviewed PostgreSQL trust anchors and TLS hostname verification.
 
-## Execution and readback
+## Future separately approved INSTALLED-mode readback (NOT scheduled)
 
 1. Require exact-head CI SUCCESS and review the complete one-file source,
    with its unchanged DO SQL. Re-read Railway environment patch: no pending
    changes to PostgreSQL, volume, Core, Gateway, or other services.
-2. Create a **new staging-only Railway Function** named
-   `saas-b16-0008-readonly-preflight` with that exact code, no HTTP listener,
+2. Inspect the **existing staging-only read-only Function** named
+   `saas-b16-0008-readonly-preflight` and verify exact source and service ID
+   `ff2df1d3-3bca-483c-bc2a-0edea01dd3f1`. Never auto-create a new
+   function if missing; that requires separate review. No HTTP listener,
    domain, TCP proxy, cron, attached volume or shared variables.
-3. Bind the private DB reference and explicit enable on **only** that Function,
-   inspect the resulting staged patch, then deploy that read-only Function.
+3. Only with separate authorization, confirm the existing private DB reference
+   and set an explicit enable on **only** that Function; inspect the pending
+   staged patch, then deploy the read-only Function without any SQL write.
 4. Read the exact deployment's logs. The **only** installed-state PASS is
    `PASS_BACKEND16_SQL0008_READONLY_INSTALLED_SEALED`
    after successful READ ONLY COMMIT and backend close. An exception, no
