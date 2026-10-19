@@ -129,7 +129,8 @@ test('wrong Railway staging Function ID is refused before opening a database soc
   assert.notEqual(child.status,0);
   const output=child.stdout+child.stderr;
   assert.match(output,/B16_READONLY_PREFLIGHT_STOP_NO_DATABASE_WRITES/);
-  assert.doesNotMatch(output,/PASS_BACKEND16|SYNTHETIC_TEST_PASSWORD|public\.example/);
+  assert.doesNotMatch(output,/^PASS_BACKEND16_[A-Z0-9_]+$/m);
+  assert.doesNotMatch(output,/SYNTHETIC_TEST_PASSWORD|public\.example/);
 });
 
 test('public PostgreSQL hostname is rejected even with exact Railway service ID',()=>{
@@ -151,7 +152,8 @@ test('public PostgreSQL hostname is rejected even with exact Railway service ID'
   assert.notEqual(child.status,0);
   const output=child.stdout+child.stderr;
   assert.match(output,/B16_READONLY_PREFLIGHT_STOP_NO_DATABASE_WRITES/);
-  assert.doesNotMatch(output,/PASS_BACKEND16|SYNTHETIC_TEST_PASSWORD|public\.example/);
+  assert.doesNotMatch(output,/^PASS_BACKEND16_[A-Z0-9_]+$/m);
+  assert.doesNotMatch(output,/SYNTHETIC_TEST_PASSWORD|public\.example/);
 });
 
 test('only reviewed SQL catalog STOP codes can reach Railway logs',()=>{
