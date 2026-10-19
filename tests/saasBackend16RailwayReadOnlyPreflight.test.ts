@@ -22,7 +22,7 @@ test('Railway read-only function embeds exactly the immutable verified SQL DO bl
   assert.match(expected[0],/B16_READONLY_STOP_FORCE_RLS/);
   assert.match(expected[0],/B16_READONLY_STOP_SQL0008_FUNCTION_DRIFT/);
 });
-test('read-only PostgreSQL transaction, exact operator expectation and no retry',()=>{
+test('read-only PostgreSQL transaction, exact INSTALLED operator expectation and no retry',()=>{
   const index=(s:string)=>source.indexOf(s);
   assert.ok(index("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")>=0);
   assert.ok(index('RECONCILE_DO_SQL,[]')>
@@ -32,15 +32,15 @@ test('read-only PostgreSQL transaction, exact operator expectation and no retry'
   assert.ok(index('if(failed||!closed||EXPECTED')>index("connection.unsafe('COMMIT',[])"));
   assert.match(source,/commitSent=true/);
   assert.match(source,/if\(transaction&&!commitSent&&connection\)/);
-  assert.match(source,/const EXPECTED='absent'/);
-  assert.match(source,/saas\.b16\.reconcile_expected','absent',true/);
+  assert.match(source,/const EXPECTED='installed'/);
+  assert.match(source,/saas\.b16\.reconcile_expected','installed',true/);
   assert.match(source,/set_config\('saas\.staging_only','true',true\)/);
   assert.ok(index("set_config('saas.staging_only','true',true)")>
             index("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"));
   assert.ok(index("set_config('saas.staging_only','true',true)")<
             index('RECONCILE_DO_SQL,[]'));
 
-  assert.match(source,/READONLY_ABSENT_SEALED_NEVER_AUTO_INSTALL/);
+  assert.match(source,/READONLY_INSTALLED_SEALED/);
   assert.match(source,/failurePhase=phase/);
   assert.match(source,/failurePhase='CLOSE'/);
   assert.match(source,/B16_READONLY_PREFLIGHT_STOP_PHASE_/);
@@ -48,7 +48,7 @@ test('read-only PostgreSQL transaction, exact operator expectation and no retry'
   assert.match(source,/catalogStopCode\?\?'UNSPECIFIED'/);
   assert.doesNotMatch(source,/console\.(?:error|log|warn)\(error\)/);
 
-  assert.match(source,/if\(failed\|\|!closed\|\|EXPECTED!=='absent'\)/);
+  assert.match(source,/if\(failed\|\|!closed\|\|EXPECTED!=='installed'\)/);
   assert.doesNotMatch(source,/throw Error\('B16_READONLY_PREFLIGHT_FAILED/);
 
   assert.doesNotMatch(source,/retry\s*\(/);
@@ -92,6 +92,20 @@ test('disabled Railway staging read-only Function exits without DB or retries',(
   assert.match(child.stdout,/B16_READONLY_PREFLIGHT_DISABLED_NO_DATABASE/);
   assert.doesNotMatch(child.stdout,/PASS_BACKEND16/);
   assert.doesNotMatch(child.stdout+child.stderr,/password|DATABASE_URL|PGPASSWORD/i);
+});
+
+
+test('post-install staging runner cannot revert to a seven-receipt ABSENT success',()=>{
+  const withoutImmutableSql=source.replace(/^const RECONCILE_DO_SQL=.+;$/m,'');
+  assert.match(withoutImmutableSql,/const EXPECTED='installed'/);
+  assert.match(withoutImmutableSql,
+    /const MARKER='PASS_BACKEND16_SQL0008_READONLY_INSTALLED_SEALED'/);
+  assert.match(withoutImmutableSql,/reconcile_expected','installed',true/);
+  assert.doesNotMatch(withoutImmutableSql,
+    /PASS_BACKEND16_SQL0008_READONLY_ABSENT_SEALED_NEVER_AUTO_INSTALL/);
+  assert.doesNotMatch(withoutImmutableSql,/const EXPECTED='absent'/);
+  assert.match(source,/BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY/);
+  assert.doesNotMatch(withoutImmutableSql,/ALTER ROLE|CREATE FUNCTION|\\b(?:INSERT|DELETE|UPDATE) INTO\\b/i);
 });
 
 test('only reviewed SQL catalog STOP codes can reach Railway logs',()=>{
