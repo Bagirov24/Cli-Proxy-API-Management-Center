@@ -244,6 +244,23 @@ test('caller-supplied release clock and accessor/prototype manifests fail closed
   await assert.rejects(vault.readPrincipal(A,signal()),/unavailable/);
 });
 
+test('provider getter cannot replace operator manifest before snapshot',async()=>{
+  const manifest=pinned([first()]);
+  const approvedPin=manifest.approvedManifestSha256;
+  const requested:string[]=[];
+  const source={
+    get readVersion(){
+      manifest.entries[0].secretId=bId;
+      manifest.approvedManifestSha256=pinned(manifest.entries).approvedManifestSha256;
+      return async(id:string)=>{requested.push(id);return expires();};
+    },
+  };
+  const vault=await createBackend16StagingVersionedPrincipalVault({manifest,source});
+  assert.notEqual(manifest.approvedManifestSha256,approvedPin,'attack executed');
+  await vault.readPrincipal(A,signal());
+  assert.deepEqual(requested,[aId],'only the original independently pinned ID can be fetched');
+});
+
 test('provider errors, secrets, credentials and tenancy never surface in exceptions',async()=>{
   const secretMarker='very_private_secret_marker';
   const vault=await createBackend16StagingVersionedPrincipalVault({

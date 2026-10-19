@@ -124,9 +124,7 @@ export async function createBackend16StagingVersionedPrincipalVault(
     // Extra fields including a caller-provided nowMs are never accepted.
     if(!exactKeys(options,OPTIONS_KEYS))refuse();
     const {manifest,source}=options;
-    const readVersion=source?.readVersion; // read exactly once, no getter TOCTOU
     if(!exactKeys(manifest,MANIFEST_KEYS)||
-       typeof readVersion!=='function'||
        !Array.isArray(manifest.entries)||
        manifest.entries.length<1||
        manifest.entries.length>MAX_PRINCIPALS||
@@ -154,6 +152,10 @@ export async function createBackend16StagingVersionedPrincipalVault(
       schema:'backend16-staging-vault-v1',
       entries:entries.map(item=>[item.pgLogin,item.secretId,item.version]),
     });
+    // Snapshot all approved manifest data before invoking a provider getter:
+    // synchronous provider code must not rewrite the pin or secret locations.
+    const readVersion=source?.readVersion; // read exactly once, preserve receiver
+    if(typeof readVersion!=='function')refuse();
     if(await digest(canonical)!==approvedManifestSha256)refuse();
 
     const lookup=new Map(entries.map(item=>[item.pgLogin,item] as const));
