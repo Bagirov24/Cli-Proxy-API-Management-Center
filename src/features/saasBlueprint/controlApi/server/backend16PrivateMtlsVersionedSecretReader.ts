@@ -236,7 +236,22 @@ function buildReader(
             clearTimeout(deadline);
             signal.removeEventListener('abort',onAbort);
             try{req?.destroy();}catch{/* fail closed */}
-            if(record!==undefined&&!signal.aborted)resolve(record);
+            // A successful mTLS handshake at request start is insufficient:
+            // the workload grant can be revoked while the broker responds.
+            // Recheck local approval AND both certificates' time validity
+            // immediately before returning any credential to the caller.
+            let releaseAllowed=false;
+            if(record!==undefined&&!signal.aborted){
+              try{
+                const settledAt=Date.now();
+                releaseAllowed=permitted()&&isTime(settledAt)&&
+                  settledAt>=identity.rootValidFrom&&
+                  settledAt+MIN_ROOT_REMAINING_MS<identity.rootValidUntil&&
+                  settledAt>=identity.clientValidFrom&&
+                  settledAt+MIN_CLIENT_REMAINING_MS<identity.clientValidUntil;
+              }catch{/* deny if the approval environment is unavailable */}
+            }
+            if(releaseAllowed)resolve(record);
             else reject(new Error(
               'Backend16 private versioned secret service unavailable'));
           }
