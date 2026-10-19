@@ -55,10 +55,16 @@ properties, be plain records with no getters or extra keys, use the
 approved role and signer ID and have a valid Ed25519 signature over
 all properties.
 The verifier also makes a **synchronous immutable snapshot** of the
-operator keyset and all evidence records before invoking any asynchronous
-WebCrypto call or test clock callback. Mutating a supplied JavaScript
-object while signatures are checked cannot change the reviewed subject.
-Concurrent key/proof replacement is covered by a regression test.
+operator keyset and all evidence records before invoking asynchronous
+WebCrypto. The exported verifier only accepts the exact top-level
+`policy` and `attestations` fields: a caller-provided `nowMs` or
+additional callback is **rejected**, never used to extend expired evidence.
+It reads `Date.now()` from the runtime at invocation and **again after
+all signature/hash checks**, rejecting a backward clock jump, an expired
+record or evidence aging beyond its gate limit during verification.
+Mutating supplied keys or proofs during WebCrypto cannot alter the
+already snapshotted subject. The local test harness simulates a clock
+jump without exposing a runtime clock override.
 
 ## Evidence sequence and expiry
 
@@ -78,7 +84,8 @@ Concurrent key/proof replacement is covered by a regression test.
 Each evidence record must be observed in the past, not expired at review
 time, and not older than its limit. An invalid or missing gate results in
 `BLOCKED`, never permissive partial approval. Both final review records
-must be signed **after all eight technical observations**. Their signed
+must be signed **strictly later** than all eight technical observations;
+a timestamp equal to the latest observation is refused. Their signed
 `proofSha256` is the SHA256 of the complete, ordered **v2 aggregate of
 all eight independently verified signed technical attestations**:
 
