@@ -106,3 +106,30 @@ cross-runner temporal reproducibility, Node server packaging approval,
 security/codeowner sign-off, and real operator PKI/IAM remain OPEN.
 The known native Bun.SQL PostgreSQL TLS wrong-root/wildcard failure remains
 a blocking RED finding and must not be disabled.
+ 
+
+## Historical cross-run drift gate (CI-only; unapproved observation)
+
+A later Draft observes the successful **independently resolved** v3 npm
+dependency graph from PR #84, workflow
+[39422435534](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/39422435534),
+HEAD `471454fc05e180cfc0952f33e256e66288d128a1`.
+
+- Canonical JSON SHA-256: `b5e2aa1735babcbca40748c0983a73c36c57488f96d857fd4087ae4e7a5341fa`.
+- Direct dependency: `pg@8.23.1`, entire installed tree: **14 packages**.
+- Both previously independent clean installs passed; these are observable
+  historical CI facts, **not** a signed artifact or approved package set.
+
+The CI runtime now checks both new independent lock resolutions against each
+other **and then against this prior-run observed fingerprint**. Any SRI,
+tarball URL, transitive version, graph structure or package-count change
+fails closed **before either clean npm install**. Normal JSON key ordering
+does not affect the canonical digest. Adjusting the observed fingerprint
+must be treated as a reviewed dependency supply-chain change, never a
+routine way to make CI green. One observed CI snapshot is not a release
+authority, security audit, package provenance attestation or a substitute
+for a separately approved immutable production server lock.
+
+No production packaging, Railway access, permanent SQL0008, release
+promotion, or mitigation claim for the known native Bun.SQL TLS failure is
+introduced. Project-wide Bun lockfile rules stay unchanged.

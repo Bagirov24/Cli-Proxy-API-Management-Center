@@ -21,6 +21,18 @@ import {
 
 const REGISTRY='https://registry.npmjs.org';
 const DENIED='Backend16 genuine NodePG CI lock refused';
+/**
+ * Observed, unsigned CI-only historical graph from Draft PR #84.
+ * Receipt: https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/39422435534
+ * No security approval or artifact signature is conferred by this hash.
+ * Any registry drift must block until independently investigated.
+ */
+export const OBSERVED_NODEPG_GRAPH=Object.freeze({
+  algorithm:'sha256-canonical-json-v1',
+  dependency:'pg@8.23.1',
+  packageCount:14,
+  sha256:'b5e2aa1735babcbca40748c0983a73c36c57488f96d857fd4087ae4e7a5341fa',
+});
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 export const LOCK_ARGS=Object.freeze([
   'install','--package-lock-only','--ignore-scripts','--omit=dev',
@@ -90,6 +102,17 @@ export function assertIndependentBackend16NodePgLocks(first,second){
   if(a!==b)refuse();
   return createHash('sha256').update(a).digest('hex');
 }
+/**
+ * Enforce the historical, separately observed canonical graph from #84
+ * BEFORE either clean install. This is drift detection, not code-signing.
+ */
+export function assertObservedBackend16NodePgGraph(sha256,packageCount){
+  if(typeof sha256!=='string'||!(/^[0-9a-f]{64}$/).test(sha256)||
+     sha256!==OBSERVED_NODEPG_GRAPH.sha256||
+     !Number.isSafeInteger(packageCount)||
+     packageCount!==OBSERVED_NODEPG_GRAPH.packageCount)refuse();
+  return 'B16_REAL_LOCK_CI_OBSERVED_GRAPH_MATCH_PASS';
+}
 function runNpm(args,dir){
   const minimalEnv={
     PATH:process.env.PATH||'/usr/local/bin:/usr/bin:/bin',
@@ -154,7 +177,10 @@ async function main(){
     const normalizedDigest=assertIndependentBackend16NodePgLocks(
       receipts[0].lock,receipts[1].lock);
     if(receipts[0].proof.packageCount!==receipts[1].proof.packageCount)refuse();
+    const observed=assertObservedBackend16NodePgGraph(
+      normalizedDigest,receipts[0].proof.packageCount);
     console.info('B16_REAL_LOCK_CI_GRAPH_VALIDATED');
+    console.info(observed);
     console.info('B16_REAL_LOCK_CI_INDEPENDENT_RESOLUTIONS_MATCH_PASS');
     for(const {dir,lockFile,digest} of receipts){
       runNpm(CLEAN_INSTALL_ARGS,dir);

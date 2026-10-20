@@ -8,6 +8,7 @@ import {
   createBackend16GenuineLockCiManifest,
   enforceBackend16GenuineLockCiEnvironment,safeNpmFailureCode,
   assertIndependentBackend16NodePgLocks,
+  assertObservedBackend16NodePgGraph,OBSERVED_NODEPG_GRAPH,
 } from '../scripts/saas-staging/verify-backend16-nodepg-real-lock-ci.mjs';
 import {
   EXPECTED_NAME,EXPECTED_PG_VERSION,
@@ -74,6 +75,9 @@ test('genuine lock acceptance is CI-only, never a release or migration',()=>{
   assert.ok(source.includes("join(rootDir,'independent-b')"));
   assert.ok(source.includes('assertIndependentBackend16NodePgLocks('));
   assert.ok(source.includes('B16_REAL_LOCK_CI_INDEPENDENT_RESOLUTIONS_MATCH_PASS'));
+  assert.ok(source.includes('assertObservedBackend16NodePgGraph('));
+  assert.ok(source.indexOf('assertObservedBackend16NodePgGraph(\n      normalizedDigest')<
+    source.indexOf('for(const {dir,lockFile,digest} of receipts)'));
   assert.ok(source.includes("join(dir,'empty-user.npmrc')"));
   assert.ok(source.includes("join(dir,'empty-global.npmrc')"));
   assert.doesNotMatch(source,/npm_config_globalconfig:'\/dev\/null'/);
@@ -132,4 +136,24 @@ test('independent lock rejects non-JSON values and malformed graph shapes',()=>{
     {packages:new Date()},{packages:new Date()}));
   refused(()=>assertIndependentBackend16NodePgLocks(
     {packages:{}},Object.create(null)));
+});
+
+test('historical genuine CI graph is pinned against registry drift before install',()=>{
+  assert.equal(OBSERVED_NODEPG_GRAPH.algorithm,'sha256-canonical-json-v1');
+  assert.equal(OBSERVED_NODEPG_GRAPH.dependency,'pg@8.23.1');
+  assert.equal(OBSERVED_NODEPG_GRAPH.packageCount,14);
+  assert.equal(OBSERVED_NODEPG_GRAPH.sha256,
+    'b5e2aa1735babcbca40748c0983a73c36c57488f96d857fd4087ae4e7a5341fa');
+  assert.equal(Object.isFrozen(OBSERVED_NODEPG_GRAPH),true);
+  assert.equal(assertObservedBackend16NodePgGraph(
+    OBSERVED_NODEPG_GRAPH.sha256,OBSERVED_NODEPG_GRAPH.packageCount),
+    'B16_REAL_LOCK_CI_OBSERVED_GRAPH_MATCH_PASS');
+  for(const invalid of [
+    ['0'.repeat(64),14],['B'.repeat(64),14],
+    [OBSERVED_NODEPG_GRAPH.sha256.toUpperCase(),14],
+    [OBSERVED_NODEPG_GRAPH.sha256,13],
+    [OBSERVED_NODEPG_GRAPH.sha256,15],
+    [OBSERVED_NODEPG_GRAPH.sha256,NaN],
+    [null,14],
+  ])refused(()=>assertObservedBackend16NodePgGraph(...invalid));
 });
