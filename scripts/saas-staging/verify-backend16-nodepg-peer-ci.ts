@@ -176,7 +176,7 @@ async function run(){
 
   const selected=tlsOptions(pem);
   const client=freshClient(selected.options,'b16-nodepg-authorized');
-  let pid:number=0;
+  let pid:number;
   try{
     await client.connect();
     const result=await client.query(
