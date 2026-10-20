@@ -177,7 +177,7 @@ export function createBackend16DisposableCiNodePgPhysicalPool(
         // disconnect, backend crash or network partition). A no-op listener
         // hides uncertain physical state. Close every request-private socket
         // synchronously and poison the pool before another SQL call.
-        client.on('error',()=>{quarantine('socket-uncertain');});
+        client.on('error',()=>{quarantine('query-uncertain');});
         active.add(client);
         await abortable(client.connect(),signal);
         available(signal);

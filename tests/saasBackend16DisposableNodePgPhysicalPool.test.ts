@@ -42,7 +42,7 @@ test('Node PG uses reviewed TLS callback, no plaintext or shared LOGIN',()=>{
     'credential.username!==login',
     'client.connection?.stream?.destroy()',
     'if(stopped)return;',
-    "client.on('error',()=>{quarantine('socket-uncertain');});",
+    "client.on('error',()=>{quarantine('query-uncertain');});",
     'quarantine(\'query-uncertain\')',
     'AbortSignal.timeout(6500)',
     'SQL.exact,4',
