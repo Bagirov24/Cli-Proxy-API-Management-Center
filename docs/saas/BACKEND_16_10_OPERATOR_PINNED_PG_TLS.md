@@ -19,7 +19,10 @@ Bun.SQL TLS options contain only:
 
 - `ca`: exactly one operator-approved, strong, self-signed root CA PEM;
 - `serverName`: the hardcoded `postgres.railway.internal`;
-- `rejectUnauthorized:true`: TLS chain and hostname verification.
+- `rejectUnauthorized:true`: TLS certificate-chain verification;
+- `checkServerIdentity`: a Bun.SQL connection-time callback that requires
+  an **exact** `DNS:postgres.railway.internal` SAN, rejects CN-only and
+  wildcard SAN, and preserves Node's normal server-identity check.
 
 Bun's documented PostgreSQL TLS object with a custom CA selects
 `verify-full`; the hostname is never read from HTTP, JWT, `Host`,
@@ -81,3 +84,17 @@ certificate chain**, and cannot authorize deployment.
 Reference: https://bun.com/docs/runtime/sql (PostgreSQL SSL mode and
 custom CA sections). Real staging/production rollout still requires
 complete Backend16 release gates and separate approval.
+
+## Subsequent source hardening — exact SAN on the authenticated SQL transport
+
+The previous no-credentials Backend16.14 SSLRequest verifier already rejected
+wildcard DNS SANs, but the actual Bun.SQL TLS options did not carry that
+stricter predicate. This source-only hardening adds the same exact-SAN
+requirement to the **branded trust object used by authenticated Bun.SQL**.
+The disposable Node24 TLS fixture verifies the exported callback using
+genuine CA-signed exact, wrong, wildcard and CN-only leaf certificates.
+It does not yet prove the callback executes on the same physical Bun.SQL
+PostgreSQL16 connection during RLS reads. That combined E2E remains an
+explicit separate acceptance task, not evidence of a staging rollout.
+No approved Railway CA, credentials, deployment or release approval is
+introduced by these synthetic fixtures.
