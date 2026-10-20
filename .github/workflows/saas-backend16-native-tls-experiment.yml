@@ -1,0 +1,58 @@
+name: Backend16 Bun 1.4.3 Native TLS Probe (disposable, no release)
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/saas-backend16-native-tls-experiment.yml'
+      - 'scripts/saas-staging/verify-backend16-native-tls-version-probe-ci.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bun143-native-pg-tls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    services:
+      postgres:
+        image: postgres:16.6
+        env:
+          POSTGRES_DB: saas_ephemeral_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_ephemeral_test_only
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d saas_ephemeral_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGDATABASE: saas_ephemeral_test
+      PGPASSWORD: ci_ephemeral_test_only
+      SAAS_B16_EXPERIMENTAL_TLS_CI: 'true'
+    steps:
+      - name: Checkout code (no production)
+        uses: actions/checkout@v4
+      - name: Install alternative Bun version for isolated comparison ONLY
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - name: Reject bad host and probe REAL native TLS verification
+        env:
+          SAAS_B16_CI_PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e /data/auths
+          test ! -e .env.production
+          test "$(bun --version)" = "1.4.3"
+          bun scripts/saas-staging/verify-backend16-native-tls-version-probe-ci.ts
