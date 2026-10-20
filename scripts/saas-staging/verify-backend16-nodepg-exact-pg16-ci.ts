@@ -140,11 +140,17 @@ async function scalar(sql:string,params:string[]=[]):Promise<unknown>{
   assert.equal(result.rows.length,1);
   return Object.values(result.rows[0])[0];
 }
-async function gone(pid:number){
-  for(let i=0;i<40;i++){
-    if(await scalar('SELECT count(*)::int AS n FROM pg_stat_activity WHERE pid=$1',
-      [String(pid)])===0)return;
-    await sleep(50);
+async function gone(pid:number,watcher:typeof admin=admin){
+  for(let i=0;i<60;i++){
+    // During a revoke race the admin session holds FOR UPDATE; using it
+    // for this probe would keep an old pg_stat_activity snapshot until
+    // ROLLBACK and falsely report a killed physical backend as still live.
+    const observation=await watcher.query(
+      'SELECT count(*)::int AS n FROM pg_stat_activity WHERE pid=$1',
+      [String(pid)]);
+    assert.equal(observation.rows.length,1);
+    if(observation.rows[0].n===0)return;
+    await sleep(40);
   }
   throw Error('B16 Node PG authenticated backend PID survived physical close');
 }
@@ -366,7 +372,7 @@ async function execute(){
       'exact PG read must genuinely wait on current grant before cancellation');
     cancel.abort();
     await refused;
-    await gone(waitingPid);
+    await gone(waitingPid,observer);
     console.info('B16_NODEPG_EXACT_LOCK_ABORT_PID_DEATH_PASS');
   }finally{
     if(locked){try{await admin.query('ROLLBACK');}catch{/* CI only */}}
