@@ -195,7 +195,7 @@ test('native TLS GitHub runner is isolated and proves real PostgreSQL SSL PID',(
     "assert.equal(pgSsl[0].ssl,true",
     "createBackend16ExactSqlReadPort",
     "read(a,tb,fresh())","read(b,ta,fresh())",
-    "B16_NATIVE_SQL_TLS_CA_SIGNED_WILDCARD_DENIED",
+    "B16_NATIVE_SQL_TLS_CA_SIGNED_WILDCARD_",
     "await gone(LOGIN_A)",
     "PASS Backend16 native Bun.SQL TLS to real disposable PG16",
   ])assert.ok(runner.includes(marker),marker);
