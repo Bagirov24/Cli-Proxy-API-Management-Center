@@ -172,3 +172,34 @@ test('discard releases exclusively owned reservation before closing native PG po
     'discard must not poison otherwise healthy independent requests');
   assert.match(shell,/timeout --signal=TERM --kill-after=3s 110s/);
 });
+
+test('native TLS GitHub runner is isolated and proves real PostgreSQL SSL PID',()=>{
+  const runner=readFileSync(new URL(
+    '../scripts/saas-staging/verify-backend16-native-pg-tls-ci.ts',
+    import.meta.url),'utf8');
+  const shell=readFileSync(new URL(
+    '../scripts/saas-staging/verify-backend16-exact-session-pg16.sh',
+    import.meta.url),'utf8');
+  const workflow=readFileSync(new URL(
+    '../.github/workflows/saas-staging-rls-ci.yml',
+    import.meta.url),'utf8');
+  for(const marker of [
+    "env.GITHUB_ACTIONS!=='true'",
+    "env.SAAS_B16_PHYSICAL_TLS_CI!=='true'",
+    "env.PGHOST!=='127.0.0.1'",
+    "env.RAILWAY_PROJECT_ID",
+    "command('docker',['inspect'",
+    "'postgres:16.6'",
+    "createBackend16StagingDisposableCiTlsPhysicalPgPool",
+    "pg_stat_ssl WHERE pid=$1",
+    "assert.equal(pgSsl[0].ssl,true",
+    "createBackend16ExactSqlReadPort",
+    "read(a,tb,fresh())","read(b,ta,fresh())",
+    "B16_NATIVE_SQL_TLS_CA_SIGNED_WILDCARD_DENIED",
+    "await gone(LOGIN_A)",
+    "PASS Backend16 native Bun.SQL TLS to real disposable PG16",
+  ])assert.ok(runner.includes(marker),marker);
+  assert.ok(shell.includes('verify-backend16-native-pg-tls-ci.ts'));
+  assert.ok(workflow.includes('SAAS_B16_CI_PG_CONTAINER: ${{ job.services.postgres.id }}'));
+  assert.doesNotMatch(runner,/DATABASE_PUBLIC_URL|Bun\.serve|\/data\/auths/);
+});
