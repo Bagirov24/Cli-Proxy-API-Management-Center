@@ -11,7 +11,7 @@
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {existsSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
+import {existsSync,mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
@@ -66,6 +66,30 @@ export function safeNpmFailureCode(stderr,systemError){
   const code=raw.toUpperCase();
   return recognized.has(code)?code:'UNCLASSIFIED';
 }
+/**
+ * Compare genuine independent resolutions, not merely two installs sharing
+ * the same generated lock. Key ordering in npm JSON is immaterial; graph
+ * metadata, registry tarball origins, versions and SRI must be identical.
+ * Each input is separately validated before entering this function in CI.
+ */
+function stableJson(value,depth=0){
+  if(depth>32)refuse();
+  if(value===null||typeof value==='string'||typeof value==='boolean'||
+     (typeof value==='number'&&Number.isFinite(value)))
+    return JSON.stringify(value);
+  if(Array.isArray(value))
+    return '['+value.map(item=>stableJson(item,depth+1)).join(',')+']';
+  if(!value||typeof value!=='object'||
+     Object.getPrototypeOf(value)!==Object.prototype)refuse();
+  return '{'+Object.keys(value).sort().map(key=>
+    JSON.stringify(key)+':'+stableJson(value[key],depth+1)).join(',')+'}';
+}
+export function assertIndependentBackend16NodePgLocks(first,second){
+  const a=stableJson(first);
+  const b=stableJson(second);
+  if(a!==b)refuse();
+  return createHash('sha256').update(a).digest('hex');
+}
 function runNpm(args,dir){
   const minimalEnv={
     PATH:process.env.PATH||'/usr/local/bin:/usr/bin:/bin',
@@ -104,38 +128,50 @@ async function main(){
   if(frontend.name!=='cli-proxy-webui-react'||
      frontend.packageManager!=='bun@1.3.14'||
      !existsSync(join(ROOT,'bun.lock')))refuse();
-  const dir=mkdtempSync(join(tmpdir(),'b16-nodepg-real-lock-ci-'));
+  const rootDir=mkdtempSync(join(tmpdir(),'b16-nodepg-dual-lock-ci-'));
   try{
-    // npm rejects loading the same config file twice. Two distinct empty
-    // temp files also prevent inherited user/global registry credentials.
-    writeFileSync(join(dir,'empty-user.npmrc'),'',{mode:0o600});
-    writeFileSync(join(dir,'empty-global.npmrc'),'',{mode:0o600});
     const pkg=createBackend16GenuineLockCiManifest();
-    writeFileSync(join(dir,'package.json'),JSON.stringify(pkg)+'\n',{mode:0o600});
+    const dirs=[join(rootDir,'independent-a'),join(rootDir,'independent-b')];
+    const receipts=[];
     console.info('B16_REAL_LOCK_CI_RESOLUTION_START');
-    runNpm(LOCK_ARGS,dir);
-    const lockFile=join(dir,'package-lock.json');
-    const lockBytes=readFileSync(lockFile);
-    if(lockBytes.length<1||lockBytes.length>1_000_000)refuse();
-    const lock=boundedJson(lockFile);
-    const proof=verifyBackend16NodePgRuntimePackage(pkg,lock,frontend);
-    assert.equal(proof.status,'PACKAGE_LOCK_CONTRACT_PASS_NOT_RELEASE_APPROVAL');
-    const digest=createHash('sha256').update(lockBytes).digest('hex');
+    for(const dir of dirs){
+      mkdirSync(dir,{mode:0o700});
+      // Independent HOME, cache, manifest and lock: neither registry
+      // resolution can consult the other's npm cache or package-lock.
+      writeFileSync(join(dir,'empty-user.npmrc'),'',{mode:0o600});
+      writeFileSync(join(dir,'empty-global.npmrc'),'',{mode:0o600});
+      writeFileSync(join(dir,'package.json'),JSON.stringify(pkg)+'\n',{mode:0o600});
+      runNpm(LOCK_ARGS,dir);
+      const lockFile=join(dir,'package-lock.json');
+      const lockBytes=readFileSync(lockFile);
+      if(lockBytes.length<1||lockBytes.length>1_000_000)refuse();
+      const lock=boundedJson(lockFile);
+      const proof=verifyBackend16NodePgRuntimePackage(pkg,lock,frontend);
+      assert.equal(proof.status,'PACKAGE_LOCK_CONTRACT_PASS_NOT_RELEASE_APPROVAL');
+      const digest=createHash('sha256').update(lockBytes).digest('hex');
+      receipts.push({dir,lockFile,lock,digest,proof});
+    }
+    const normalizedDigest=assertIndependentBackend16NodePgLocks(
+      receipts[0].lock,receipts[1].lock);
+    if(receipts[0].proof.packageCount!==receipts[1].proof.packageCount)refuse();
     console.info('B16_REAL_LOCK_CI_GRAPH_VALIDATED');
-    runNpm(CLEAN_INSTALL_ARGS,dir);
-    // npm ci must not rewrite the reviewed dependency lock.
-    const after=readFileSync(lockFile);
-    if(createHash('sha256').update(after).digest('hex')!==digest)refuse();
-    const installed=boundedJson(join(dir,'node_modules/pg/package.json'));
-    if(installed.name!=='pg'||installed.version!==EXPECTED_PG_VERSION||
-       existsSync(join(dir,'node_modules/pg-native')))refuse();
+    console.info('B16_REAL_LOCK_CI_INDEPENDENT_RESOLUTIONS_MATCH_PASS');
+    for(const {dir,lockFile,digest} of receipts){
+      runNpm(CLEAN_INSTALL_ARGS,dir);
+      // Both frozen installs must preserve their independently reviewed lock.
+      const after=readFileSync(lockFile);
+      if(createHash('sha256').update(after).digest('hex')!==digest)refuse();
+      const installed=boundedJson(join(dir,'node_modules/pg/package.json'));
+      if(installed.name!=='pg'||installed.version!==EXPECTED_PG_VERSION||
+         existsSync(join(dir,'node_modules/pg-native')))refuse();
+    }
     if(existsSync(join(ROOT,'package-lock.json')))refuse();
     console.info('B16_REAL_LOCK_CI_FROZEN_INSTALL_PASS');
-    console.info('PASS Backend16 Node24 genuine ephemeral pg lock and npm ci: '+
-      proof.packageCount+' packages; sha256='+digest+
-      '; NO RELEASE AUTHORIZATION');
+    console.info('PASS Backend16 Node24 independently resolved pg lock twice: '+
+      receipts[0].proof.packageCount+' packages; canonical_sha256='+
+      normalizedDigest+'; two frozen installs; NO RELEASE AUTHORIZATION');
   }finally{
-    rmSync(dir,{recursive:true,force:true});
+    rmSync(rootDir,{recursive:true,force:true});
   }
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){

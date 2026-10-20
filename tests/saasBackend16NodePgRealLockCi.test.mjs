@@ -7,6 +7,7 @@ import {
   LOCK_ARGS,CLEAN_INSTALL_ARGS,
   createBackend16GenuineLockCiManifest,
   enforceBackend16GenuineLockCiEnvironment,safeNpmFailureCode,
+  assertIndependentBackend16NodePgLocks,
 } from '../scripts/saas-staging/verify-backend16-nodepg-real-lock-ci.mjs';
 import {
   EXPECTED_NAME,EXPECTED_PG_VERSION,
@@ -69,6 +70,10 @@ test('genuine lock acceptance is CI-only, never a release or migration',()=>{
   assert.ok(source.includes("verifyBackend16NodePgRuntimePackage(pkg,lock,frontend)"));
   assert.ok(source.includes("createHash('sha256').update(after)"));
   assert.ok(source.includes('npm_config_ignore_scripts'));
+  assert.ok(source.includes("join(rootDir,'independent-a')"));
+  assert.ok(source.includes("join(rootDir,'independent-b')"));
+  assert.ok(source.includes('assertIndependentBackend16NodePgLocks('));
+  assert.ok(source.includes('B16_REAL_LOCK_CI_INDEPENDENT_RESOLUTIONS_MATCH_PASS'));
   assert.ok(source.includes("join(dir,'empty-user.npmrc')"));
   assert.ok(source.includes("join(dir,'empty-global.npmrc')"));
   assert.doesNotMatch(source,/npm_config_globalconfig:'\/dev\/null'/);
@@ -85,4 +90,46 @@ test('npm errors are reduced to finite, nonsecret diagnostics',()=>{
   assert.equal(safeNpmFailureCode(
     'Bearer abcdef and arbitrary package text'), 'UNCLASSIFIED');
   assert.equal(safeNpmFailureCode('',{code:'EACCES'}), 'EACCES');
+});
+
+test('independent registry locks agree despite JSON key order changes',()=>{
+  const first={name:EXPECTED_NAME,lockfileVersion:3,packages:{
+    '':{name:EXPECTED_NAME,version:'0.0.0'},
+    'node_modules/pg':{version:EXPECTED_PG_VERSION,
+      integrity:'sha512-'+'A'.repeat(86)+'==',
+      resolved:'https://registry.npmjs.org/pg/-/pg-8.23.1.tgz'},
+  }};
+  const second={packages:{
+    'node_modules/pg':{resolved:'https://registry.npmjs.org/pg/-/pg-8.23.1.tgz',
+      integrity:'sha512-'+'A'.repeat(86)+'==',version:EXPECTED_PG_VERSION},
+    '':{version:'0.0.0',name:EXPECTED_NAME},
+  },lockfileVersion:3,name:EXPECTED_NAME};
+  const a=assertIndependentBackend16NodePgLocks(first,second);
+  assert.match(a,/^[0-9a-f]{64}$/);
+  assert.equal(a,assertIndependentBackend16NodePgLocks(first,first));
+});
+test('independent registry lock drift fails closed before npm ci',()=>{
+  const first={lockfileVersion:3,packages:{
+    'node_modules/pg':{version:EXPECTED_PG_VERSION,
+      integrity:'sha512-'+'A'.repeat(86)+'==',
+      resolved:'https://registry.npmjs.org/pg/-/pg-8.23.1.tgz'},
+  }};
+  const altered=structuredClone(first);
+  altered.packages['node_modules/pg'].integrity='sha512-'+'B'.repeat(86)+'==';
+  refused(()=>assertIndependentBackend16NodePgLocks(first,altered));
+  altered.packages['node_modules/pg'].integrity=
+    first.packages['node_modules/pg'].integrity;
+  altered.packages['node_modules/pg'].version='8.23.2';
+  refused(()=>assertIndependentBackend16NodePgLocks(first,altered));
+  altered.packages['node_modules/pg'].version=EXPECTED_PG_VERSION;
+  altered.packages['node_modules/other']={version:'1.0.0'};
+  refused(()=>assertIndependentBackend16NodePgLocks(first,altered));
+});
+test('independent lock rejects non-JSON values and malformed graph shapes',()=>{
+  refused(()=>assertIndependentBackend16NodePgLocks({packages:{bad:undefined}},
+    {packages:{bad:undefined}}));
+  refused(()=>assertIndependentBackend16NodePgLocks(
+    {packages:new Date()},{packages:new Date()}));
+  refused(()=>assertIndependentBackend16NodePgLocks(
+    {packages:{}},Object.create(null)));
 });
