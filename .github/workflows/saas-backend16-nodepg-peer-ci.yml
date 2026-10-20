@@ -1,0 +1,66 @@
+name: Backend16 Node PG peer verification (disposable, no release)
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/saas-backend16-nodepg-peer-ci.yml'
+      - 'scripts/saas-staging/verify-backend16-nodepg-peer-ci.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nodepg-peer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16.6
+        env:
+          POSTGRES_DB: saas_ephemeral_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_ephemeral_test_only
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d saas_ephemeral_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGDATABASE: saas_ephemeral_test
+      PGPASSWORD: ci_ephemeral_test_only
+      SAAS_B16_NODEPG_PEER_CI: 'true'
+    steps:
+      - name: Checkout disposable source
+        uses: actions/checkout@v4
+      - name: Install Node 24 (not a runtime package change)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install separately pinned pg candidate in CI temp only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e .env.production
+          test ! -e /data/auths
+          mkdir -p /tmp/b16-nodepg-peer
+          npm install --prefix /tmp/b16-nodepg-peer --no-save --package-lock=false --ignore-scripts --no-audit --no-fund pg@8.23.1
+          node -p 'require("/tmp/b16-nodepg-peer/node_modules/pg/package.json").version' | grep -Fx 8.23.1
+          test ! -e package-lock.json
+      - name: Real authenticated PostgreSQL16 TLS peer identity and denial cases
+        shell: bash
+        env:
+          SAAS_B16_CI_PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM --kill-after=3s 120s node --experimental-strip-types scripts/saas-staging/verify-backend16-nodepg-peer-ci.ts
