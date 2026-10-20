@@ -29,6 +29,11 @@ on:
       - 'tests/saasBackend16CiBunPhysicalPgPool.test.ts'
       - 'src/features/saasBlueprint/controlApi/server/backend16StagingBunPhysicalPgPool.ts'
       - 'tests/saasBackend16StagingBunPhysicalPgPool.test.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16DisposableNodePgPhysicalPool.ts'
+      - 'tests/saasBackend16DisposableNodePgPhysicalPool.test.ts'
+      - 'scripts/saas-staging/verify-backend16-nodepg-exact-pg16-ci.ts'
+      - 'scripts/saas-staging/backend16-nodepg-synthetic-mtls-broker-ci.ts'
+      - 'docs/saas/BACKEND_16_NODEPG_EXACT_PG16_E2E.md'
       - 'src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts'
       - 'tests/saasBackend16StagingPgTlsTrust.test.ts'
       - 'tests/saasBackend16IntegrationWorkflow.test.ts'
@@ -54,6 +59,8 @@ on:
       - 'tests/fixtures/backend16-synthetic-root-ca.pem'
       - 'docs/saas/BACKEND_16_10_OPERATOR_PINNED_PG_TLS.md'
       - 'scripts/saas-staging/verify-backend16-bun-physical-pid-ci.ts'
+      - 'scripts/saas-staging/verify-backend16-native-pg-tls-ci.ts'
+      - 'docs/saas/BACKEND_16_NATIVE_BUN_SQL_TLS_E2E.md'
       - 'docs/saas/BACKEND_16_7_BUN_PHYSICAL_PG_PID_CI.md'
       - 'docs/saas/BACKEND_16_9_STAGING_PHYSICAL_PG16_E2E.md'
       - 'docs/saas/BACKEND_16_EXACT_SQL_READ_PORT.md'
@@ -99,13 +106,21 @@ jobs:
       - name: Genuine ephemeral Node24 pg lock and clean install (never committed)
         run: node scripts/saas-staging/verify-backend16-nodepg-real-lock-ci.mjs
       - name: Fail-closed HTTP and origin-injection contracts
-        run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts tests/saasBackend16PinnedSessionAuthenticator.test.ts tests/saasBackend16PhysicalPgAdmission.test.ts tests/saasBackend16ExactSessionGate.test.ts tests/saasBackend16ExactSessionSqlRead.test.ts tests/saasBackend16CiBunPhysicalPgPool.test.ts tests/saasBackend16StagingBunPhysicalPgPool.test.ts tests/saasBackend16StagingPgTlsTrust.test.ts tests/saasBackend16TlsPeerProbe.test.ts tests/saasBackend16ReleaseEvidenceGate.test.ts tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts tests/saasBackend16StagingVersionedPrincipalVault.test.ts tests/saasBackend16PrivateMtlsVersionedSecretReader.test.ts
+        run: bun test tests/saasBackend16PrivateTenantProjectRead.test.ts tests/saasBackend16PinnedSessionAuthenticator.test.ts tests/saasBackend16PhysicalPgAdmission.test.ts tests/saasBackend16ExactSessionGate.test.ts tests/saasBackend16ExactSessionSqlRead.test.ts tests/saasBackend16CiBunPhysicalPgPool.test.ts tests/saasBackend16StagingBunPhysicalPgPool.test.ts tests/saasBackend16DisposableNodePgPhysicalPool.test.ts tests/saasBackend16StagingPgTlsTrust.test.ts tests/saasBackend16TlsPeerProbe.test.ts tests/saasBackend16ReleaseEvidenceGate.test.ts tests/saasBackend16Sql0008ReadOnlyReconcile.test.ts tests/saasBackend16StagingVersionedPrincipalVault.test.ts tests/saasBackend16PrivateMtlsVersionedSecretReader.test.ts
       - name: Real disposable Node24 mutual TLS versioned secret service acceptance
         run: node --experimental-strip-types scripts/saas-staging/verify-backend16-mtls-secret-broker-ci.ts
       - name: Bun build of broker mTLS transport module
         run: bun build --target=bun src/features/saasBlueprint/controlApi/server/backend16PrivateMtlsVersionedSecretReader.ts --outdir /tmp/b16-mtls-secret-transport
+      - name: Compile unmounted Node24 PostgreSQL exact TLS adapter
+        run: bun build --target=bun src/features/saasBlueprint/controlApi/server/backend16DisposableNodePgPhysicalPool.ts --outdir /tmp/b16-nodepg-exact-ci
+      - name: Validate standalone Node24 exact E2E TypeScript syntax
+        run: node --experimental-strip-types --check scripts/saas-staging/verify-backend16-nodepg-exact-pg16-ci.ts
+      - name: Validate isolated mTLS fixture TypeScript syntax
+        run: node --experimental-strip-types --check scripts/saas-staging/backend16-nodepg-synthetic-mtls-broker-ci.ts
       - name: Validate Backend16.4 disposable PG16 runner syntax
         run: bash -n scripts/saas-staging/verify-backend16-exact-session-pg16.sh
+      - name: Bundle CI-only native Bun PostgreSQL16 TLS fixture (no DB contact)
+        run: bun build --target=bun scripts/saas-staging/verify-backend16-native-pg-tls-ci.ts --outdir /tmp/b16-native-pg-tls-ci-bundle
       - name: Bundle isolated, no-credential Bun TLS peer observation
         run: bun build --target=bun scripts/saas-staging/backend16-pg-tls-peer-observation.ts --outdir /tmp/b16-pg-tls-peer-probe
       - name: Real loopback verified-full PostgreSQL TLS (Node24, isolated)
