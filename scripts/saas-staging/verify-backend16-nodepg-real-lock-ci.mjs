@@ -55,6 +55,17 @@ function boundedJson(file,maxBytes=1_000_000){
   try{return JSON.parse(data.toString('utf8'));}
   catch{refuse();}
 }
+export function safeNpmFailureCode(stderr,systemError){
+  const recognized=new Set([
+    'EAI_AGAIN','ENOTFOUND','ETIMEDOUT','ECONNRESET','ECONNREFUSED',
+    'EACCES','EPERM','ENOENT','EUSAGE','ERESOLVE','E404','E403',
+    'CERT_HAS_EXPIRED','SELF_SIGNED_CERT_IN_CHAIN','UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  ]);
+  const raw=String(systemError?.code||'')||String(
+    String(stderr||'').match(/(?:npm (?:error|ERR!) code)\s+([A-Z0-9_]+)/i)?.[1]||'');
+  const code=raw.toUpperCase();
+  return recognized.has(code)?code:'UNCLASSIFIED';
+}
 function runNpm(args,dir){
   const minimalEnv={
     PATH:process.env.PATH||'/usr/local/bin:/usr/bin:/bin',
@@ -78,7 +89,12 @@ function runNpm(args,dir){
     stdio:['ignore','pipe','pipe'],
     timeout:120_000,maxBuffer:2_000_000,
   });
-  if(p.error||p.status!==0||p.signal)refuse();
+  if(p.error||p.status!==0||p.signal){
+    const phase=args[0]==='install'?'RESOLVE':'CLEAN_INSTALL';
+    console.error('B16_REAL_LOCK_CI_NPM_'+phase+'_FAIL_'+
+      safeNpmFailureCode(p.stderr,p.error));
+    refuse();
+  }
 }
 async function main(){
   enforceBackend16GenuineLockCiEnvironment(

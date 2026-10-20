@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {
   LOCK_ARGS,CLEAN_INSTALL_ARGS,
   createBackend16GenuineLockCiManifest,
-  enforceBackend16GenuineLockCiEnvironment,
+  enforceBackend16GenuineLockCiEnvironment,safeNpmFailureCode,
 } from '../scripts/saas-staging/verify-backend16-nodepg-real-lock-ci.mjs';
 import {
   EXPECTED_NAME,EXPECTED_PG_VERSION,
@@ -72,4 +72,14 @@ test('genuine lock acceptance is CI-only, never a release or migration',()=>{
   assert.ok(source.includes("rmSync(dir,{recursive:true,force:true})"));
   assert.ok(source.includes('NO RELEASE AUTHORIZATION'));
   assert.doesNotMatch(source,/Bun\.serve|CREATE ROLE|ALTER ROLE|SQL0008|DATABASE_PUBLIC_URL/);
+});
+
+test('npm errors are reduced to finite, nonsecret diagnostics',()=>{
+  assert.equal(safeNpmFailureCode(
+    'npm error code ENOTFOUND\nsecret=should-never-print'), 'ENOTFOUND');
+  assert.equal(safeNpmFailureCode(
+    'npm error code E404\nrequest https://example/token/123'), 'E404');
+  assert.equal(safeNpmFailureCode(
+    'Bearer abcdef and arbitrary package text'), 'UNCLASSIFIED');
+  assert.equal(safeNpmFailureCode('',{code:'EACCES'}), 'EACCES');
 });
