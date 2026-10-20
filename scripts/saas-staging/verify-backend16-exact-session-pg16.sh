@@ -191,8 +191,16 @@ SAAS_B16_CI_B_BINDING="$binding_b" \
     "${SAAS_B16_NATIVE_BUN_BIN:?pinned native SQL TLS runtime required}" scripts/saas-staging/verify-backend16-native-pg-tls-ci.ts \
   > /tmp/b16-native-pg-tls-ci.log 2>&1 ||
   { tail -n 22 /tmp/b16-native-pg-tls-ci.log >&2; fail; }
-grep -q 'PASS Backend16 native Bun.SQL TLS to real disposable PG16' \
-  /tmp/b16-native-pg-tls-ci.log || fail
+for marker in \
+ B16_NATIVE_SQL_TLS_REAL_PID_VERIFIED \
+ B16_NATIVE_SQL_TLS_TWO_TENANT_RLS_PASS \
+ B16_NATIVE_SQL_TLS_ALWAYS_DENY_CALLBACK_ENFORCED \
+ B16_NATIVE_SQL_TLS_WRONG_ROOT_DENIED \
+ B16_NATIVE_SQL_TLS_CA_SIGNED_WILDCARD_DENIED; do
+ grep -Fx "$marker" /tmp/b16-native-pg-tls-ci.log || fail
+done
+grep -Fx 'PASS Backend16 native Bun.SQL TLS to real disposable PG16' \
+ /tmp/b16-native-pg-tls-ci.log || fail
 eq wrong_session f "$(a "$(query "$tenant_a" "$session_b" "$binding_a" "$fp_a")")"
 eq wrong_binding f "$(a "$(query "$tenant_a" "$session_a" "$binding_b" "$fp_a")")"
 eq wrong_digest f "$(a "$(query "$tenant_a" "$session_a" "$binding_a" "$fp_b")")"

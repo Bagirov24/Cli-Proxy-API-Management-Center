@@ -271,7 +271,8 @@ try{
   // Node's default DNS matcher WOULD accept this same-CA wildcard.
   const wildcard=new X509Certificate(
     readFileSync(join(dir,'wildcard.crt'),'utf8'));
-  assert.equal(wildcard.checkHost(HOST),HOST);
+  assert.equal(wildcard.checkHost(HOST),'*.railway.internal');
+  assert.equal(wildcard.checkHost(HOST,{subject:'never',wildcards:false}),undefined);
   assert.ok(approved.checkServerIdentity(HOST,{
     raw:wildcard.raw,subjectaltname:wildcard.subjectAltName,
     subject:{CN:HOST},
