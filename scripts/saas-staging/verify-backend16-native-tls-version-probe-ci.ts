@@ -124,6 +124,7 @@ try{
   });
   console.info('B16_BUN143_ONE_ARG_ALWAYS_DENY_'+
     (!denyAlways&&invoked>0?'ENFORCED':'IGNORED'));
+  console.info('B16_BUN143_ONE_ARG_CALLBACK_CALLS_'+invoked);
 
   // Determine whether the constructor accepts TLSOptions ONLY when the
   // connection URL and options are supplied as separate arguments.
@@ -141,6 +142,7 @@ try{
   }finally{await urlSql.close({timeout:0});}
   console.info('B16_BUN143_TWO_ARG_URL_ALWAYS_DENY_'+
     (urlDenied&&urlInvoked>0?'ENFORCED':'IGNORED'));
+  console.info('B16_BUN143_TWO_ARG_CALLBACK_CALLS_'+urlInvoked);
 
   const plaintext=new SQL({
     adapter:'postgres',hostname:'127.0.0.1',port:5432,
