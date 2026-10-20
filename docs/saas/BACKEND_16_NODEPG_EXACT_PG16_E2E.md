@@ -121,7 +121,7 @@ NATIVE_SQL_TLS_PEER_AUTHENTICATION_VERIFIED=false. This experiment
 must not bypass, edit, or skip that security blocker to produce
 superficially green CI. Real transport replacement is separately
 reviewed and production is blocked.
- 
+
 
 ## Async node-postgres socket error quarantine (stacked security regression)
 
