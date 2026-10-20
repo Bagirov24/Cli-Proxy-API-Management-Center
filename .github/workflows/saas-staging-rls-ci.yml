@@ -1420,6 +1420,11 @@ jobs:
             bun scripts/saas-staging/verify-identity-physical-discard-pg16.mjs
           unset identity_password runner_password scope_key
 
+      - name: Install Node 24 for isolated Backend16 TLS driver comparison
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
       - name: Backend08/09 isolated PG16 migrator role, ledger and dump-restore (CI only)
         shell: bash
         env:
