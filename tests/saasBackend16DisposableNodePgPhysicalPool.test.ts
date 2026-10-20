@@ -79,7 +79,7 @@ test('CI PG16 proof uses a real guarded two-principal mTLS broker',()=>{
     "e.SAAS_B16_BROKER_MTLS_CI!=='true'",
     "server.listen(0,'127.0.0.1',resolve)",
     "requestCert:true,rejectUnauthorized:true",
-    "approvedClientDerSha256",
+    "approvedClient=trust.approvedClientCertDerSha256",
     "req.method!=='GET'",
     "mode==='wrong-version'",
     "mode==='expired'",
