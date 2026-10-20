@@ -175,6 +175,8 @@ try{
   const wrongPem=root('wrong-root');
   leaf('valid',HOST);
   leaf('wildcard','*.railway.internal');
+  assert.throws(()=>command('openssl',[ 'verify','-CAfile',
+    join(dir,'wrong-root.pem'),join(dir,'valid.crt')]));
   const approved=createBackend16StagingPgTlsTrust({
     caPem:rootPem,approvedCaDerSha256:pin(rootPem),
   });
@@ -228,15 +230,41 @@ try{
     console.info('B16_NATIVE_SQL_TLS_TWO_TENANT_RLS_PASS');
   }finally{await pool.shutdown();}
 
+  // An unconditionally refusing callback must run before ANY SQL login.
+  // This independent probe distinguishes TLS verification from merely
+  // having pg_stat_ssl.ssl=true (encryption without trusted identity).
+  let alwaysDenyFired=false;
+  const rejectAll=new SQL({
+    adapter:'postgres',hostname:'127.0.0.1',port:5432,
+    username:LOGIN_A,password:credentials.get(LOGIN_A),
+    database:'saas_staging_ci',max:1,prepare:false,
+    tls:{ca:rootPem,serverName:HOST,rejectUnauthorized:true,
+      checkServerIdentity:()=>{
+        alwaysDenyFired=true;
+        return new Error('B16 intentionally rejected native TLS callback');
+      },
+    },
+  });
+  let forcedCallbackDenied=false;
+  try{
+    try{await rejectAll.unsafe('SELECT 1 AS synthetic_probe').execute();}
+    catch{forcedCallbackDenied=true;}
+  }finally{await rejectAll.close({timeout:0});}
+  console.info('B16_NATIVE_SQL_TLS_ALWAYS_DENY_CALLBACK_'+
+    (forcedCallbackDenied&&alwaysDenyFired?'ENFORCED':'NOT_ENFORCED'));
+
   const wrongRootPool=createBackend16StagingDisposableCiTlsPhysicalPgPool(
     vault,unrelatedRoot);
+  let wrongRootDenied=false;
   try{
     const rejected=createBackend16ExactSqlReadPort({
       pool:wrongRootPool,expectedDatabase:'saas_staging_ci',
     });
-    await assert.rejects(rejected(a,ta,fresh()),/unavailable/);
+    try{await rejected(a,ta,fresh());}
+    catch{wrongRootDenied=true;}
     await gone(LOGIN_A);
-    console.info('B16_NATIVE_SQL_TLS_WRONG_ROOT_NO_PRINCIPAL_LOGIN');
+    console.info('B16_NATIVE_SQL_TLS_WRONG_ROOT_'+
+      (wrongRootDenied?'DENIED':'UNEXPECTEDLY_ACCEPTED'));
   }finally{await wrongRootPool.shutdown();}
 
   // Node's default DNS matcher WOULD accept this same-CA wildcard.
@@ -251,15 +279,20 @@ try{
   await reloadTls();
   const wildcardPool=createBackend16StagingDisposableCiTlsPhysicalPgPool(
     vault,approved);
+  let wildcardDenied=false;
   try{
     const rejected=createBackend16ExactSqlReadPort({
       pool:wildcardPool,expectedDatabase:'saas_staging_ci',
     });
-    await assert.rejects(rejected(a,ta,fresh()),/unavailable/);
+    try{await rejected(a,ta,fresh());}
+    catch{wildcardDenied=true;}
     await gone(LOGIN_A);
-    console.info('B16_NATIVE_SQL_TLS_CA_SIGNED_WILDCARD_DENIED');
+    console.info('B16_NATIVE_SQL_TLS_CA_SIGNED_WILDCARD_'+
+      (wildcardDenied?'DENIED':'UNEXPECTEDLY_ACCEPTED'));
   }finally{await wildcardPool.shutdown();}
 
+  assert.ok(forcedCallbackDenied&&alwaysDenyFired&&wrongRootDenied&&wildcardDenied,
+    'STOP: native Bun.SQL TLS trust/identity negative probe was accepted');
   assert.ok(vaultCalls>=7,
     'every physical attempt requires a fresh immutable-version vault read');
   console.info('PASS Backend16 native Bun.SQL TLS to real disposable PG16');
