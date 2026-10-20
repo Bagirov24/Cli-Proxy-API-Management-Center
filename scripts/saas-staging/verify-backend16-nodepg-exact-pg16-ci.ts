@@ -321,8 +321,18 @@ async function execute(){
   // waiting physical client and prove its socket dies with no data published.
   const waitingPool=createBackend16DisposableCiNodePgPhysicalPool(
     vault,trust(caPem),Client);
-  let locked=false;
+  // Monitoring must use a DIFFERENT physical transaction from the row-lock
+  // holder. PostgreSQL can cache statistics for an observer within a long
+  // transaction; never infer a concurrent lock from its own snapshot.
+  const observer=new Client({
+    host:'127.0.0.1',port:5432,database:'saas_staging_ci',
+    user:'postgres',password:'ci_ephemeral_test_only',
+    connectionTimeoutMillis:4000,ssl:false,
+  });
+  observer.on('error',()=>{});
+  let locked=false,observerConnected=false;
   try{
+    await observer.connect();observerConnected=true;
     await admin.query('BEGIN');
     locked=true;
     const row=await admin.query(
@@ -334,28 +344,33 @@ async function execute(){
     });
     const cancel=new AbortController();
     const waiting=read(a,ta,cancel.signal);
-    // Consume any early failure immediately: Node24 otherwise terminates
-    // the process on an unhandled rejection while inspecting pg_stat_activity.
+    // Consume early rejection immediately. A legitimate lock wait must be
+    // independently observed BEFORE cancellation, not inferred from failure.
+    let readSettled=false;
     const refused=assert.rejects(waiting,
-      /Backend16 exact SQL data source unavailable/);
+      /Backend16 exact SQL data source unavailable/)
+      .then(()=>{readSettled=true;});
     let waitingPid=0;
-    for(let i=0;i<40;i++){
-      const rows=await admin.query(
+    for(let i=0;i<280&&!readSettled;i++){
+      const rows=await observer.query(
         "SELECT pid::int AS pid FROM pg_stat_activity WHERE datname=$1 "+
-        "AND usename=$2 AND wait_event_type='Lock' LIMIT 1",
-        ['saas_staging_ci',A]);
+        "AND usename=$2 AND application_name=$3 "+
+        "AND wait_event_type='Lock' LIMIT 1",
+        ['saas_staging_ci',A,'b16-nodepg-exact-ci']);
       if(rows.rows.length===1&&Number.isSafeInteger(rows.rows[0].pid)){
         waitingPid=rows.rows[0].pid as number;break;
       }
-      await sleep(35);
+      await sleep(18);
     }
-    assert.ok(waitingPid>0,'exact PG read must wait for current grant row');
+    assert.ok(waitingPid>0,
+      'exact PG read must genuinely wait on current grant before cancellation');
     cancel.abort();
     await refused;
     await gone(waitingPid);
     console.info('B16_NODEPG_EXACT_LOCK_ABORT_PID_DEATH_PASS');
   }finally{
     if(locked){try{await admin.query('ROLLBACK');}catch{/* CI only */}}
+    if(observerConnected){try{await observer.end();}catch{/* CI only */}}
     await waitingPool.shutdown();
   }
   assert.ok(broker.calls()>=10,
