@@ -161,7 +161,8 @@ async function run(){
   leaf('cn-only');
   const wc=new X509Certificate(readFileSync(join(dir,'wildcard.crt'),'utf8'));
   assert.equal(wc.verify(new X509Certificate(pem).publicKey),true);
-  assert.equal(wc.checkHost(HOST),HOST);
+  assert.equal(wc.checkHost(HOST),'*.railway.internal',
+    'Node default hostname matcher accepts CA-valid wildcard; strict callback must refuse');
   assert.ok(tlsOptions(pem).branded.checkServerIdentity(HOST,{
     raw:wc.raw,subjectaltname:wc.subjectAltName,subject:{CN:HOST},
   }) instanceof Error,'same-CA wildcard must fail offline exact SAN predicate');
