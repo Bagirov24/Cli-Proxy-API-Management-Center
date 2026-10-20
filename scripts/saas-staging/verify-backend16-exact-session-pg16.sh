@@ -133,6 +133,26 @@ SAAS_B16_CI_B_BINDING="$binding_b" \
   > /tmp/b16-bun-physical-ci.log 2>&1 ||
   { tail -n 24 /tmp/b16-bun-physical-ci.log >&2; fail; }
 grep -q 'PASS Backend16.7: real Bun.SQL' /tmp/b16-bun-physical-ci.log || fail
+# Newly isolated native verify-full Bun.SQL acceptance, using the exact
+# GitHub Actions PostgreSQL service container only (never permanent SQL0008).
+SAAS_B16_PHYSICAL_CI=true \
+SAAS_B16_PHYSICAL_TLS_CI=true \
+SAAS_B16_CI_A_PASSWORD="$a_pw" \
+SAAS_B16_CI_B_PASSWORD="$b_pw" \
+SAAS_B16_CI_A_SUBJECT_SHA="$fp_a" \
+SAAS_B16_CI_B_SUBJECT_SHA="$fp_b" \
+SAAS_B16_CI_A_TENANT="$tenant_a" \
+SAAS_B16_CI_B_TENANT="$tenant_b" \
+SAAS_B16_CI_A_SESSION="$session_a" \
+SAAS_B16_CI_B_SESSION="$session_b" \
+SAAS_B16_CI_A_BINDING="$binding_a" \
+SAAS_B16_CI_B_BINDING="$binding_b" \
+  timeout --signal=TERM --kill-after=3s 95s \
+    bun scripts/saas-staging/verify-backend16-native-pg-tls-ci.ts \
+  > /tmp/b16-native-pg-tls-ci.log 2>&1 ||
+  { tail -n 22 /tmp/b16-native-pg-tls-ci.log >&2; fail; }
+grep -q 'PASS Backend16 native Bun.SQL TLS to real disposable PG16' \
+  /tmp/b16-native-pg-tls-ci.log || fail
 eq wrong_session f "$(a "$(query "$tenant_a" "$session_b" "$binding_a" "$fp_a")")"
 eq wrong_binding f "$(a "$(query "$tenant_a" "$session_a" "$binding_b" "$fp_a")")"
 eq wrong_digest f "$(a "$(query "$tenant_a" "$session_a" "$binding_a" "$fp_b")")"
