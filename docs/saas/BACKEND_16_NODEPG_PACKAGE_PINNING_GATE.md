@@ -52,3 +52,32 @@ validation only**. It refuses candidate packaging unless:
 **This check never grants production authorization.** No Railway access,
 permanent SQL0008 replay, production Core/Gateway, `custom-no-apikey-fun`,
 `/data`, credentials, volumes, releases or deployments are permitted by it.
+
+
+## Next CI-only increment — genuine ephemeral dependency lock proof
+
+A separate stacked Draft runs one new **isolated GitHub Actions Node24**
+experiment. It writes a minimal private, Node24-specific server manifest into
+a mode-restricted OS temp directory, asks npm to resolve a genuine
+`package-lock.json` **only in that disposable directory**, applies the
+existing offline fail-closed validator against the repository's frontend
+manifest and then executes `npm ci --ignore-scripts` from that exact lock.
+
+Both commands run with an isolated HOME/cache, fixed public npm HTTPS
+registry, disabled lifecycle scripts, disabled audit/fund network calls and
+without inherited tokens or Railway credentials. The script checks the
+installed pg version, proves the generated lock was not rewritten and
+deletes all manifests, package files and lock data after the job.
+
+**No npm lock, npm dependency, server package or package manager selection
+is committed or authorized by this CI experiment.** The repository continues
+to require Bun 1.3.14 and `bun.lock`. The experiment is not a substitute
+for inspecting actual tarball content, supply-chain review, reproducibility
+across separate runners, future registry re-resolution drift or vendor
+signatures. It is NOT production certification. Real server-only packaging
+needs independent owner approval and a separately reviewed release decision.
+
+The previous known native Bun.SQL same-socket wrong-root/wildcard TLS
+negative MUST remain RED and cannot be skipped to make stacked CI green.
+No staging/prod Railway operations, live credentials, permanent SQL0008,
+public endpoint or migration are allowed.
