@@ -9,6 +9,8 @@ on:
       - 'tests/saasBackend16NodePgRuntimeLock.test.mjs'
       - 'scripts/saas-staging/verify-backend16-nodepg-real-lock-ci.mjs'
       - 'tests/saasBackend16NodePgRealLockCi.test.mjs'
+      - 'scripts/saas-staging/verify-backend16-nodepg-locked-pg16-tls-ci.mjs'
+      - 'tests/saasBackend16LockedPg16TlsCi.test.mjs'
       - 'docs/saas/BACKEND_16_NODEPG_PACKAGE_PINNING_GATE.md'
       - 'package.json'
       - 'src/features/saasBlueprint/controlApi/server/backend16PinnedSessionAuthenticator.ts'
@@ -82,6 +84,8 @@ jobs:
         run: node --test tests/saasBackend16NodePgRuntimeLock.test.mjs
       - name: Node24 genuine ephemeral npm lock CI guards (no install)
         run: node --test tests/saasBackend16NodePgRealLockCi.test.mjs
+      - name: Node24 locked PostgreSQL16 TLS gate unit tests (no socket)
+        run: node --test tests/saasBackend16LockedPg16TlsCi.test.mjs
       - name: Genuine ephemeral Node24 pg lock and clean install (never committed)
         run: node scripts/saas-staging/verify-backend16-nodepg-real-lock-ci.mjs
       - name: Fail-closed HTTP and origin-injection contracts
@@ -102,3 +106,39 @@ jobs:
         run: bun build --target=bun src/features/saasBlueprint/controlApi/server/backend16VerifiedPrivatePgTls.ts --outdir /tmp/b16-pg-verify-full
       - name: Strict TypeScript for full source
         run: bun run type-check
+
+  locked-nodepg-physical-tls:
+    name: Locked Node24 pg on disposable TLS PostgreSQL16
+    needs: private-read-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16.6
+        env:
+          POSTGRES_DB: saas_ephemeral_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_ephemeral_test_only
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d saas_ephemeral_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      CI: 'true'
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGDATABASE: saas_ephemeral_test
+      PGPASSWORD: ci_ephemeral_test_only
+      SAAS_B16_LOCKED_PG16_CI: 'true'
+      SAAS_B16_NODEPG_PG16_CONTAINER: ${{ job.services.postgres.id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Authenticate locked Node pg on disposable TLS PG16 (no DB migrations)
+        run: node scripts/saas-staging/verify-backend16-nodepg-real-lock-ci.mjs

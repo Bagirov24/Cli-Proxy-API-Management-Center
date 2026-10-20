@@ -133,3 +133,30 @@ for a separately approved immutable production server lock.
 No production packaging, Railway access, permanent SQL0008, release
 promotion, or mitigation claim for the known native Bun.SQL TLS failure is
 introduced. Project-wide Bun lockfile rules stay unchanged.
+
+## Stacked isolated locked-package PostgreSQL16 TLS proof (CI only)
+
+An independent Draft pairs the **actual verified npm-lock installations** with
+a different, throwaway `postgres:16.6` GitHub Actions service. After verifying
+both independently resolved locks against each other and the observed graph,
+CI authenticates a restricted synthetic PostgreSQL LOGIN using `pg@8.23.1`
+*from each of the two installed directories*. The same physical authenticated
+connection must verify CA chain, fixed `postgres.railway.internal` SNI and
+**exact SAN without wildcard or CN fallback**, then return a backend PID and
+`pg_stat_ssl.ssl=true`. Both connections must close, with PID disappearance
+observed on the disposable service. Wrong-root CA and a CA-signed wildcard
+SAN each must refuse authentication before any query.
+
+CA/leaf private keys are generated in a one-use runner directory and
+installed **only** into the disposable GitHub PostgreSQL16 Docker service,
+which is deleted by Actions. No permanent SQL0008, tenant migration or
+production database is touched. The script uses no public SaaS listener,
+no Railway configuration and no live workload identities. It is intentionally
+a narrow authenticated TLS transport proof and **does not claim an integrated
+tenant RLS or mTLS secret-broker E2E**: those remain separately tested in the
+unmerged Backend16 Node transport stack, pending independent review and
+a separately approved runtime packaging decision.
+
+This is source-only, opt-in, disposable CI evidence, not an approved
+server runtime or staging/prod deployment. The RED Bun.SQL wrong-root/
+wildcard TLS outcome remains a hard production blocker.

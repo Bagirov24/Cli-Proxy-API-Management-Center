@@ -193,6 +193,14 @@ async function main(){
     }
     if(existsSync(join(ROOT,'package-lock.json')))refuse();
     console.info('B16_REAL_LOCK_CI_FROZEN_INSTALL_PASS');
+    // Optional extra physical trust proof: only the separately isolated
+    // GitHub PostgreSQL16 job can opt in. Never select this in production.
+    if(process.env.SAAS_B16_LOCKED_PG16_CI!==undefined){
+      if(process.env.SAAS_B16_LOCKED_PG16_CI!=='true')refuse();
+      const {runLockedPg16PhysicalTlsCi}=await import(
+        './verify-backend16-nodepg-locked-pg16-tls-ci.mjs');
+      await runLockedPg16PhysicalTlsCi(receipts.map(r=>r.dir));
+    }
     console.info('PASS Backend16 Node24 independently resolved pg lock twice: '+
       receipts[0].proof.packageCount+' packages; canonical_sha256='+
       normalizedDigest+'; two frozen installs; NO RELEASE AUTHORIZATION');
