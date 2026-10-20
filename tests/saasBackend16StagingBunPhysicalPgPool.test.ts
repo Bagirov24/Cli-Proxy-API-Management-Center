@@ -5,6 +5,7 @@ import {
   createBackend16StagingBunPhysicalPgPool,
   createBackend16StagingSqlSequence,
   createBackend16StagingDisposableCiPhysicalPgPool,
+  createBackend16StagingDisposableCiTlsPhysicalPgPool,
 } from '../src/features/saasBlueprint/controlApi/server/backend16StagingBunPhysicalPgPool.ts';
 import {BACKEND16_EXACT_READ_SQL as SQL}
   from '../src/features/saasBlueprint/controlApi/server/backend16ExactSessionSqlRead.ts';
@@ -85,6 +86,8 @@ test('no production login, arbitrary SQL, HTTP, retry or migration capability',(
 test('CI entrypoint refuses all non-disposable environments',()=>{
   assert.throws(()=>createBackend16StagingDisposableCiPhysicalPgPool(vault),
     /limited to disposable GitHub PG16/);
+  assert.throws(()=>createBackend16StagingDisposableCiTlsPhysicalPgPool(
+    vault,null as never),/native TLS limited to disposable GitHub PG16/);
 });
 test('shared physical core has no public host/profile injection and pins local CI',()=>{
   assert.match(source,/const DISPOSABLE_CI_PROFILE:Backend16BunPgProfile/);
@@ -94,6 +97,8 @@ test('shared physical core has no public host/profile injection and pins local C
   assert.match(source,/Object.freeze\(\{\.\.\.STAGING_PROFILE,tls:tlsTrust\}\)/);
   assert.match(source,/!backend16IsApprovedStagingPgTlsTrust\(tlsTrust\)/);
   assert.match(source,/profile\.tls\?\{tls:profile\.tls\}:\{\}/);
+  assert.ok(source.includes("env.SAAS_B16_PHYSICAL_TLS_CI!=='true'"));
+  assert.ok(source.includes('Object.freeze({...DISPOSABLE_CI_PROFILE,tls:tlsTrust})'));
   assert.doesNotMatch(source,/database:'saas_staging_ci',tls:/);
   assert.match(source,/env\.GITHUB_ACTIONS!=='true'/);
   assert.match(source,/env\.PGPASSWORD!=='ci_ephemeral_test_only'/);
