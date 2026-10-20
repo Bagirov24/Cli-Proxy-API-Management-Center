@@ -285,6 +285,41 @@ async function execute(){
     console.info('B16_NODEPG_EXACT_PHYSICAL_SSL_PID_DISCARD_PASS');
   }finally{await physical.shutdown();}
 
+  // A node-postgres client may emit an asynchronous error while there is no
+  // query promise to reject. Use the genuine authenticated PG16 connection
+  // and inject that event between two exact-protocol statements. It must
+  // synchronously poison the shared request-local pool, physically destroy
+  // the already authenticated PID and refuse further tenant data reads.
+  const captured:Array<{emit(event:string,error:Error):boolean}>=[];
+  class FaultInjectingClient extends Client {
+    constructor(options:Readonly<Record<string,unknown>>){
+      super(options);
+      captured.push(this as unknown as {emit(event:string,error:Error):boolean});
+    }
+  }
+  const faultPool=createBackend16DisposableCiNodePgPhysicalPool(
+    vault,trust(caPem),FaultInjectingClient);
+  try{
+    const conn=await faultPool.acquirePrincipal(A,fresh());
+    const signal=fresh();
+    for(const sql of [SQL.begin,SQL.statementTimeout,SQL.lockTimeout])
+      await conn.query(sql,[],signal);
+    const identity=await conn.query(SQL.identity,[],signal);
+    const faultPid=identity.rows[0].backend_pid;
+    assert.ok(Number.isSafeInteger(faultPid)&&faultPid>0);
+    assert.equal(captured.length,1);
+    captured[0].emit('error',new Error('synthetic asynchronous PG socket fault'));
+    await assert.rejects(
+      conn.query(SQL.exact,[
+        ta,a.sessionId,a.bindingId,a.subjectFingerprintSha256,
+      ],fresh()),
+      /Backend16 Node PostgreSQL physical TLS unavailable/);
+    await gone(faultPid as number);
+    await assert.rejects(faultPool.acquirePrincipal(B,fresh()),
+      /Backend16 Node PostgreSQL physical TLS unavailable/);
+    console.info('B16_NODEPG_ASYNC_SOCKET_ERROR_QUARANTINE_PID_DEATH_PASS');
+  }finally{await faultPool.shutdown();}
+
   const wrong=createBackend16DisposableCiNodePgPhysicalPool(
     vault,trust(otherRoot),Client);
   try{

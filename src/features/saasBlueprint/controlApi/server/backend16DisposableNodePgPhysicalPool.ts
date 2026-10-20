@@ -125,6 +125,9 @@ export function createBackend16DisposableCiNodePgPhysicalPool(
     try{void client.end().catch(()=>{});}catch{/* fail closed */}
   };
   const quarantine:Backend16PhysicalPgPool['quarantine']=()=>{
+    // An idle transport error can re-enter quarantine through .end().
+    // Set the fence before socket disposal and never destroy twice.
+    if(stopped)return;
     stopped=true;
     for(const client of active)destroy(client);
   };
@@ -170,7 +173,11 @@ export function createBackend16DisposableCiNodePgPhysicalPool(
             },
           },
         });
-        client.on('error',()=>{/* private, generic failure */});
+        // node-postgres can emit 'error' between awaited operations (idle
+        // disconnect, backend crash or network partition). A no-op listener
+        // hides uncertain physical state. Close every request-private socket
+        // synchronously and poison the pool before another SQL call.
+        client.on('error',()=>{quarantine('socket-uncertain');});
         active.add(client);
         await abortable(client.connect(),signal);
         available(signal);

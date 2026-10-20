@@ -121,3 +121,22 @@ NATIVE_SQL_TLS_PEER_AUTHENTICATION_VERIFIED=false. This experiment
 must not bypass, edit, or skip that security blocker to produce
 superficially green CI. Real transport replacement is separately
 reviewed and production is blocked.
+ 
+
+## Async node-postgres socket error quarantine (stacked security regression)
+
+The Node24 experimental pool now treats a `pg.Client` asynchronous
+`error` event as an **uncertain physical backend**, not just a logged or
+silenced exception. The first event immediately sets a request-local
+quarantine fence and destroys all active sockets. Subsequent events cannot
+re-enter socket teardown, and the pool cannot authorize more reads.
+No exception text or credentials are published.
+
+In the disposable PG16 E2E, a valid exact-SAN TLS connection first proves its
+actual physical LOGIN and PID. A synthetic `error` event is then delivered to
+that **same authenticated node-postgres Client** between SQL statements.
+Acceptance requires denial of the subsequent exact read, observed PID death
+and refusal of a second principal acquisition. This is deliberate event
+injection on a real socket, **not** proof of a genuine off-host partition,
+loss of a remote ACK, or production-safe recovery. The native Bun.SQL trust
+negative remains RED, and all staging/production release gates stay closed.
