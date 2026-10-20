@@ -214,7 +214,7 @@ async function execute(){
 
   const physical=createBackend16DisposableCiNodePgPhysicalPool(
     vault,trust(caPem),Client);
-  let pid=0;
+  let pid:number;
   try{
     const conn=await physical.acquirePrincipal(A,fresh());
     const signal=fresh();
