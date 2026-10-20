@@ -46,6 +46,17 @@ const SERVICE='a0ff5420-95e8-4fab-88f6-623f75dd03c6';
 const HOST='postgres.railway.internal';
 const DATABASE='saas_staging';
 const MAX_ACTIVE=4;
+/**
+ * Release hard stop (Backend16 native TLS regression, 2026-10-20).
+ * Disposable Bun 1.3.14 and 1.4.3 PostgreSQL16 sessions accepted CA-signed
+ * wildcard identities even though the branded exact-DNS-SAN callback refused
+ * those certificates in isolation. Bun 1.3.14 also accepted the wrong CA;
+ * Bun 1.4.3 rejects it but still does not invoke the custom callback.
+ * Re-enable only after an independently verified same-socket TLS client and
+ * current-head security/release review. Never treat SSL encryption as identity.
+ */
+const NATIVE_SQL_TLS_PEER_AUTHENTICATION_VERIFIED=false;
+
 const LOGIN=/^[a-z][a-z0-9_]{2,62}$/;
 const PASSWORD=/^[\x21-\x7e]{32,256}$/;
 const FORBIDDEN=new Set([
@@ -152,7 +163,8 @@ export function createBackend16StagingBunPhysicalPgPool(
   tlsTrust:Backend16StagingPgTlsTrust,
 ):Backend16PhysicalPgPool & {shutdown():Promise<void>} {
   const env=runtimeEnv();
-  if(!vault||typeof vault.readPrincipal!=='function'||
+  if(!NATIVE_SQL_TLS_PEER_AUTHENTICATION_VERIFIED||
+     !vault||typeof vault.readPrincipal!=='function'||
      env.RAILWAY_PROJECT_ID!==PROJECT||
      env.RAILWAY_ENVIRONMENT_ID!==ENVIRONMENT||
      env.RAILWAY_SERVICE_ID!==SERVICE||
