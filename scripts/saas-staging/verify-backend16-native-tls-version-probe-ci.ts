@@ -122,13 +122,43 @@ try{
       invoked++;return new Error('B16 expected deliberate callback rejection');
     },
   });
-  assert.equal(denyAlways,false,'always-deny callback must prevent LOGIN');
-  assert.ok(invoked>0,'Bun native SQL must call the supplied callback');
-  console.info('B16_BUN143_TLS_FORCED_CALLBACK_DENIED');
+  console.info('B16_BUN143_ONE_ARG_ALWAYS_DENY_'+
+    (!denyAlways&&invoked>0?'ENFORCED':'IGNORED'));
+
+  // Determine whether the constructor accepts TLSOptions ONLY when the
+  // connection URL and options are supplied as separate arguments.
+  let urlInvoked=0,urlDenied=false;
+  const urlSql=new SQL('postgres://postgres@127.0.0.1:5432/saas_ephemeral_test',{
+    username:'postgres',password:'ci_ephemeral_test_only',
+    max:1,prepare:false,
+    tls:{...trust(goodRoot),checkServerIdentity:()=>{
+      urlInvoked++;return new Error('B16 expected URL callback denial');
+    }},
+  });
+  try{
+    try{await urlSql.unsafe('SELECT 1 AS syntax_only').execute();}
+    catch{urlDenied=true;}
+  }finally{await urlSql.close({timeout:0});}
+  console.info('B16_BUN143_TWO_ARG_URL_ALWAYS_DENY_'+
+    (urlDenied&&urlInvoked>0?'ENFORCED':'IGNORED'));
+
+  const plaintext=new SQL({
+    adapter:'postgres',hostname:'127.0.0.1',port:5432,
+    username:'postgres',password:'ci_ephemeral_test_only',
+    database:'saas_ephemeral_test',max:1,prepare:false,tls:'disable',
+  });
+  let sslDisabled=false;
+  try{
+    const plainRows=await plaintext.unsafe(
+      'SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()').execute();
+    sslDisabled=plainRows.length===1&&plainRows[0].ssl===false;
+  }finally{await plaintext.close({timeout:0});}
+  console.info('B16_BUN143_EXPLICIT_TLS_DISABLE_'+
+    (sslDisabled?'HONORED':'IGNORED'));
 
   const wrongRootAccepted=await query(trust(otherRoot));
-  assert.equal(wrongRootAccepted,false,'unrelated CA must reject before LOGIN');
-  console.info('B16_BUN143_TLS_WRONG_ROOT_DENIED');
+  console.info('B16_BUN143_TLS_WRONG_ROOT_'+
+    (wrongRootAccepted?'UNEXPECTEDLY_ACCEPTED':'DENIED'));
 
   const wildcardCert=new X509Certificate(
     readFileSync(join(dir,'wildcard.crt'),'utf8'));
@@ -142,8 +172,11 @@ try{
   assert.equal((await admin.unsafe('SELECT pg_reload_conf()').execute())[0].pg_reload_conf,true);
   await Bun.sleep(300);
   const wildcardAccepted=await query(trust(goodRoot));
-  assert.equal(wildcardAccepted,false,'CA-signed wildcard must refuse');
-  console.info('B16_BUN143_TLS_WILDCARD_DENIED');
+  console.info('B16_BUN143_TLS_WILDCARD_'+
+    (wildcardAccepted?'UNEXPECTEDLY_ACCEPTED':'DENIED'));
+  assert.ok(!denyAlways&&invoked>0&&urlDenied&&urlInvoked>0&&
+    sslDisabled&&!wrongRootAccepted&&!wildcardAccepted,
+    'STOP: Bun 1.4.3 native PostgreSQL TLS validation was not enforced');
   console.info('PASS Backend16 experimental Bun 1.4.3 native PG TLS peer validation');
 }finally{
   await admin.close({timeout:0});
