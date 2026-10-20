@@ -203,3 +203,13 @@ test('native TLS GitHub runner is isolated and proves real PostgreSQL SSL PID',(
   assert.ok(workflow.includes('SAAS_B16_CI_PG_CONTAINER: ${{ job.services.postgres.id }}'));
   assert.doesNotMatch(runner,/DATABASE_PUBLIC_URL|Bun\.serve|\/data\/auths/);
 });
+
+test('staging native Bun.SQL TLS is HARD STOP until same-socket peer trust evidence',()=>{
+  // No approved release can be inferred from unit TLS handshakes or
+  // pg_stat_ssl.ssl=true on a native Bun.SQL physical connection.
+  assert.match(source,/const NATIVE_SQL_TLS_PEER_AUTHENTICATION_VERIFIED=false;/);
+  assert.match(source,/if\(!NATIVE_SQL_TLS_PEER_AUTHENTICATION_VERIFIED\|\|/);
+  assert.match(source,/Bun 1\.4\.3 rejects it but still does not invoke/);
+  assert.throws(()=>createBackend16StagingBunPhysicalPgPool(
+    vault,null as never),/release gates not met/);
+});
