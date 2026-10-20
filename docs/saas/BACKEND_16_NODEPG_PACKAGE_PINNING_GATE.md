@@ -54,7 +54,7 @@ permanent SQL0008 replay, production Core/Gateway, `custom-no-apikey-fun`,
 `/data`, credentials, volumes, releases or deployments are permitted by it.
 
 
-## Next CI-only increment — genuine ephemeral dependency lock proof
+## Next CI-only increment вЂ” genuine ephemeral dependency lock proof
 
 A separate stacked Draft runs one new **isolated GitHub Actions Node24**
 experiment. It writes a minimal private, Node24-specific server manifest into
@@ -106,7 +106,7 @@ cross-runner temporal reproducibility, Node server packaging approval,
 security/codeowner sign-off, and real operator PKI/IAM remain OPEN.
 The known native Bun.SQL PostgreSQL TLS wrong-root/wildcard failure remains
 a blocking RED finding and must not be disabled.
- 
+
 
 ## Historical cross-run drift gate (CI-only; unapproved observation)
 

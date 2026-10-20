@@ -1,7 +1,7 @@
 # Backend16 owner-authorized source integration
 
 The owner explicitly authorized merging all open PRs on 2026-10-20.
-This integration includes the commit ancestry of #75–87. #79's first combined
+This integration includes the commit ancestry of #75вЂ“87. #79's first combined
 runner is superseded by #80/#81 and the dual-locked #87 implementation; it is
 removed instead of leaving two divergent broker/RLS paths. Its security cases
 (exact mutual client authentication, immutable secret versions, preauthentication
