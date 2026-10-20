@@ -278,6 +278,10 @@ async function execute(){
     });
     const cancel=new AbortController();
     const waiting=read(a,ta,cancel.signal);
+    // Attach the expected rejection BEFORE observing PG lock wait events.
+    // A 1500ms SQL lock timeout can precede our cancellation probe.
+    const refused=assert.rejects(waiting,
+      /Backend16 exact SQL data source unavailable/);
     let waitingPid=0;
     for(let i=0;i<40;i++){
       const rows=await admin.query(
@@ -291,8 +295,7 @@ async function execute(){
     }
     assert.ok(waitingPid>0,'exact PG read must wait for current grant row');
     cancel.abort();
-    await assert.rejects(waiting,
-      /Backend16 exact SQL data source unavailable/);
+    await refused;
     await gone(waitingPid);
     console.info('B16_NODEPG_EXACT_LOCK_ABORT_PID_DEATH_PASS');
   }finally{
