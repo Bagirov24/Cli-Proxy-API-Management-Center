@@ -1,7 +1,9 @@
 # Backend16 — native Bun.SQL authenticated TLS on disposable PostgreSQL16
 
-**Status:** stacked CI-only Draft, unmounted/default-off. Not production ready
-and not authorization for any staging deployment or Railway changes.
+**Status: SECURITY BLOCKED / RED.** Stacked CI-only Draft, unmounted/default-off.
+Native Bun.SQL PostgreSQL server identity is NOT verified by the required
+same-socket negative tests. This is neither production ready nor authorization
+for any staging deployment, Railway changes or merge.
 
 ## Gap addressed
 
@@ -41,6 +43,54 @@ physical/query/discard code and the version-pinned credential vault adapter.
   rejection alone does not pass this test.
 - CI must show explicit positive and negative log markers on the exact PR
   HEAD, with full baseline RLS and remaining workflows still successful.
+
+
+## Actual native PostgreSQL16 security evidence — 2026-10-20
+
+The disposable, real physical PostgreSQL16 test was executed using
+Bun 1.3.14 against the ephemeral GitHub postgres:16.6 container:
+[PG16 #39386345179](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/39386345179).
+The positive checks **passed**: physical LOGIN and PID in
+`pg_stat_ssl.ssl=true`, both authorized tenant reads, both cross-tenant
+denials and connection discard. TLS *encryption* is established.
+
+However all three **must-refuse** cases failed:
+`B16_NATIVE_SQL_TLS_ALWAYS_DENY_CALLBACK_NOT_ENFORCED`,
+`B16_NATIVE_SQL_TLS_WRONG_ROOT_UNEXPECTEDLY_ACCEPTED`,
+`B16_NATIVE_SQL_TLS_CA_SIGNED_WILDCARD_UNEXPECTEDLY_ACCEPTED`.
+The full CI job intentionally failed with a hard assertion.
+
+To exclude a simple Bun 1.3.14 runtime-version issue, a **separate,
+isolated** GitHub service test ran Bun 1.4.3 without updating the
+repository's Bun 1.3.14 pin or touching the original database fixture:
+[experimental PG16 #39387874219](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/39387874219).
+It confirmed:
+- Valid CA and exact SAN: accepted, TLS enabled.
+- Always-deny `tls.checkServerIdentity`: **ignored** for both
+  `new SQL(options)` and `new SQL(url, options)`.
+- Explicit `tls:'disable'`: honored; shows SSL mode selection is
+  effective but does not prove certificate identity.
+- Wrong root CA: **denied** on Bun 1.4.3 (improvement over 1.3.14).
+- CA-signed wildcard SAN: **unexpectedly accepted** on Bun 1.4.3,
+  despite strict exact SAN being rejected by the isolated callback.
+
+Therefore upgrading to Bun 1.4.3 alone is **NOT** an acceptable fix.
+The current native staging Bun.SQL factory is explicitly hard-stopped by
+`NATIVE_SQL_TLS_PEER_AUTHENTICATION_VERIFIED=false`.
+Do not switch it to true based on mocks, an unauthenticated SSLRequest-only
+handshake or `pg_stat_ssl.ssl=true`. The same physical authenticated
+driver MUST reject independent wrong CA, CA-valid wildcard and
+always-deny callbacks under actual PG16 before enabling any staging use.
+
+A next independent, reviewed workstream should evaluate a maintained
+PostgreSQL driver with demonstrably effective Node TLS peer verification,
+credential isolation and physical connection discard; preserve the
+existing exact-session SQL templates, RLS/admission, cancellation and
+two-tenant acceptance. No fallback to `tls:'require'`, public proxy,
+plaintext, unverified default trust or borrowed privileged LOGIN.
+Only after these gates pass should the mTLS-broker→vault combination be
+considered. The upstream Bun documentation describes callback support,
+but **the exact runtime/build must be empirically verified**.
 
 ## Incomplete production gates
 
