@@ -134,11 +134,12 @@ jobs:
       PGDATABASE: saas_ephemeral_test
       PGPASSWORD: ci_ephemeral_test_only
       SAAS_B16_LOCKED_PG16_CI: 'true'
-      SAAS_B16_NODEPG_PG16_CONTAINER: ${{ job.services.postgres.id }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
       - name: Authenticate locked Node pg on disposable TLS PG16 (no DB migrations)
+        env:
+          SAAS_B16_NODEPG_PG16_CONTAINER: ${{ job.services.postgres.id }}
         run: node scripts/saas-staging/verify-backend16-nodepg-real-lock-ci.mjs
