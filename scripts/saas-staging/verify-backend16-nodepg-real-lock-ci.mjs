@@ -75,8 +75,8 @@ function runNpm(args,dir){
     CI:'true',
     NO_UPDATE_NOTIFIER:'1',
     npm_config_cache:join(dir,'npm-cache'),
-    npm_config_userconfig:'/dev/null',
-    npm_config_globalconfig:'/dev/null',
+    npm_config_userconfig:join(dir,'empty-user.npmrc'),
+    npm_config_globalconfig:join(dir,'empty-global.npmrc'),
     npm_config_ignore_scripts:'true',
     npm_config_audit:'false',
     npm_config_fund:'false',
@@ -106,6 +106,10 @@ async function main(){
      !existsSync(join(ROOT,'bun.lock')))refuse();
   const dir=mkdtempSync(join(tmpdir(),'b16-nodepg-real-lock-ci-'));
   try{
+    // npm rejects loading the same config file twice. Two distinct empty
+    // temp files also prevent inherited user/global registry credentials.
+    writeFileSync(join(dir,'empty-user.npmrc'),'',{mode:0o600});
+    writeFileSync(join(dir,'empty-global.npmrc'),'',{mode:0o600});
     const pkg=createBackend16GenuineLockCiManifest();
     writeFileSync(join(dir,'package.json'),JSON.stringify(pkg)+'\n',{mode:0o600});
     console.info('B16_REAL_LOCK_CI_RESOLUTION_START');
