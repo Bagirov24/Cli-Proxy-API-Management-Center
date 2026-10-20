@@ -164,6 +164,30 @@ SAAS_B16_CI_B_BINDING="$binding_b" \
 grep 'PASS Backend16 Node PG real TLS exact SQL0008 two-tenant PG16 RLS' \
  /tmp/b16-nodepg-exact-pg16-ci.log || fail
 
+# COMPLETE one-process combined acceptance (not separate isolated fixtures):
+# mTLS broker -> pinned immutable secret -> same Node24 TLS SQL0008 PG socket.
+# Synthetic PostgreSQL16 and disposable broker exclusively, never Railway.
+SAAS_B16_NODEPG_PHYSICAL_CI=true \
+SAAS_B16_BROKER_MTLS_CI=true \
+SAAS_B16_COMBINED_MTLS_PG_CI=true \
+SAAS_B16_CI_A_PASSWORD="$a_pw" \
+SAAS_B16_CI_B_PASSWORD="$b_pw" \
+SAAS_B16_CI_A_SUBJECT_SHA="$fp_a" \
+SAAS_B16_CI_B_SUBJECT_SHA="$fp_b" \
+SAAS_B16_CI_A_TENANT="$tenant_a" \
+SAAS_B16_CI_B_TENANT="$tenant_b" \
+SAAS_B16_CI_A_SESSION="$session_a" \
+SAAS_B16_CI_B_SESSION="$session_b" \
+SAAS_B16_CI_A_BINDING="$binding_a" \
+SAAS_B16_CI_B_BINDING="$binding_b" \
+ timeout --signal=TERM --kill-after=3s 100s \
+ node --experimental-strip-types \
+   scripts/saas-staging/verify-backend16-combined-mtls-nodepg-ci.ts \
+ > /tmp/b16-combined-mtls-nodepg-ci.log 2>&1 ||
+ { tail -n 24 /tmp/b16-combined-mtls-nodepg-ci.log >&2; fail; }
+grep -F 'PASS Backend16 combined mTLS broker vault Node PostgreSQL16 TLS tenant RLS' \
+ /tmp/b16-combined-mtls-nodepg-ci.log || fail
+
 # Newly isolated native verify-full Bun.SQL acceptance, using the exact
 # GitHub Actions PostgreSQL service container only (never permanent SQL0008).
 SAAS_B16_PHYSICAL_CI=true \
