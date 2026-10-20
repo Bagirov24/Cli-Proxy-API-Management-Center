@@ -29,7 +29,8 @@ const HOST='postgres.railway.internal';
 const HEX=/^[a-f0-9]{64}$/;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const dockerId=env.SAAS_B16_CI_PG_CONTAINER??'';
-if(env.GITHUB_ACTIONS!=='true'||
+if(Bun.version!=='1.4.4'||Bun.revision!=='6bb5dc1956505dd1113455f58d4757c924f3ad54'||
+   env.GITHUB_ACTIONS!=='true'||
    env.SAAS_B16_EPHEMERAL_CI!=='true'||
    env.SAAS_B16_PHYSICAL_CI!=='true'||
    env.SAAS_B16_PHYSICAL_TLS_CI!=='true'||

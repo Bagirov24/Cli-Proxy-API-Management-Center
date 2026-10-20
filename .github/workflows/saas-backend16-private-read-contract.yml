@@ -29,10 +29,6 @@ on:
       - 'tests/saasBackend16CiBunPhysicalPgPool.test.ts'
       - 'src/features/saasBlueprint/controlApi/server/backend16StagingBunPhysicalPgPool.ts'
       - 'tests/saasBackend16StagingBunPhysicalPgPool.test.ts'
-      - 'src/features/saasBlueprint/controlApi/server/backend16DisposableNodePgPhysicalPool.ts'
-      - 'tests/saasBackend16DisposableNodePgPhysicalPool.test.ts'
-      - 'scripts/saas-staging/verify-backend16-nodepg-exact-pg16-ci.ts'
-      - 'scripts/saas-staging/backend16-nodepg-synthetic-mtls-broker-ci.ts'
       - 'docs/saas/BACKEND_16_NODEPG_EXACT_PG16_E2E.md'
       - 'src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts'
       - 'tests/saasBackend16StagingPgTlsTrust.test.ts'
@@ -101,7 +97,7 @@ jobs:
         run: node --test tests/saasBackend16LockedPg16TlsCi.test.mjs
       - name: Combined locked-driver gates and inherited physical pool contracts
         run: |
-          node --test tests/saasBackend16LockedFullChainCi.test.mjs
+          node --test tests/saasBackend16LockedFullChainCi.test.mjs tests/saasBackend16NativeBunCiPin.test.mjs
           node --experimental-strip-types --test tests/saasBackend16DisposableNodePgPhysicalPool.test.ts
       - name: Genuine ephemeral Node24 pg lock and clean install (never committed)
         run: node scripts/saas-staging/verify-backend16-nodepg-real-lock-ci.mjs

@@ -188,7 +188,7 @@ SAAS_B16_CI_B_SESSION="$session_b" \
 SAAS_B16_CI_A_BINDING="$binding_a" \
 SAAS_B16_CI_B_BINDING="$binding_b" \
   timeout --signal=TERM --kill-after=3s 95s \
-    bun scripts/saas-staging/verify-backend16-native-pg-tls-ci.ts \
+    "${SAAS_B16_NATIVE_BUN_BIN:?pinned native SQL TLS runtime required}" scripts/saas-staging/verify-backend16-native-pg-tls-ci.ts \
   > /tmp/b16-native-pg-tls-ci.log 2>&1 ||
   { tail -n 22 /tmp/b16-native-pg-tls-ci.log >&2; fail; }
 grep -q 'PASS Backend16 native Bun.SQL TLS to real disposable PG16' \

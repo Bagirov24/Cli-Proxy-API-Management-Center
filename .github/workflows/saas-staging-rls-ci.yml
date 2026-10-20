@@ -448,7 +448,7 @@ jobs:
             SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
             bun scripts/saas-staging/verify-trusted-pg-e2e.mjs
           # M1g STACKED DRAFT: install LAST among M1 project pilots, after
-          # M1a–M1f acceptance and other signed synthetic SQL fixtures.
+          # M1aвЂ“M1f acceptance and other signed synthetic SQL fixtures.
           # A second Bun process uses a new synthetic pinned RS256 identity
           # and *server-issued* UUIDv4 set only on signed PG write sessions.
           # Old unstamped write paths now fail closed. No release/writer API.
@@ -485,7 +485,7 @@ jobs:
             SAAS_EPHEMERAL_DB_PASSWORD="$runner_password" \
             bun scripts/saas-staging/verify-m1-project-pg-e2e.mjs
           # M1j (stacked Draft): a NEW, SEPARATE ephemeral invocation,
-          # after all M1a–M1h acceptance. Actual 127.0.0.1 HTTP request
+          # after all M1aвЂ“M1h acceptance. Actual 127.0.0.1 HTTP request
           # -> M1i pinned synthetic RS256/tenant RBAC -> M1h fsynced
           # Ed25519 precommit intent -> signed M1d PG16 transaction,
           # mandatory M1c audit and M1g UUID binding. No public listener,
@@ -511,7 +511,7 @@ jobs:
             }
           tail -n 5 /tmp/saas-m1j-real-http-pg-acceptance.log
           # M1k STACKED DRAFT: install SQL025 ONLY AFTER all prior signed
-          # PG16 and HTTP regressions, so old M1b–M1j fixture counts stay
+          # PG16 and HTTP regressions, so old M1bвЂ“M1j fixture counts stay
           # unchanged. FORCE RLS NOLOGIN session owner, signed session UUID
           # and expected epoch locked FOR SHARE before project transaction.
           PGOPTIONS="-c saas.staging_only=true" psql -X -v ON_ERROR_STOP=1 \
@@ -1424,6 +1424,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
+
+      - name: Install integrity-pinned upstream native SQL TLS fix (CI only)
+        run: |
+          node --test tests/saasBackend16NativeBunCiPin.test.mjs
+          node scripts/saas-staging/install-backend16-native-bun-ci.mjs
 
       - name: Backend08/09 isolated PG16 migrator role, ledger and dump-restore (CI only)
         shell: bash

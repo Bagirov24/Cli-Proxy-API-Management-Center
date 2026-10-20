@@ -1,5 +1,5 @@
 /**
- * Experimental Bun 1.4.3 native SQL TLS trust regression ONLY.
+ * Integrity-pinned upstream native SQL TLS acceptance (CI only).
  * Uses fresh GitHub Actions postgres:16.6; no SQL migrations or live data.
  * This NEVER authorizes a Bun runtime upgrade or staging deployment.
  */
@@ -15,7 +15,7 @@ import {createBackend16StagingPgTlsTrust}
 
 const e=process.env,id=e.SAAS_B16_CI_PG_CONTAINER??'';
 if(e.GITHUB_ACTIONS!=='true'||e.SAAS_B16_EXPERIMENTAL_TLS_CI!=='true'||
-   Bun.version!=='1.4.3'||e.NODE_ENV==='production'||
+   Bun.version!=='1.4.4'||Bun.revision!=='6bb5dc1956505dd1113455f58d4757c924f3ad54'||e.NODE_ENV==='production'||
    e.PGHOST!=='127.0.0.1'||e.PGPORT!=='5432'||
    e.PGDATABASE!=='saas_ephemeral_test'||
    e.PGPASSWORD!=='ci_ephemeral_test_only'||
@@ -113,7 +113,7 @@ try{
 
   const accepted=await query(trust(goodRoot));
   assert.equal(accepted,true,'valid root and exact SAN must connect');
-  console.info('B16_BUN143_TLS_AUTHENTICATED_POSITIVE');
+  console.info('B16_PINNED_NATIVE_TLS_AUTHENTICATED_POSITIVE');
 
   let invoked=0;
   const denyAlways=await query({
@@ -122,9 +122,9 @@ try{
       invoked++;return new Error('B16 expected deliberate callback rejection');
     },
   });
-  console.info('B16_BUN143_ONE_ARG_ALWAYS_DENY_'+
+  console.info('B16_PINNED_NATIVE_ONE_ARG_ALWAYS_DENY_'+
     (!denyAlways&&invoked>0?'ENFORCED':'IGNORED'));
-  console.info('B16_BUN143_ONE_ARG_CALLBACK_CALLS_'+invoked);
+  console.info('B16_PINNED_NATIVE_ONE_ARG_CALLBACK_CALLS_'+invoked);
 
   // Determine whether the constructor accepts TLSOptions ONLY when the
   // connection URL and options are supplied as separate arguments.
@@ -140,9 +140,9 @@ try{
     try{await urlSql.unsafe('SELECT 1 AS syntax_only').execute();}
     catch{urlDenied=true;}
   }finally{await urlSql.close({timeout:0});}
-  console.info('B16_BUN143_TWO_ARG_URL_ALWAYS_DENY_'+
+  console.info('B16_PINNED_NATIVE_TWO_ARG_URL_ALWAYS_DENY_'+
     (urlDenied&&urlInvoked>0?'ENFORCED':'IGNORED'));
-  console.info('B16_BUN143_TWO_ARG_CALLBACK_CALLS_'+urlInvoked);
+  console.info('B16_PINNED_NATIVE_TWO_ARG_CALLBACK_CALLS_'+urlInvoked);
 
   const plaintext=new SQL({
     adapter:'postgres',hostname:'127.0.0.1',port:5432,
@@ -155,11 +155,11 @@ try{
       'SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()').execute();
     sslDisabled=plainRows.length===1&&plainRows[0].ssl===false;
   }finally{await plaintext.close({timeout:0});}
-  console.info('B16_BUN143_EXPLICIT_TLS_DISABLE_'+
+  console.info('B16_PINNED_NATIVE_EXPLICIT_TLS_DISABLE_'+
     (sslDisabled?'HONORED':'IGNORED'));
 
   const wrongRootAccepted=await query(trust(otherRoot));
-  console.info('B16_BUN143_TLS_WRONG_ROOT_'+
+  console.info('B16_PINNED_NATIVE_TLS_WRONG_ROOT_'+
     (wrongRootAccepted?'UNEXPECTEDLY_ACCEPTED':'DENIED'));
 
   const wildcardCert=new X509Certificate(
@@ -176,12 +176,12 @@ try{
   assert.equal((await admin.unsafe('SELECT pg_reload_conf()').execute())[0].pg_reload_conf,true);
   await Bun.sleep(300);
   const wildcardAccepted=await query(trust(goodRoot));
-  console.info('B16_BUN143_TLS_WILDCARD_'+
+  console.info('B16_PINNED_NATIVE_TLS_WILDCARD_'+
     (wildcardAccepted?'UNEXPECTEDLY_ACCEPTED':'DENIED'));
   assert.ok(!denyAlways&&invoked>0&&urlDenied&&urlInvoked>0&&
     sslDisabled&&!wrongRootAccepted&&!wildcardAccepted,
-    'STOP: Bun 1.4.3 native PostgreSQL TLS validation was not enforced');
-  console.info('PASS Backend16 experimental Bun 1.4.3 native PG TLS peer validation');
+    'STOP: Pinned native PostgreSQL TLS validation was not enforced');
+  console.info('PASS Backend16 pinned native PG TLS peer validation');
 }finally{
   await admin.close({timeout:0});
   rmSync(dir,{recursive:true,force:true});

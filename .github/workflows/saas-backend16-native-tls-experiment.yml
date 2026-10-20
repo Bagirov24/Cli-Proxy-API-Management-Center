@@ -1,8 +1,10 @@
-name: Backend16 Bun 1.4.3 Native TLS Probe (disposable, no release)
+name: Backend16 Pinned Native TLS Acceptance (disposable, no release)
 
 on:
   pull_request:
     paths:
+      - 'scripts/saas-staging/install-backend16-native-bun-ci.mjs'
+      - 'tests/saasBackend16NativeBunCiPin.test.mjs'
       - '.github/workflows/saas-backend16-native-tls-experiment.yml'
       - 'scripts/saas-staging/verify-backend16-native-tls-version-probe-ci.ts'
       - 'src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts'
@@ -12,7 +14,7 @@ permissions:
   contents: read
 
 jobs:
-  bun143-native-pg-tls:
+  pinned-native-pg-tls:
     runs-on: ubuntu-latest
     timeout-minutes: 7
     services:
@@ -39,10 +41,11 @@ jobs:
     steps:
       - name: Checkout code (no production)
         uses: actions/checkout@v4
-      - name: Install alternative Bun version for isolated comparison ONLY
-        uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
         with:
-          bun-version: 1.4.3
+          node-version: '24'
+      - name: Install integrity-pinned upstream native SQL TLS fix
+        run: node scripts/saas-staging/install-backend16-native-bun-ci.mjs
       - name: Reject bad host and probe REAL native TLS verification
         env:
           SAAS_B16_CI_PG_CONTAINER: ${{ job.services.postgres.id }}
@@ -54,5 +57,4 @@ jobs:
           test "${PGDATABASE}" = "saas_ephemeral_test"
           test ! -e /data/auths
           test ! -e .env.production
-          test "$(bun --version)" = "1.4.3"
-          bun scripts/saas-staging/verify-backend16-native-tls-version-probe-ci.ts
+          "${SAAS_B16_NATIVE_BUN_BIN:?pinned native SQL TLS runtime required}" scripts/saas-staging/verify-backend16-native-tls-version-probe-ci.ts

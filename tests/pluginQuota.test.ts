@@ -92,7 +92,9 @@ describe('generic plugin quota', () => {
         expect(markup.includes(i18n.t('plugin_quota.empty_data'))).toBe(!hasData);
         for (const metric of data.summary) {
           expect(markup).toContain('>Balance</span>');
-          expect(markup).toContain(metric.value === 42 ? '$42.00' : '>0</span>');
+          expect(markup).toContain(metric.value === 42
+            ? new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(42)
+            : '>0</span>');
         }
       }
     } finally {
