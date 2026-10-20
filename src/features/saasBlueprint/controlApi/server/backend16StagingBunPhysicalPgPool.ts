@@ -194,6 +194,35 @@ export function createBackend16StagingDisposableCiPhysicalPgPool(
   return buildBackend16StagingPhysicalPgPool(vault,DISPOSABLE_CI_PROFILE);
 }
 
+/**
+ * GitHub-only native TLS profile: fixed local disposable PG16 and
+ * independently branded exact-SAN PostgreSQL TLS trust. The physical/query/
+ * discard implementation is identical to the unmounted staging runtime.
+ * Never allow this entrypoint in Railway, production or ordinary dev.
+ */
+export function createBackend16StagingDisposableCiTlsPhysicalPgPool(
+  vault:Backend16StagingPrincipalVault,
+  tlsTrust:Backend16StagingPgTlsTrust,
+):Backend16PhysicalPgPool & {shutdown():Promise<void>} {
+  const env=runtimeEnv();
+  if(!vault||typeof vault.readPrincipal!=='function'||
+     env.GITHUB_ACTIONS!=='true'||
+     env.SAAS_B16_EPHEMERAL_CI!=='true'||
+     env.SAAS_B16_PHYSICAL_CI!=='true'||
+     env.SAAS_B16_PHYSICAL_TLS_CI!=='true'||
+     env.PGHOST!=='127.0.0.1'||env.PGPORT!=='5432'||
+     env.PGDATABASE!=='saas_ephemeral_test'||
+     env.PGPASSWORD!=='ci_ephemeral_test_only'||
+     env.NODE_ENV==='production'||
+     env.NODE_TLS_REJECT_UNAUTHORIZED==='0'||
+     env.RAILWAY_PROJECT_ID||env.RAILWAY_ENVIRONMENT_ID||
+     env.RAILWAY_SERVICE_ID||env.RAILWAY_ENVIRONMENT||
+     !backend16IsApprovedStagingPgTlsTrust(tlsTrust))
+    throw new Error('Backend16 native TLS limited to disposable GitHub PG16');
+  return buildBackend16StagingPhysicalPgPool(vault,
+    Object.freeze({...DISPOSABLE_CI_PROFILE,tls:tlsTrust}));
+}
+
 function buildBackend16StagingPhysicalPgPool(
   vault:Backend16StagingPrincipalVault,
   profile:Backend16BunPgProfile,
