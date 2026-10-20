@@ -119,10 +119,10 @@ export function createBackend16DisposableCiNodePgPhysicalPool(
   let stopped=false;
   let slots=0;
   const active=new Set<NodePgClient>();
-  const destroy=(c:NodePgClient)=>{
+  const destroy=(client:NodePgClient)=>{
     // Physical socket destruction is synchronous even if pg.end() hangs.
-    try{c.connection?.stream?.destroy();}catch{/* fail closed */}
-    try{void c.end().catch(()=>{});}catch{/* fail closed */}
+    try{client.connection?.stream?.destroy();}catch{/* fail closed */}
+    try{void client.end().catch(()=>{});}catch{/* fail closed */}
   };
   const quarantine:Backend16PhysicalPgPool['quarantine']=()=>{
     stopped=true;
