@@ -133,6 +133,37 @@ SAAS_B16_CI_B_BINDING="$binding_b" \
   > /tmp/b16-bun-physical-ci.log 2>&1 ||
   { tail -n 24 /tmp/b16-bun-physical-ci.log >&2; fail; }
 grep -q 'PASS Backend16.7: real Bun.SQL' /tmp/b16-bun-physical-ci.log || fail
+# Independently verified Node24 TLS driver on the SAME disposable SQL0008
+# database BEFORE the existing native Bun red security-regression probe.
+# Candidate package is temporary CI only; Bun.lock is unchanged.
+test "$GITHUB_ACTIONS" = true || fail
+test "$SAAS_B16_CI_PG_CONTAINER" != "" || fail
+test "$(node -p "process.versions.node.split('.')[0]")" = 24 || fail
+mkdir -p /tmp/b16-nodepg-peer
+npm install --prefix /tmp/b16-nodepg-peer --no-save --package-lock=false \
+ --ignore-scripts --no-audit --no-fund pg@8.23.1 \
+ > /tmp/b16-nodepg-ci-install.log 2>&1 || fail
+test "$(node -p "require('/tmp/b16-nodepg-peer/node_modules/pg/package.json').version")" = 8.23.1 || fail
+test ! -e package-lock.json || fail
+SAAS_B16_NODEPG_PHYSICAL_CI=true \
+SAAS_B16_CI_A_PASSWORD="$a_pw" \
+SAAS_B16_CI_B_PASSWORD="$b_pw" \
+SAAS_B16_CI_A_SUBJECT_SHA="$fp_a" \
+SAAS_B16_CI_B_SUBJECT_SHA="$fp_b" \
+SAAS_B16_CI_A_TENANT="$tenant_a" \
+SAAS_B16_CI_B_TENANT="$tenant_b" \
+SAAS_B16_CI_A_SESSION="$session_a" \
+SAAS_B16_CI_B_SESSION="$session_b" \
+SAAS_B16_CI_A_BINDING="$binding_a" \
+SAAS_B16_CI_B_BINDING="$binding_b" \
+  timeout --signal=TERM --kill-after=3s 100s \
+    node --experimental-strip-types \
+      scripts/saas-staging/verify-backend16-nodepg-exact-pg16-ci.ts \
+  > /tmp/b16-nodepg-exact-pg16-ci.log 2>&1 ||
+  { tail -n 20 /tmp/b16-nodepg-exact-pg16-ci.log >&2; fail; }
+grep 'PASS Backend16 Node PG real TLS exact SQL0008 two-tenant PG16 RLS' \
+ /tmp/b16-nodepg-exact-pg16-ci.log || fail
+
 # Newly isolated native verify-full Bun.SQL acceptance, using the exact
 # GitHub Actions PostgreSQL service container only (never permanent SQL0008).
 SAAS_B16_PHYSICAL_CI=true \
