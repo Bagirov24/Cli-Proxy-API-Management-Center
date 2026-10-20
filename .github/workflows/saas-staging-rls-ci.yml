@@ -1422,6 +1422,8 @@ jobs:
 
       - name: Backend08/09 isolated PG16 migrator role, ledger and dump-restore (CI only)
         shell: bash
+        env:
+          SAAS_B16_CI_PG_CONTAINER: ${{ job.services.postgres.id }}
         run: |
           set -euo pipefail
           test "${GITHUB_ACTIONS}" = "true"
