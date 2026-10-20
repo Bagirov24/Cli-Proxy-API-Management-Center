@@ -26,8 +26,9 @@ test('only independently pinned self-signed strong root is accepted',()=>{
   assert.equal(tls.serverName,BACKEND16_STAGING_PG_TLS_HOST);
   assert.equal(tls.rejectUnauthorized,true);
   assert.equal(tls.ca,ca);
+  assert.equal(typeof tls.checkServerIdentity,'function');
   assert.deepEqual(Object.keys(tls).sort(),[
-    'ca','rejectUnauthorized','serverName',
+    'ca','checkServerIdentity','rejectUnauthorized','serverName',
   ]);
   assert.equal(backend16IsApprovedStagingPgTlsTrust(tls),true);
   assert.equal(backend16IsApprovedStagingPgTlsTrust({...tls}),false,
@@ -104,5 +105,8 @@ test('staging physical pool denies unapproved trust and TLS downgrade',()=>{
   assert.ok(trustSource.includes('cert.verify(key)'));
   assert.ok(trustSource.includes("serverName:BACKEND16_STAGING_PG_TLS_HOST"));
   assert.ok(trustSource.includes('rejectUnauthorized:true as const'));
+  assert.ok(trustSource.includes('checkServerIdentity:exactPrivatePgServerIdentity'));
+  assert.ok(trustSource.includes('wildcards:false'));
+  assert.ok(trustSource.includes("san.split(/,\\s*/).includes('DNS:'+BACKEND16_STAGING_PG_TLS_HOST)"));
   assert.doesNotMatch(trustSource,/Bun\.serve|fetch\(|DATABASE_PUBLIC_URL/);
 });

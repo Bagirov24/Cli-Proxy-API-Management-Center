@@ -1,0 +1,60 @@
+name: Backend16 Pinned Native TLS Acceptance (disposable, no release)
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/saas-staging/install-backend16-native-bun-ci.mjs'
+      - 'tests/saasBackend16NativeBunCiPin.test.mjs'
+      - '.github/workflows/saas-backend16-native-tls-experiment.yml'
+      - 'scripts/saas-staging/verify-backend16-native-tls-version-probe-ci.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-native-pg-tls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    services:
+      postgres:
+        image: postgres:16.6
+        env:
+          POSTGRES_DB: saas_ephemeral_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_ephemeral_test_only
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d saas_ephemeral_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGDATABASE: saas_ephemeral_test
+      PGPASSWORD: ci_ephemeral_test_only
+      SAAS_B16_EXPERIMENTAL_TLS_CI: 'true'
+    steps:
+      - name: Checkout code (no production)
+        uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install integrity-pinned upstream native SQL TLS fix
+        run: node scripts/saas-staging/install-backend16-native-bun-ci.mjs
+      - name: Reject bad host and probe REAL native TLS verification
+        env:
+          SAAS_B16_CI_PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${PGHOST}" = "127.0.0.1"
+          test "${PGPORT}" = "5432"
+          test "${PGDATABASE}" = "saas_ephemeral_test"
+          test ! -e /data/auths
+          test ! -e .env.production
+          "${SAAS_B16_NATIVE_BUN_BIN:?pinned native SQL TLS runtime required}" scripts/saas-staging/verify-backend16-native-tls-version-probe-ci.ts

@@ -133,6 +133,74 @@ SAAS_B16_CI_B_BINDING="$binding_b" \
   > /tmp/b16-bun-physical-ci.log 2>&1 ||
   { tail -n 24 /tmp/b16-bun-physical-ci.log >&2; fail; }
 grep -q 'PASS Backend16.7: real Bun.SQL' /tmp/b16-bun-physical-ci.log || fail
+# Independently verified Node24 TLS driver on the SAME disposable SQL0008
+# database BEFORE the existing native Bun red security-regression probe.
+# Candidate package is temporary CI only; Bun.lock is unchanged.
+test "$GITHUB_ACTIONS" = true || fail
+test "$SAAS_B16_CI_PG_CONTAINER" != "" || fail
+test "$(node -p "process.versions.node.split('.')[0]")" = 24 || fail
+SAAS_B16_LOCKED_FULL_CHAIN_CI=true \
+SAAS_B16_NODEPG_PHYSICAL_CI=true \
+SAAS_B16_BROKER_MTLS_CI=true \
+SAAS_B16_CI_A_PASSWORD="$a_pw" \
+SAAS_B16_CI_B_PASSWORD="$b_pw" \
+SAAS_B16_CI_A_SUBJECT_SHA="$fp_a" \
+SAAS_B16_CI_B_SUBJECT_SHA="$fp_b" \
+SAAS_B16_CI_A_TENANT="$tenant_a" \
+SAAS_B16_CI_B_TENANT="$tenant_b" \
+SAAS_B16_CI_A_SESSION="$session_a" \
+SAAS_B16_CI_B_SESSION="$session_b" \
+SAAS_B16_CI_A_BINDING="$binding_a" \
+SAAS_B16_CI_B_BINDING="$binding_b" \
+  timeout --signal=TERM --kill-after=3s 360s \
+    node scripts/saas-staging/verify-backend16-nodepg-real-lock-ci.mjs \
+  > /tmp/b16-nodepg-exact-pg16-ci.log 2>&1 ||
+  { tail -n 20 /tmp/b16-nodepg-exact-pg16-ci.log >&2; fail; }
+grep -Fx 'B16_LOCKED_FULL_CHAIN_INDEPENDENT_A_PASS' /tmp/b16-nodepg-exact-pg16-ci.log || fail
+grep -Fx 'B16_LOCKED_FULL_CHAIN_INDEPENDENT_B_PASS' /tmp/b16-nodepg-exact-pg16-ci.log || fail
+grep -Fx 'B16_LOCKED_DUAL_INSTALL_MTLS_VAULT_PG16_EXACT_RLS_PASS' /tmp/b16-nodepg-exact-pg16-ci.log || fail
+grep 'PASS Backend16 Node PG real TLS exact SQL0008 two-tenant PG16 RLS' \
+ /tmp/b16-nodepg-exact-pg16-ci.log || fail
+grep 'PASS Backend16 Node PG synthetic mTLS broker vault PG16 RLS full chain' \
+ /tmp/b16-nodepg-exact-pg16-ci.log || fail
+grep -q 'B16_NODEPG_MTLS_REVOKED_IN_FLIGHT_PREAUTH_DENY' \
+ /tmp/b16-nodepg-exact-pg16-ci.log || fail
+# A real authenticated PostgreSQL16 PID must be destroyed when its Node24
+# client emits an asynchronous error between SQL statements. Never print
+# the raw fixture log; emit only this exact proof marker after checking it.
+grep -Fxq 'B16_NODEPG_ASYNC_SOCKET_ERROR_QUARANTINE_PID_DEATH_PASS' \
+ /tmp/b16-nodepg-exact-pg16-ci.log || fail
+echo 'PASS Backend16 Node PG async socket error quarantine physical PID death'
+
+
+# Newly isolated native verify-full Bun.SQL acceptance, using the exact
+# GitHub Actions PostgreSQL service container only (never permanent SQL0008).
+SAAS_B16_PHYSICAL_CI=true \
+SAAS_B16_PHYSICAL_TLS_CI=true \
+SAAS_B16_CI_A_PASSWORD="$a_pw" \
+SAAS_B16_CI_B_PASSWORD="$b_pw" \
+SAAS_B16_CI_A_SUBJECT_SHA="$fp_a" \
+SAAS_B16_CI_B_SUBJECT_SHA="$fp_b" \
+SAAS_B16_CI_A_TENANT="$tenant_a" \
+SAAS_B16_CI_B_TENANT="$tenant_b" \
+SAAS_B16_CI_A_SESSION="$session_a" \
+SAAS_B16_CI_B_SESSION="$session_b" \
+SAAS_B16_CI_A_BINDING="$binding_a" \
+SAAS_B16_CI_B_BINDING="$binding_b" \
+  timeout --signal=TERM --kill-after=3s 95s \
+    "${SAAS_B16_NATIVE_BUN_BIN:?pinned native SQL TLS runtime required}" scripts/saas-staging/verify-backend16-native-pg-tls-ci.ts \
+  > /tmp/b16-native-pg-tls-ci.log 2>&1 ||
+  { tail -n 22 /tmp/b16-native-pg-tls-ci.log >&2; fail; }
+for marker in \
+ B16_NATIVE_SQL_TLS_REAL_PID_VERIFIED \
+ B16_NATIVE_SQL_TLS_TWO_TENANT_RLS_PASS \
+ B16_NATIVE_SQL_TLS_ALWAYS_DENY_CALLBACK_ENFORCED \
+ B16_NATIVE_SQL_TLS_WRONG_ROOT_DENIED \
+ B16_NATIVE_SQL_TLS_CA_SIGNED_WILDCARD_DENIED; do
+ grep -Fx "$marker" /tmp/b16-native-pg-tls-ci.log || fail
+done
+grep -Fx 'PASS Backend16 native Bun.SQL TLS to real disposable PG16' \
+ /tmp/b16-native-pg-tls-ci.log || fail
 eq wrong_session f "$(a "$(query "$tenant_a" "$session_b" "$binding_a" "$fp_a")")"
 eq wrong_binding f "$(a "$(query "$tenant_a" "$session_a" "$binding_b" "$fp_a")")"
 eq wrong_digest f "$(a "$(query "$tenant_a" "$session_a" "$binding_a" "$fp_b")")"

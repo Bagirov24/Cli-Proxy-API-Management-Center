@@ -12,6 +12,8 @@
  */
 // @ts-expect-error Backend-only Bun Node API; frontend tsconfig intentionally excludes Node types.
 import {createHash, timingSafeEqual, X509Certificate} from 'node:crypto';
+// @ts-expect-error Backend-only Node TLS; frontend tsconfig excludes Node types.
+import {checkServerIdentity as nodeCheckServerIdentity} from 'node:tls';
 
 export const BACKEND16_STAGING_PG_TLS_HOST = 'postgres.railway.internal';
 const HEX = /^[a-f0-9]{64}$/;
@@ -23,6 +25,8 @@ export type Backend16StagingPgTlsTrust = Readonly<{
   ca: string;
   serverName: typeof BACKEND16_STAGING_PG_TLS_HOST;
   rejectUnauthorized: true;
+  /** Exact DNS SAN, not Node's normally valid wildcard-host matching. */
+  checkServerIdentity: (hostname:string,cert:unknown)=>Error|undefined;
 }>;
 
 export type Backend16OperatorApprovedPgCa = Readonly<{
@@ -35,6 +39,35 @@ export type Backend16OperatorApprovedPgCa = Readonly<{
 const approved = new WeakMap<object,{notBefore:number;notAfter:number}>();
 function refuse():never{
   throw new Error('Backend16 staging PostgreSQL TLS trust refused');
+}
+
+/**
+ * Bun.SQL calls this on the *authenticated SQL connection* after chain
+ * verification and before sending the PostgreSQL LOGIN/password. This is
+ * stricter than Node's wildcard-compatible ordinary hostname verification.
+ * Fail closed on missing DER, absent SAN, CN-only or wildcard SAN.
+ */
+function exactPrivatePgServerIdentity(hostname:string,peer:unknown):Error|undefined {
+  const denied=()=>new Error('Backend16 private PostgreSQL DNS SAN refused');
+  if(hostname!==BACKEND16_STAGING_PG_TLS_HOST||!peer||
+     typeof peer!=='object')return denied();
+  try{
+    const raw=(peer as {raw?:unknown}).raw;
+    if(!(raw instanceof Uint8Array)||raw.length<256||
+       raw.length>32768)return denied();
+    const leaf=new X509Certificate(raw);
+    const san=leaf.subjectAltName;
+    if(typeof san!=='string'||
+       !san.split(/,\s*/).includes('DNS:'+BACKEND16_STAGING_PG_TLS_HOST)||
+       leaf.checkHost(BACKEND16_STAGING_PG_TLS_HOST,{
+         subject:'never',wildcards:false,
+       })!==BACKEND16_STAGING_PG_TLS_HOST)return denied();
+    if(nodeCheckServerIdentity(
+      BACKEND16_STAGING_PG_TLS_HOST,
+      peer as Parameters<typeof nodeCheckServerIdentity>[1],
+    ))return denied();
+    return undefined;
+  }catch{return denied();}
 }
 
 /**
@@ -89,6 +122,7 @@ export function createBackend16StagingPgTlsTrust(
       ca:caPem,
       serverName:BACKEND16_STAGING_PG_TLS_HOST,
       rejectUnauthorized:true as const,
+      checkServerIdentity:exactPrivatePgServerIdentity,
     });
     approved.set(tls,{notBefore,notAfter});
     return tls;
