@@ -58,7 +58,7 @@ function exactPrivatePgServerIdentity(hostname:string,peer:unknown):Error|undefi
     const leaf=new X509Certificate(raw);
     const san=leaf.subjectAltName;
     if(typeof san!=='string'||
-       !san.split(/,\\s*/).includes('DNS:'+BACKEND16_STAGING_PG_TLS_HOST)||
+       !san.split(/,\s*/).includes('DNS:'+BACKEND16_STAGING_PG_TLS_HOST)||
        leaf.checkHost(BACKEND16_STAGING_PG_TLS_HOST,{
          subject:'never',wildcards:false,
        })!==BACKEND16_STAGING_PG_TLS_HOST)return denied();
