@@ -81,3 +81,28 @@ The previous known native Bun.SQL same-socket wrong-root/wildcard TLS
 negative MUST remain RED and cannot be skipped to make stacked CI green.
 No staging/prod Railway operations, live credentials, permanent SQL0008,
 public endpoint or migration are allowed.
+
+
+## Independent ephemeral registry resolution (CI only)
+
+The stacked Draft now checks two **independently generated** genuine Node24
+npm v3 locks in two different one-use directories. Each uses its own
+HOME, empty user/global npm configs and cache. Both locks are separately
+verified against the existing exact `pg@8.23.1` dependency/HTTPS registry/SRI
+contract. A stable, order-insensitive comparison of the complete JSON graph
+(including all resolved origins and tarball integrity fields) must match
+before *either* clean installation can proceed.
+
+Only then does CI run `npm ci --ignore-scripts` independently against each
+lock, ensure the original bytes were not modified, and inspect the installed
+`pg` package metadata. The proof marker and canonical lock SHA-256 contain no
+credentials. Both installations and locks are deleted with the disposable
+workspace. No npm runtime package, npm lock, live secrets, staging SQL or
+production deployment is added to the repository.
+
+This is **short-window same-runner reproducibility evidence** and is not a
+reviewed or independently signed production lock. Registry/tarball review,
+cross-runner temporal reproducibility, Node server packaging approval,
+security/codeowner sign-off, and real operator PKI/IAM remain OPEN.
+The known native Bun.SQL PostgreSQL TLS wrong-root/wildcard failure remains
+a blocking RED finding and must not be disabled.
