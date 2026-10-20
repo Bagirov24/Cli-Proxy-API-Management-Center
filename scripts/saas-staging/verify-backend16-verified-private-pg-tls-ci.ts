@@ -162,6 +162,24 @@ async function runRealTlsCases(){
     const secondTrust=createBackend16StagingPgTlsTrust({
       caPem:otherRoot.pem,approvedCaDerSha256:otherRoot.pin,
     });
+    // This is the EXACT callback passed to Bun.SQL by the branded staging
+    // trust object, not the separate SSLRequest-only observer's callback.
+    const asPeer=(value:{cert:string})=>{
+      const leaf=new X509Certificate(value.cert);
+      return {
+        raw:leaf.raw,subjectaltname:leaf.subjectAltName,
+        subject:{CN:HOST},
+      };
+    };
+    assert.equal(trust.checkServerIdentity(HOST,asPeer(good)),undefined);
+    for(const invalid of [wrongHost,wildcardHost,noSan]){
+      assert.ok(trust.checkServerIdentity(HOST,asPeer(invalid)) instanceof Error,
+        'authenticated SQL trust must reject wrong/wildcard/CN-only SAN');
+    }
+    assert.ok(trust.checkServerIdentity('other.railway.internal',asPeer(good))
+      instanceof Error);
+    assert.ok(trust.checkServerIdentity(HOST,{} ) instanceof Error);
+    console.info('B16_TLS_CI_PHYSICAL_SQL_EXACT_SAN_CALLBACK_PASS');
     async function exchange(
       certificate:{cert:string;key:string}|null,
       selectedTrust:Backend16StagingPgTlsTrust,

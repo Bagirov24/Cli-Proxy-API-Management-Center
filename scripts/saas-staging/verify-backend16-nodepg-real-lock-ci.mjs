@@ -201,6 +201,10 @@ async function main(){
         './verify-backend16-nodepg-locked-pg16-tls-ci.mjs');
       await runLockedPg16PhysicalTlsCi(receipts.map(r=>r.dir));
     }
+    if(process.env.SAAS_B16_LOCKED_FULL_CHAIN_CI!==undefined){
+      const {runLockedFullChainCi}=await import('./backend16-locked-full-chain-ci.mjs');
+      runLockedFullChainCi(receipts.map(r=>r.dir));
+    }
     console.info('PASS Backend16 Node24 independently resolved pg lock twice: '+
       receipts[0].proof.packageCount+' packages; canonical_sha256='+
       normalizedDigest+'; two frozen installs; NO RELEASE AUTHORIZATION');

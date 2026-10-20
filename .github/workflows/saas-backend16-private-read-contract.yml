@@ -3,6 +3,12 @@ name: SaaS Backend16 Private Read Contract
 on:
   pull_request:
     paths:
+      - 'scripts/saas-staging/backend16-locked-full-chain-ci.mjs'
+      - 'scripts/saas-staging/verify-backend16-nodepg-exact-pg16-ci.ts'
+      - 'scripts/saas-staging/backend16-nodepg-synthetic-mtls-broker-ci.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16DisposableNodePgPhysicalPool.ts'
+      - 'tests/saasBackend16DisposableNodePgPhysicalPool.test.ts'
+      - 'tests/saasBackend16LockedFullChainCi.test.mjs'
       - 'src/features/saasBlueprint/controlApi/server/backend16PrivateTenantProjectRead.ts'
       - 'tests/saasBackend16PrivateTenantProjectRead.test.ts'
       - 'scripts/saas-staging/verify-backend16-nodepg-runtime-lock.mjs'
@@ -86,6 +92,10 @@ jobs:
         run: node --test tests/saasBackend16NodePgRealLockCi.test.mjs
       - name: Node24 locked PostgreSQL16 TLS gate unit tests (no socket)
         run: node --test tests/saasBackend16LockedPg16TlsCi.test.mjs
+      - name: Combined locked-driver gates and inherited physical pool contracts
+        run: |
+          node --test tests/saasBackend16LockedFullChainCi.test.mjs
+          node --experimental-strip-types --test tests/saasBackend16DisposableNodePgPhysicalPool.test.ts
       - name: Genuine ephemeral Node24 pg lock and clean install (never committed)
         run: node scripts/saas-staging/verify-backend16-nodepg-real-lock-ci.mjs
       - name: Fail-closed HTTP and origin-injection contracts

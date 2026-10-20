@@ -5,6 +5,7 @@ import {
   createBackend16StagingBunPhysicalPgPool,
   createBackend16StagingSqlSequence,
   createBackend16StagingDisposableCiPhysicalPgPool,
+  createBackend16StagingDisposableCiTlsPhysicalPgPool,
 } from '../src/features/saasBlueprint/controlApi/server/backend16StagingBunPhysicalPgPool.ts';
 import {BACKEND16_EXACT_READ_SQL as SQL}
   from '../src/features/saasBlueprint/controlApi/server/backend16ExactSessionSqlRead.ts';
@@ -85,6 +86,8 @@ test('no production login, arbitrary SQL, HTTP, retry or migration capability',(
 test('CI entrypoint refuses all non-disposable environments',()=>{
   assert.throws(()=>createBackend16StagingDisposableCiPhysicalPgPool(vault),
     /limited to disposable GitHub PG16/);
+  assert.throws(()=>createBackend16StagingDisposableCiTlsPhysicalPgPool(
+    vault,null as never),/native TLS limited to disposable GitHub PG16/);
 });
 test('shared physical core has no public host/profile injection and pins local CI',()=>{
   assert.match(source,/const DISPOSABLE_CI_PROFILE:Backend16BunPgProfile/);
@@ -94,6 +97,8 @@ test('shared physical core has no public host/profile injection and pins local C
   assert.match(source,/Object.freeze\(\{\.\.\.STAGING_PROFILE,tls:tlsTrust\}\)/);
   assert.match(source,/!backend16IsApprovedStagingPgTlsTrust\(tlsTrust\)/);
   assert.match(source,/profile\.tls\?\{tls:profile\.tls\}:\{\}/);
+  assert.ok(source.includes("env.SAAS_B16_PHYSICAL_TLS_CI!=='true'"));
+  assert.ok(source.includes('Object.freeze({...DISPOSABLE_CI_PROFILE,tls:tlsTrust})'));
   assert.doesNotMatch(source,/database:'saas_staging_ci',tls:/);
   assert.match(source,/env\.GITHUB_ACTIONS!=='true'/);
   assert.match(source,/env\.PGPASSWORD!=='ci_ephemeral_test_only'/);
@@ -166,4 +171,45 @@ test('discard releases exclusively owned reservation before closing native PG po
   assert.ok(e2e.includes("stagingRead(a,ta,fresh())"),
     'discard must not poison otherwise healthy independent requests');
   assert.match(shell,/timeout --signal=TERM --kill-after=3s 110s/);
+});
+
+test('native TLS GitHub runner is isolated and proves real PostgreSQL SSL PID',()=>{
+  const runner=readFileSync(new URL(
+    '../scripts/saas-staging/verify-backend16-native-pg-tls-ci.ts',
+    import.meta.url),'utf8');
+  const shell=readFileSync(new URL(
+    '../scripts/saas-staging/verify-backend16-exact-session-pg16.sh',
+    import.meta.url),'utf8');
+  const workflow=readFileSync(new URL(
+    '../.github/workflows/saas-staging-rls-ci.yml',
+    import.meta.url),'utf8');
+  for(const marker of [
+    "env.GITHUB_ACTIONS!=='true'",
+    "env.SAAS_B16_PHYSICAL_TLS_CI!=='true'",
+    "env.PGHOST!=='127.0.0.1'",
+    "env.RAILWAY_PROJECT_ID",
+    "command('docker',['inspect'",
+    "'postgres:16.6'",
+    "createBackend16StagingDisposableCiTlsPhysicalPgPool",
+    "pg_stat_ssl WHERE pid=$1",
+    "assert.equal(pgSsl[0].ssl,true",
+    "createBackend16ExactSqlReadPort",
+    "read(a,tb,fresh())","read(b,ta,fresh())",
+    "B16_NATIVE_SQL_TLS_CA_SIGNED_WILDCARD_",
+    "await gone(LOGIN_A)",
+    "PASS Backend16 native Bun.SQL TLS to real disposable PG16",
+  ])assert.ok(runner.includes(marker),marker);
+  assert.ok(shell.includes('verify-backend16-native-pg-tls-ci.ts'));
+  assert.ok(workflow.includes('SAAS_B16_CI_PG_CONTAINER: ${{ job.services.postgres.id }}'));
+  assert.doesNotMatch(runner,/DATABASE_PUBLIC_URL|Bun\.serve|\/data\/auths/);
+});
+
+test('staging native Bun.SQL TLS is HARD STOP until same-socket peer trust evidence',()=>{
+  // No approved release can be inferred from unit TLS handshakes or
+  // pg_stat_ssl.ssl=true on a native Bun.SQL physical connection.
+  assert.match(source,/const NATIVE_SQL_TLS_PEER_AUTHENTICATION_VERIFIED=false;/);
+  assert.match(source,/if\(!NATIVE_SQL_TLS_PEER_AUTHENTICATION_VERIFIED\|\|/);
+  assert.match(source,/Bun 1\.4\.3 rejects it but still does not invoke/);
+  assert.throws(()=>createBackend16StagingBunPhysicalPgPool(
+    vault,null as never),/release gates not met/);
 });
