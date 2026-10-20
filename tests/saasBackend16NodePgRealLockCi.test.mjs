@@ -77,7 +77,7 @@ test('genuine lock acceptance is CI-only, never a release or migration',()=>{
   assert.ok(source.includes("join(dir,'empty-user.npmrc')"));
   assert.ok(source.includes("join(dir,'empty-global.npmrc')"));
   assert.doesNotMatch(source,/npm_config_globalconfig:'\/dev\/null'/);
-  assert.ok(source.includes("rmSync(dir,{recursive:true,force:true})"));
+  assert.ok(source.includes("rmSync(rootDir,{recursive:true,force:true})"));
   assert.ok(source.includes('NO RELEASE AUTHORIZATION'));
   assert.doesNotMatch(source,/Bun\.serve|CREATE ROLE|ALTER ROLE|SQL0008|DATABASE_PUBLIC_URL/);
 });
