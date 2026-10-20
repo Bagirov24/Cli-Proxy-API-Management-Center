@@ -162,8 +162,10 @@ try{
 
   const wildcardCert=new X509Certificate(
     readFileSync(join(dir,'wildcard.crt'),'utf8'));
-  assert.equal(wildcardCert.checkHost(HOST),HOST,
-    'built-in wildcard matcher accepts this CA-valid leaf');
+  assert.ok(wildcardCert.subjectAltName?.split(/,\\s*/).includes(
+    'DNS:*.railway.internal'),'fixture must contain a wildcard DNS SAN');
+  assert.equal(wildcardCert.verify(new X509Certificate(goodRoot).publicKey),true,
+    'wildcard leaf must really be signed by the pinned fixture CA');
   assert.ok(trust(goodRoot).checkServerIdentity(HOST,{
     raw:wildcardCert.raw,subjectaltname:wildcardCert.subjectAltName,
     subject:{CN:HOST},
