@@ -52,6 +52,47 @@ test('Node PG uses reviewed TLS callback, no plaintext or shared LOGIN',()=>{
   assert.doesNotMatch(source,/tls:'require'|rejectUnauthorized:false/);
   assert.doesNotMatch(source,/SET ROLE|CREATE ROLE|ALTER ROLE|DROP ROLE/i);
 });
+test('CI PG16 proof uses a real guarded two-principal mTLS broker',()=>{
+  const runner=readFileSync(new URL(
+    '../scripts/saas-staging/verify-backend16-nodepg-exact-pg16-ci.ts',
+    import.meta.url),'utf8');
+  const broker=readFileSync(new URL(
+    '../scripts/saas-staging/backend16-nodepg-synthetic-mtls-broker-ci.ts',
+    import.meta.url),'utf8');
+  const shell=readFileSync(new URL(
+    '../scripts/saas-staging/verify-backend16-exact-session-pg16.sh',
+    import.meta.url),'utf8');
+  for(const marker of [
+    'createBackend16DisposableCiMtlsSecretReader',
+    'createBackend16StagingVersionedPrincipalVault',
+    'startSyntheticBackend16MtlsBroker',
+    'B16_NODEPG_COMBINED_MTLS_VERSIONED_TLS_RLS_PASS',
+    'B16_NODEPG_MTLS_WRONG_VERSION_AND_EXPIRED_PREAUTH_DENY',
+    'B16_NODEPG_MTLS_REVOKED_IN_FLIGHT_PREAUTH_DENY',
+    'B16_NODEPG_EXACT_RESTORED_TLS_PRE_LOCK_PASS',
+    "process.env.SAAS_B16_BROKER_MTLS_CI='false'",
+    'await noLogin(A)',
+    'activeBroker.close()',
+  ])assert.ok(runner.includes(marker),marker);
+  for(const marker of [
+    "e.GITHUB_ACTIONS!=='true'",
+    "e.SAAS_B16_BROKER_MTLS_CI!=='true'",
+    "server.listen(0,'127.0.0.1',resolve)",
+    "requestCert:true,rejectUnauthorized:true",
+    "approvedClientDerSha256",
+    "req.method!=='GET'",
+    "mode==='wrong-version'",
+    "mode==='expired'",
+    'releaseDeferred()',
+    "rmSync(dir,{recursive:true,force:true})",
+  ])assert.ok(broker.includes(marker),marker);
+  assert.ok(shell.includes('SAAS_B16_BROKER_MTLS_CI=true'));
+  assert.ok(shell.includes(
+    'PASS Backend16 Node PG synthetic mTLS broker vault PG16 RLS full chain'));
+  assert.doesNotMatch(broker,/DATABASE_PUBLIC_URL|Bun\.serve|\.listen\(\s*443/);
+  assert.doesNotMatch(runner,/retry\s*\(|DATABASE_PUBLIC_URL/);
+});
+
 test('adapter is neither a production staging factory nor a packaged dependency',()=>{
   assert.ok(source.includes('createBackend16DisposableCiNodePgPhysicalPool'));
   assert.doesNotMatch(source,/createBackend16StagingNodePgPhysicalPool/);

@@ -146,6 +146,7 @@ npm install --prefix /tmp/b16-nodepg-peer --no-save --package-lock=false \
 test "$(node -p "require('/tmp/b16-nodepg-peer/node_modules/pg/package.json').version")" = 8.23.1 || fail
 test ! -e package-lock.json || fail
 SAAS_B16_NODEPG_PHYSICAL_CI=true \
+SAAS_B16_BROKER_MTLS_CI=true \
 SAAS_B16_CI_A_PASSWORD="$a_pw" \
 SAAS_B16_CI_B_PASSWORD="$b_pw" \
 SAAS_B16_CI_A_SUBJECT_SHA="$fp_a" \
@@ -162,6 +163,10 @@ SAAS_B16_CI_B_BINDING="$binding_b" \
   > /tmp/b16-nodepg-exact-pg16-ci.log 2>&1 ||
   { tail -n 20 /tmp/b16-nodepg-exact-pg16-ci.log >&2; fail; }
 grep 'PASS Backend16 Node PG real TLS exact SQL0008 two-tenant PG16 RLS' \
+ /tmp/b16-nodepg-exact-pg16-ci.log || fail
+grep 'PASS Backend16 Node PG synthetic mTLS broker vault PG16 RLS full chain' \
+ /tmp/b16-nodepg-exact-pg16-ci.log || fail
+grep -q 'B16_NODEPG_MTLS_REVOKED_IN_FLIGHT_PREAUTH_DENY' \
  /tmp/b16-nodepg-exact-pg16-ci.log || fail
 
 # Newly isolated native verify-full Bun.SQL acceptance, using the exact

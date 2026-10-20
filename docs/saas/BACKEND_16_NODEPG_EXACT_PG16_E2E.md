@@ -65,10 +65,12 @@ are required before replacement.
 
 ## Still missing from production
 
-The versioned secrets in this new fixture come from a *synthetic in-memory
-provider*, not real mTLS broker/IAM. Actual single-chain broker →
-versioned vault → verified physical PostgreSQL16 → exact-session RLS is
-the next separate acceptance; so are real operator-approved root CA,
+The original #78 test used an *in-memory synthetic provider*. A new
+stacked CI-only increment adds a genuine **loopback mutual-TLS secret broker**
+feeding that same version-pinned vault and Node24 physical PostgreSQL16
+TLS/session/RLS path. This is still NOT real external broker IAM, durable
+secret rotation or Railway private deployment. Remaining gates include
+real operator-approved root CA,
 workload client certs/secret rotation, issuer OIDC, durable audit/WORM,
 multi-replica cancellation and session fences, PITR/DR, signed release
 evidence, private domain/listener review, tenant IDOR, canary/rollback,
@@ -78,3 +80,44 @@ Neither this code nor green CI authorizes SQL0008 replay in permanent
 staging; no Railway project/service/volume, production Core/Gateway,
 custom-no-apikey-fun branch, /data or credentials may be touched.
 This stage NEVER enables a public SaaS API or production data access.
+
+
+## Stacked combined broker → verified PostgreSQL16 read (CI PENDING)
+
+A separate source-only increment drives the existing Node24 exact-session
+RLS acceptance through createBackend16DisposableCiMtlsSecretReader.
+The broker service is a 127.0.0.1-only Node HTTPS fixture in the same
+disposable GitHub Actions runner, with its own independent synthetic
+RSA3072 root CA, a verified clientAuth certificate and exact private
+broker DNS SAN. It only allows the two pinned synthetic principal
+secret IDs and exact immutable versions. Its response is a bounded,
+canonical no-store JSON secret lease; passwords/private keys never go to
+Git and should never be printed in logs.
+
+The transport chain under test is:
+
+- mTLS workload client → synthetic exact-version broker;
+- createBackend16StagingVersionedPrincipalVault → fresh secret per physical LOGIN;
+- Node24 pg@8.23.1 CI-only client with independent pinned PostgreSQL CA,
+  verified exact DNS:postgres.railway.internal SAN and no downgrade;
+- physical PostgreSQL16 LOGIN/SSL PID → SQL0008 current session/binding →
+  FORCE RLS tenant/project read → acknowledged COMMIT → physical socket close.
+
+Negative tests also require wrong secret versions, expired leases, and
+revocation of the client approval while a real mTLS response is held
+to refuse before any PostgreSQL login. Wrong PostgreSQL CA, CA-valid
+wildcard SAN, cross-tenant reads, FOR UPDATE/FOR SHARE cancellation and
+backend PID discard remain in the same real PostgreSQL CI run. The
+script must report explicit positive and negative markers on its exact
+head before even limited CI acceptance.
+
+This is evidence of genuine protocol connections with **ephemeral
+synthetic** identities, not external IAM, off-host high-water/WORM,
+independently provisioned keys, live OIDC session authority, signed
+production release approval or complete application/CPA integration.
+The permanent Railway SQL0008 installer must never be re-run. The
+native Bun.SQL same-socket TLS-negative test from #76 remains RED:
+NATIVE_SQL_TLS_PEER_AUTHENTICATION_VERIFIED=false. This experiment
+must not bypass, edit, or skip that security blocker to produce
+superficially green CI. Real transport replacement is separately
+reviewed and production is blocked.

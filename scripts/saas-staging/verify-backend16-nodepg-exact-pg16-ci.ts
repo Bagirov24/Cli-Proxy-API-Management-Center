@@ -17,6 +17,10 @@ import {createBackend16StagingPgTlsTrust}
   from '../../src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts';
 import {createBackend16StagingVersionedPrincipalVault}
   from '../../src/features/saasBlueprint/controlApi/server/backend16StagingVersionedPrincipalVault.ts';
+import {createBackend16DisposableCiMtlsSecretReader}
+  from '../../src/features/saasBlueprint/controlApi/server/backend16PrivateMtlsVersionedSecretReader.ts';
+import {startSyntheticBackend16MtlsBroker}
+  from './backend16-nodepg-synthetic-mtls-broker-ci.ts';
 import {createBackend16DisposableCiNodePgPhysicalPool,
   type Backend16NodePgClientConstructor}
   from '../../src/features/saasBlueprint/controlApi/server/backend16DisposableNodePgPhysicalPool.ts';
@@ -33,6 +37,7 @@ const HEX=/^[a-f0-9]{64}$/;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 if(e.GITHUB_ACTIONS!=='true'||e.SAAS_B16_EPHEMERAL_CI!=='true'||
    e.SAAS_B16_NODEPG_PHYSICAL_CI!=='true'||
+   e.SAAS_B16_BROKER_MTLS_CI!=='true'||
    e.PGHOST!=='127.0.0.1'||e.PGPORT!=='5432'||
    e.PGDATABASE!=='saas_ephemeral_test'||
    e.PGPASSWORD!=='ci_ephemeral_test_only'||
@@ -66,6 +71,7 @@ assert.equal(command('docker',['exec',id,'printenv','PGDATA']),
   '/var/lib/postgresql/data');
 
 const dir=mkdtempSync(join(tmpdir(),'b16-nodepg-exact-'));
+let activeBroker:Awaited<ReturnType<typeof startSyntheticBackend16MtlsBroker>>|undefined;
 function root(name:string):string{
   command('openssl',[
     'req','-x509','-newkey','rsa:3072','-nodes','-sha256',
@@ -176,25 +182,17 @@ async function execute(){
     schema:'backend16-staging-vault-v1',
     entries:entries.map(x=>[x.pgLogin,x.secretId,x.version]),
   })).digest('hex');
-  const credentials=new Map([
-    [A,e.SAAS_B16_CI_A_PASSWORD!],
-    [B,e.SAAS_B16_CI_B_PASSWORD!],
-  ]);
-  const versions=new Map(entries.map(x=>[x.secretId,x]));
-  let vaultCalls=0;
+  // Real loopback mTLS with a distinct ephemeral broker CA. Secrets remain
+  // CI-generated and are only returned as exact immutable versions.
+  const broker=await startSyntheticBackend16MtlsBroker(entries.map(x=>({
+    ...x,password:e['SAAS_B16_CI_'+(x.pgLogin===A?'A':'B')+'_PASSWORD']!,
+  })));
+  activeBroker=broker;
+  const reader=createBackend16DisposableCiMtlsSecretReader(
+    broker.trust,broker.port);
   const vault=await createBackend16StagingVersionedPrincipalVault({
     manifest:{entries,approvedManifestSha256:digest},
-    source:{
-      async readVersion(secretId,version,signal){
-        vaultCalls++;
-        const entry=versions.get(secretId);
-        if(signal.aborted||!entry||entry.version!==version)return null;
-        return {
-          username:entry.pgLogin,password:credentials.get(entry.pgLogin)!,
-          version,expiresAtMs:Date.now()+120_000,
-        };
-      },
-    },
+    source:reader,
   });
   const a=principal(A),b=principal(B);
   const ta=e.SAAS_B16_CI_A_TENANT!,tb=e.SAAS_B16_CI_B_TENANT!;
@@ -211,6 +209,53 @@ async function execute(){
     await noLogin(A);await noLogin(B);
     console.info('B16_NODEPG_EXACT_TWO_TENANT_TLS_RLS_PASS');
   }finally{await first.shutdown();}
+  assert.ok(broker.calls()>=4,'each valid physical LOGIN must fetch a secret');
+  assert.ok(broker.received.some(x=>x.pgLogin===A));
+  assert.ok(broker.received.some(x=>x.pgLogin===B));
+  console.info('B16_NODEPG_COMBINED_MTLS_VERSIONED_TLS_RLS_PASS');
+
+  // Authenticated broker replies with an incorrect immutable version or a
+  // stale lease must never result in PostgreSQL LOGIN authorization.
+  for(const failure of ['wrong-version','expired'] as const){
+    broker.choose(failure);
+    const deniedPool=createBackend16DisposableCiNodePgPhysicalPool(
+      vault,trust(caPem),Client);
+    try{
+      const deniedRead=createBackend16ExactSqlReadPort({
+        pool:deniedPool,expectedDatabase:'saas_staging_ci',
+      });
+      await assert.rejects(deniedRead(a,ta,fresh()),
+        /Backend16 exact SQL data source unavailable/);
+      await noLogin(A);
+    }finally{
+      await deniedPool.shutdown();
+      broker.choose('pass');
+    }
+  }
+  console.info('B16_NODEPG_MTLS_WRONG_VERSION_AND_EXPIRED_PREAUTH_DENY');
+
+  // The mTLS handshake and GET may already have succeeded, but the
+  // server-held approval can still be revoked before HTTP 200 is received.
+  broker.choose('deferred');
+  const revokePool=createBackend16DisposableCiNodePgPhysicalPool(
+    vault,trust(caPem),Client);
+  try{
+    const deniedRead=createBackend16ExactSqlReadPort({
+      pool:revokePool,expectedDatabase:'saas_staging_ci',
+    });
+    const pending=deniedRead(a,ta,fresh());
+    const settled=pending.then(()=>false,()=>true);
+    await broker.waitForDeferred();
+    process.env.SAAS_B16_BROKER_MTLS_CI='false';
+    broker.releaseDeferred();
+    assert.equal(await settled,true,'revoked workload cannot receive secret');
+    await noLogin(A);
+    console.info('B16_NODEPG_MTLS_REVOKED_IN_FLIGHT_PREAUTH_DENY');
+  }finally{
+    process.env.SAAS_B16_BROKER_MTLS_CI='true';
+    broker.choose('pass');
+    await revokePool.shutdown();
+  }
 
   const physical=createBackend16DisposableCiNodePgPhysicalPool(
     vault,trust(caPem),Client);
@@ -260,6 +305,17 @@ async function execute(){
   }finally{await badSan.shutdown();}
   // Restore approved exact certificate before the baseline CI revoke races.
   install('good');await reload();
+  // Prove certificate rotation really restored authenticated exact-SAN TLS
+  // before a second test intentionally stalls on the authorization row lock.
+  const restoredPool=createBackend16DisposableCiNodePgPhysicalPool(
+    vault,trust(caPem),Client);
+  try{
+    const restoredRead=createBackend16ExactSqlReadPort({
+      pool:restoredPool,expectedDatabase:'saas_staging_ci',
+    });
+    assert.equal((await restoredRead(a,ta,fresh())).kind,'authorized');
+  }finally{await restoredPool.shutdown();}
+  console.info('B16_NODEPG_EXACT_RESTORED_TLS_PRE_LOCK_PASS');
 
   // Real PG16 FOR UPDATE competing with exact-session FOR SHARE: cancel the
   // waiting physical client and prove its socket dies with no data published.
@@ -278,8 +334,8 @@ async function execute(){
     });
     const cancel=new AbortController();
     const waiting=read(a,ta,cancel.signal);
-    // Attach the expected rejection BEFORE observing PG lock wait events.
-    // A 1500ms SQL lock timeout can precede our cancellation probe.
+    // Consume any early failure immediately: Node24 otherwise terminates
+    // the process on an unhandled rejection while inspecting pg_stat_activity.
     const refused=assert.rejects(waiting,
       /Backend16 exact SQL data source unavailable/);
     let waitingPid=0;
@@ -302,11 +358,17 @@ async function execute(){
     if(locked){try{await admin.query('ROLLBACK');}catch{/* CI only */}}
     await waitingPool.shutdown();
   }
-  assert.ok(vaultCalls>=8,'each physical LOGIN needs fresh exact vault read');
+  assert.ok(broker.calls()>=10,
+    'each physical LOGIN must fetch a new mutually authenticated exact-version secret');
+  assert.ok(broker.received.every(x=>entries.some(y=>
+    x.pgLogin===y.pgLogin&&x.secretId===y.secretId&&x.version===y.version)),
+    'broker must refuse alias versions and enumeration');
   console.info('PASS Backend16 Node PG real TLS exact SQL0008 two-tenant PG16 RLS');
+  console.info('PASS Backend16 Node PG synthetic mTLS broker vault PG16 RLS full chain');
 }
 try{await execute();}
 finally{
+  if(activeBroker){try{await activeBroker.close();}catch{/* disposable CI */}}
   if(adminConnected){
     try{await admin.query('ALTER SYSTEM RESET ssl');await reload();}
     catch{/* CI service is thrown away */}

@@ -18,6 +18,7 @@ on:
       - 'src/features/saasBlueprint/controlApi/server/backend16DisposableNodePgPhysicalPool.ts'
       - 'tests/saasBackend16DisposableNodePgPhysicalPool.test.ts'
       - 'scripts/saas-staging/verify-backend16-nodepg-exact-pg16-ci.ts'
+      - 'scripts/saas-staging/backend16-nodepg-synthetic-mtls-broker-ci.ts'
       - 'docs/saas/BACKEND_16_NODEPG_EXACT_PG16_E2E.md'
       - 'src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts'
       - 'tests/saasBackend16StagingPgTlsTrust.test.ts'
@@ -88,6 +89,8 @@ jobs:
         run: bun build --target=bun src/features/saasBlueprint/controlApi/server/backend16DisposableNodePgPhysicalPool.ts --outdir /tmp/b16-nodepg-exact-ci
       - name: Validate standalone Node24 exact E2E TypeScript syntax
         run: node --experimental-strip-types --check scripts/saas-staging/verify-backend16-nodepg-exact-pg16-ci.ts
+      - name: Validate isolated mTLS fixture TypeScript syntax
+        run: node --experimental-strip-types --check scripts/saas-staging/backend16-nodepg-synthetic-mtls-broker-ci.ts
       - name: Validate Backend16.4 disposable PG16 runner syntax
         run: bash -n scripts/saas-staging/verify-backend16-exact-session-pg16.sh
       - name: Bundle CI-only native Bun PostgreSQL16 TLS fixture (no DB contact)
