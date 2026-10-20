@@ -91,6 +91,10 @@ test('CI PG16 proof uses a real guarded two-principal mTLS broker',()=>{
   ])assert.ok(broker.includes(marker),marker);
   assert.ok(shell.includes('SAAS_B16_BROKER_MTLS_CI=true'));
   assert.ok(shell.includes(
+    "grep -Fxq 'B16_NODEPG_ASYNC_SOCKET_ERROR_QUARANTINE_PID_DEATH_PASS'"));
+  assert.ok(shell.includes(
+    'PASS Backend16 Node PG async socket error quarantine physical PID death'));
+  assert.ok(shell.includes(
     'PASS Backend16 Node PG synthetic mTLS broker vault PG16 RLS full chain'));
   assert.doesNotMatch(broker,/DATABASE_PUBLIC_URL|Bun\.serve|\.listen\(\s*443/);
   assert.doesNotMatch(runner,/retry\s*\(|DATABASE_PUBLIC_URL/);

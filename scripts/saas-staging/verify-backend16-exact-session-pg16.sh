@@ -168,6 +168,13 @@ grep 'PASS Backend16 Node PG synthetic mTLS broker vault PG16 RLS full chain' \
  /tmp/b16-nodepg-exact-pg16-ci.log || fail
 grep -q 'B16_NODEPG_MTLS_REVOKED_IN_FLIGHT_PREAUTH_DENY' \
  /tmp/b16-nodepg-exact-pg16-ci.log || fail
+# A real authenticated PostgreSQL16 PID must be destroyed when its Node24
+# client emits an asynchronous error between SQL statements. Never print
+# the raw fixture log; emit only this exact proof marker after checking it.
+grep -Fxq 'B16_NODEPG_ASYNC_SOCKET_ERROR_QUARANTINE_PID_DEATH_PASS' \
+ /tmp/b16-nodepg-exact-pg16-ci.log || fail
+echo 'PASS Backend16 Node PG async socket error quarantine physical PID death'
+
 
 # Newly isolated native verify-full Bun.SQL acceptance, using the exact
 # GitHub Actions PostgreSQL service container only (never permanent SQL0008).
