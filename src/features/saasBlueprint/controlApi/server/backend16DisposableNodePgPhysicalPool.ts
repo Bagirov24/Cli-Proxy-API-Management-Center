@@ -10,9 +10,9 @@
 import type {
   Backend16PhysicalPgConnection, Backend16PhysicalPgPool, Backend16PgRow,
 } from './backend16PhysicalPgAdmission';
-import {BACKEND16_EXACT_READ_SQL as SQL} from './backend16ExactSessionSqlRead';
+import {BACKEND16_EXACT_READ_SQL as SQL} from './backend16ExactSessionSqlRead.ts';
 import {backend16IsApprovedStagingPgTlsTrust,
-  type Backend16StagingPgTlsTrust} from './backend16StagingPgTlsTrust';
+  type Backend16StagingPgTlsTrust} from './backend16StagingPgTlsTrust.ts';
 import type {Backend16StagingPrincipalVault}
   from './backend16StagingBunPhysicalPgPool';
 
