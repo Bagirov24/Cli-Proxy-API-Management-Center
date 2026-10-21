@@ -34,8 +34,15 @@ export async function readBoundedNativeBunResponse(
   let reader;
   try{reader=response.body.getReader();}
   catch{denied();}
+  // Never retain individual network chunks: a million 1-byte chunks
+  // must not allocate a million JS objects beyond the byte-size ceiling.
+  // Exact Content-Length allocates once; chunked bodies grow geometrically,
+  // with bounded reallocations independent of the number of read() calls.
+  const declaredBytes=length===null?null:Number(length);
+  let storage=Buffer.allocUnsafe(
+    declaredBytes??Math.min(maxBytes,1_048_576),
+  );
   let total=0;
-  const pieces=[];
   try{
     for(;;){
       const part=await reader.read();
@@ -43,11 +50,20 @@ export async function readBoundedNativeBunResponse(
       const bytes=part.value;
       if(!(bytes instanceof Uint8Array)||bytes.byteLength===0||
          bytes.byteLength>maxBytes-total)denied();
-      total+=bytes.byteLength;
-      pieces.push(bytes);
+      const needed=total+bytes.byteLength;
+      if(needed>storage.length){
+        if(declaredBytes!==null)denied();
+        const capacity=Math.min(maxBytes,Math.max(needed,storage.length*2));
+        const grown=Buffer.allocUnsafe(capacity);
+        storage.copy(grown,0,0,total);
+        storage=grown;
+      }
+      storage.set(bytes,total);
+      total=needed;
     }
-    if(total===0||(length!==null&&total!==Number(length)))denied();
-    return Buffer.concat(pieces,total);
+    if(total===0||(declaredBytes!==null&&total!==declaredBytes))denied();
+    // Every returned byte was copied from the complete HTTP response.
+    return storage.subarray(0,total);
   }catch{denied();}
   finally{
     // No partially received archive is written or passed to tar.

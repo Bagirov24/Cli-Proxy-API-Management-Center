@@ -26,6 +26,19 @@ the network request retains a 120-second abort timeout and redirect refusal.
 A bounded response is **not** an accepted artifact: the unchanged
 `verifyNativeBunArchive` must still verify the immutable historical
 `NATIVE_BUN_CI_PIN.sha512` and 1,000,000-byte minimum **before tar**.
+The incremental memory guard uses one bounded byte buffer rather than one
+array entry per HTTP fragment. With an exact declared length the buffer is
+allocated once; without it the buffer starts at no more than 1 MiB and grows
+geometrically up to the original 150 MB ceiling. Thus even thousands of
+one-byte fragments cannot create an unbounded array of retained chunk
+objects. Brief reallocation can temporarily hold the old and new byte
+buffers, but the number of allocations no longer scales with the number
+of network fragments. A rejected partial response is never persisted.
+
+The independent native TLS workflow now also reruns for changes to
+the shared native physical pool, its tests and the physical Native PG
+TLS fixture, with a source regression guard against losing those triggers.
+
 The installer checks the same exact Bun CLI/full-source revisions afterward.
 The limit override in the exported decoder is a unit-test input only, never
 greater than the built-in production-CI ceiling; the actual installer uses

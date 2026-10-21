@@ -48,6 +48,8 @@ test('CI-only upstream archive fetch is bounded before SHA512 or tar execution',
   assert.match(src,/redirect:'error',signal:AbortSignal[.]timeout[(]120_000[)]/);
   assert.match(src,/MAX_NATIVE_BUN_ARCHIVE_BYTES=150_000_000/);
   assert.match(src,/response[.]redirected!==false/);
+  assert.doesNotMatch(src,/pieces[.]push|Buffer[.]concat[(]/);
+  assert.match(src,/storage[.]set[(]bytes,total[)]/);
 });
 
 test('bounded archive response accepts a complete stream but never grants integrity',async()=>{
@@ -98,4 +100,60 @@ test('network read errors never surface untrusted response details',async()=>{
   await assert.rejects(readBoundedNativeBunResponse(result,6),
     error=>error instanceof Error&&
       error.message==='Backend16 pinned native Bun CI refused');
+});
+
+test('thousands of one-byte HTTP chunks cannot accumulate per-chunk buffers',async()=>{
+  // This is intentionally streamed, not constructed as an array of chunks.
+  const count=12_000;
+  let index=0;
+  const fragmented=new Response(new ReadableStream({
+    pull(controller){
+      if(index===count){controller.close();return;}
+      controller.enqueue(Uint8Array.of(index%251));
+      index++;
+    },
+  }),{status:200});
+  const bytes=await readBoundedNativeBunResponse(fragmented,count);
+  assert.equal(bytes.length,count);
+  assert.equal(index,count);
+  for(let i=0;i<count;i+=251)assert.equal(bytes[i],i%251);
+  assert.throws(()=>verifyNativeBunArchive(bytes));
+});
+
+test('unknown HTTP length grows a bounded buffer across the 1 MiB boundary',async()=>{
+  const first=Buffer.alloc(900_000,0x5a);
+  const second=Buffer.alloc(900_000,0x35);
+  const body=new Response(new ReadableStream({
+    start(controller){
+      controller.enqueue(first);
+      controller.enqueue(second);
+      controller.close();
+    },
+  }),{status:200});
+  const bytes=await readBoundedNativeBunResponse(body,2_000_000);
+  assert.equal(bytes.length,1_800_000);
+  assert.equal(bytes[0],0x5a);
+  assert.equal(bytes[899_999],0x5a);
+  assert.equal(bytes[900_000],0x35);
+  assert.equal(bytes[1_799_999],0x35);
+  assert.throws(()=>verifyNativeBunArchive(bytes));
+});
+
+test('standalone native TLS acceptance follows shared physical transport changes',()=>{
+  const workflow=readFileSync(new URL(
+    '../.github/workflows/saas-backend16-native-tls-experiment.yml',
+    import.meta.url),'utf8');
+  for(const path of [
+    'scripts/saas-staging/install-backend16-native-bun-ci.mjs',
+    'scripts/saas-staging/verify-backend16-native-tls-version-probe-ci.ts',
+    'scripts/saas-staging/verify-backend16-native-pg-tls-ci.ts',
+    'src/features/saasBlueprint/controlApi/server/backend16StagingBunPhysicalPgPool.ts',
+    'src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts',
+    'tests/saasBackend16StagingBunPhysicalPgPool.test.ts',
+    '.github/workflows/saas-backend16-native-tls-experiment.yml',
+  ])assert.ok(workflow.includes("      - '"+path+"'"),
+    'missing independent native TLS PR trigger: '+path);
+  assert.ok(workflow.includes('permissions:\n  contents: read'));
+  assert.ok(workflow.includes('workflow_dispatch:'));
+  assert.ok(workflow.includes('node --test tests/saasBackend16NativeBunCiPin.test.mjs'));
 });
