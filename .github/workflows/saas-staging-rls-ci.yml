@@ -55,6 +55,21 @@ on:
       - 'tests/saasTenantProjectsWriteHttpHandler.test.ts'
       - 'tests/saasTenantProjectsReadHttpHandler.test.ts'
       - 'src/features/saasBlueprint/controlApi/server/pgDurableIdentitySessionAuthority.ts'
+      # A source-only transport/broker/vault change must rerun physical PG16,
+      # not merely unit tests or the synthetic private-read contract.
+      - 'package.json'
+      - 'bun.lock'
+      - 'src/features/saasBlueprint/controlApi/server/backend16StagingBunPhysicalPgPool.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16DisposableNodePgPhysicalPool.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16StagingVersionedPrincipalVault.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16PrivateMtlsVersionedSecretReader.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16PinnedSessionAuthenticator.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16PrivateTenantProjectRead.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16VerifiedPrivatePgTls.ts'
+      - 'tests/saasBackend16StagingBunPhysicalPgPool.test.ts'
+      - 'tests/saasBackend16DisposableNodePgPhysicalPool.test.ts'
+      - 'tests/saasBackend16StagingPgTlsTrust.test.ts'
       - 'src/features/saasBlueprint/controlApi/server/backend16PhysicalPgAdmission.ts'
       - 'tests/saasBackend16PhysicalPgAdmission.test.ts'
       - 'src/features/saasBlueprint/controlApi/server/backend16ExactSessionSqlRead.ts'
@@ -78,7 +93,8 @@ permissions:
 
 jobs:
   tenant-rls:
-    runs-on: ubuntu-latest
+    # Match the supported browser/toolchain baseline; never float to PG17+ clients.
+    runs-on: ubuntu-24.04
     # This one job runs ALL isolated PG16 migration, identity and physical
     # tests sequentially. The prior 10-minute cap canceled at Backend08/09
     # without any failing assertion; preserve every test and fail-closed gate.
@@ -110,15 +126,31 @@ jobs:
       - name: Checkout isolated feature branch
         uses: actions/checkout@v4
 
-      - name: Ensure PostgreSQL client is installed
+      - name: Pin PostgreSQL 16 client for real PG16 backup and restore
         shell: bash
         run: |
           set -euo pipefail
-          if ! command -v psql >/dev/null 2>&1; then
+          # The postgres:16.6 service must never receive a dump emitted by a
+          # newer image-provided client (e.g. SET transaction_timeout in PG17+).
+          # Use the versioned binaries throughout all subsequent job steps,
+          # including Node's child-process pg_dump and pg_restore.
+          bin=/usr/lib/postgresql/16/bin
+          if [[ ! -x "$bin/pg_dump" || ! -x "$bin/pg_restore" ||
+                ! -x "$bin/psql" || ! -x "$bin/createdb" ||
+                ! -x "$bin/dropdb" ]]; then
             sudo apt-get update -qq
-            sudo apt-get install -y -qq postgresql-client
+            sudo apt-get install -y -qq postgresql-client-16
           fi
-          psql --version
+          for tool in psql pg_dump pg_restore createdb dropdb; do
+            test -x "$bin/$tool"
+            "$bin/$tool" --version | grep -Eq '[(]PostgreSQL[)] 16([.]|$)'
+          done
+          echo "$bin" >> "$GITHUB_PATH"
+          export PATH="$bin:$PATH"
+          test "$(command -v pg_dump)" = "$bin/pg_dump"
+          test "$(command -v pg_restore)" = "$bin/pg_restore"
+          pg_dump --version
+          pg_restore --version
 
       - name: Verify legacy tenant RLS and signed transaction-scope hardening
         shell: bash

@@ -1,5 +1,7 @@
 # Backend16: candidate Node24 PostgreSQL package-lock gate (source only)
 
+> **Post-merge status (2026-10-21):** The Draft/unmerged remarks below describe earlier checkpoints. Main `b0fd2b66fba5fc93c4e669ba4240fe38aef9c40e` has merged the dual independent lock resolutions, observed 14-package `pg@8.23.1` graph fingerprint gate, two `npm ci --ignore-scripts` installs and separate full E2E. The observed canonical SHA256 stays unchanged and is **not** a signed production package approval. See [owner integration](BACKEND_16_OWNER_INTEGRATION.md).
+
 **Status:** repository source-only candidate for independent review; not
 approved, packaged, merged, staged or released. This prepares a verifiable part of a future
 production transport decision. It does NOT change the unsafe native Bun.SQL
