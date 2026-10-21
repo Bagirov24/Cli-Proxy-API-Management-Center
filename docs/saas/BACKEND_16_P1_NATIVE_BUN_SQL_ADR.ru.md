@@ -121,6 +121,11 @@ implementation addendum. Текущий ADR фиксирует только вы
 
 ## 4. P2 — следующая Bun server-only packaging boundary
 
+**Первый source-only этап P2:** [проверяемый frozen Native source closure](BACKEND_16_P2_NATIVE_SOURCE_CLOSURE.md) из семи строго review-прикреплённых
+transport/vault/broker/SQL контрактов. Git blob IDs и точный граф
+type/value imports проверяются offline, наблюдаемый source SHA256
+не является подписанным SBOM, provenance или пакетом. Никакого
+entrypoint, исполняемого сервера или production runtime не создаётся.
 Подготовить отдельную от React/Vite Management Center Bun server-only
 сборку, **не заменяя** frontend `bun@1.3.14` и `bun.lock` в этом PR.
 Нужны exact immutable runtime artifact hash, OS/arch pin, независимый

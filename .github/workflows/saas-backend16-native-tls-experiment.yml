@@ -15,6 +15,10 @@ on:
       - 'scripts/saas-staging/verify-backend16-native-stable-archive-preflight.mjs'
       - 'tests/saasBackend16NativeStableArchivePreflight.test.mjs'
       - 'docs/saas/BACKEND_16_P1_NATIVE_STABLE_PREFLIGHT.md'
+      - 'scripts/saas-staging/verify-backend16-native-source-closure-ci.mjs'
+      - 'scripts/saas-staging/backend16-native-server-source-closure.v1.json'
+      - 'tests/saasBackend16NativeSourceClosureCi.test.mjs'
+      - 'docs/saas/BACKEND_16_P2_NATIVE_SOURCE_CLOSURE.md'
   workflow_dispatch:
 
 permissions:
@@ -55,6 +59,10 @@ jobs:
         run: node --experimental-strip-types --test tests/saasBackend16NativeBunSqlDecision.test.ts
       - name: Reject unsafe future Native stable archives without executing them
         run: node --test tests/saasBackend16NativeStableArchivePreflight.test.mjs
+      - name: Refuse unreviewed Native transport source closure (offline)
+        run: |
+          node --test tests/saasBackend16NativeSourceClosureCi.test.mjs
+          CI=true node scripts/saas-staging/verify-backend16-native-source-closure-ci.mjs
       - name: Install integrity-pinned upstream native SQL TLS fix
         run: node scripts/saas-staging/install-backend16-native-bun-ci.mjs
       - name: Reject bad host and probe REAL native TLS verification

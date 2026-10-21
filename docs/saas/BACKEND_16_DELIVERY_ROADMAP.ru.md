@@ -100,6 +100,17 @@ artifact/security review и полный physical TLS/RLS acceptance на
 
 ### P2. Воспроизводимая Bun server-only упаковка — BLOCKED_RELEASE
 
+**Подготовлено для ревью (source-only, НЕ готовая упаковка):**
+[Native Bun source closure](BACKEND_16_P2_NATIVE_SOURCE_CLOSURE.md)
+содержит immutable Git blob review-pins и полный импорт-граф только
+семи unmounted transport/TLS/SQL/vault/mTLS/private-handler модулей.
+Он отказывает при изменённом исходнике, новом package/dependency,
+динамическом импорте или listener. Наблюдаемый SHA256 — unsigned
+source-inventory precursor, **NOT_A_PRODUCTION_SBOM**.
+Для P2 ещё нужны полная серверная композиция/OIDC/audit, stable
+Bun runtime, самостоятельный lockfile, сборка, SBOM и независимая
+подпись provenance. Stage остаётся **BLOCKED_RELEASE**.
+
 **Работа:** build из выбранной **stable Native Bun.SQL** версии,
 отдельный от React/Vite Management Center server-only runtime
 manifest/lock, exact binary/archive SHA512 и revision, SBOM,
