@@ -18,6 +18,10 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {
   EXPECTED_NAME,EXPECTED_PG_VERSION,verifyBackend16NodePgRuntimePackage,
 } from './verify-backend16-nodepg-runtime-lock.mjs';
+import {
+  inspectBackend16NodePgInstalledTree,
+  assertMatchingBackend16NodePgInstalledTrees,
+} from './verify-backend16-nodepg-installed-tree-ci.mjs';
 
 const REGISTRY='https://registry.npmjs.org';
 const DENIED='Backend16 genuine NodePG CI lock refused';
@@ -197,6 +201,12 @@ async function main(){
          existsSync(join(dir,'node_modules/pg-native')))refuse();
     }
     if(existsSync(join(ROOT,'package-lock.json')))refuse();
+    // Verify the BYTES actually installed by both npm ci, not just each
+    // still-identical lockfile. Fail before any physical SQL/TLS experiment.
+    const trees=receipts.map(r=>inspectBackend16NodePgInstalledTree(
+      join(r.dir,'node_modules')));
+    console.info(assertMatchingBackend16NodePgInstalledTrees(trees[0],trees[1]));
+    console.info('B16_NODEPG_FROZEN_TREE_SHA256='+trees[0].digest);
     console.info('B16_REAL_LOCK_CI_FROZEN_INSTALL_PASS');
     // Optional extra physical trust proof: only the separately isolated
     // GitHub PostgreSQL16 job can opt in. Never select this in production.
