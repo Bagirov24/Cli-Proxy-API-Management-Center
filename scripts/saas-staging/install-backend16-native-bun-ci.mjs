@@ -13,6 +13,48 @@ export const NATIVE_BUN_CI_PIN=Object.freeze({
   sha512:'sCvV4dCwRYWTeGqDNYsPntfJyb7Pp9wGbvRXF/UVBqcG9bGaDv3YdLHfxLy+DM3J+FjnC11M+ukisEp0J145Hg==',
 });
 const denied=()=>{throw new Error('Backend16 pinned native Bun CI refused');};
+const MAX_NATIVE_BUN_ARCHIVE_BYTES=150_000_000;
+
+/**
+ * Bound the untrusted HTTP body BEFORE accumulating or unpacking the tarball.
+ * A valid SHA512 is checked separately after the final byte is received.
+ * The optional lower test limit can never exceed the production CI ceiling.
+ */
+export async function readBoundedNativeBunResponse(
+  response,maxBytes=MAX_NATIVE_BUN_ARCHIVE_BYTES,
+){
+  if(!Number.isSafeInteger(maxBytes)||maxBytes<1||
+     maxBytes>MAX_NATIVE_BUN_ARCHIVE_BYTES||
+     response?.status!==200||response.redirected!==false||
+     typeof response.headers?.get!=='function'||
+     !response.body||typeof response.body.getReader!=='function')denied();
+  const length=response.headers.get('content-length');
+  if(length!==null&&
+     (!/^[1-9][0-9]{0,8}$/.test(length)||Number(length)>maxBytes))denied();
+  let reader;
+  try{reader=response.body.getReader();}
+  catch{denied();}
+  let total=0;
+  const pieces=[];
+  try{
+    for(;;){
+      const part=await reader.read();
+      if(part.done)break;
+      const bytes=part.value;
+      if(!(bytes instanceof Uint8Array)||bytes.byteLength===0||
+         bytes.byteLength>maxBytes-total)denied();
+      total+=bytes.byteLength;
+      pieces.push(bytes);
+    }
+    if(total===0||(length!==null&&total!==Number(length)))denied();
+    return Buffer.concat(pieces,total);
+  }catch{denied();}
+  finally{
+    // No partially received archive is written or passed to tar.
+    try{void reader.cancel().catch(()=>{});}catch{/* refused */ }
+    try{reader.releaseLock();}catch{/* refused */ }
+  }
+}
 export function enforceNativeBunCi(e,nodeMajor,platform,arch){
   if(e.GITHUB_ACTIONS!=='true'||e.CI!=='true'||nodeMajor!==24||
      platform!=='linux'||arch!=='x64'||!e.GITHUB_ENV||
@@ -20,7 +62,7 @@ export function enforceNativeBunCi(e,nodeMajor,platform,arch){
      Object.keys(e).some(k=>k.startsWith('RAILWAY_')&&e[k]))denied();
 }
 export function verifyNativeBunArchive(bytes){
-  if(!(bytes instanceof Uint8Array)||bytes.length<1_000_000||bytes.length>150_000_000||
+  if(!(bytes instanceof Uint8Array)||bytes.length<1_000_000||bytes.length>MAX_NATIVE_BUN_ARCHIVE_BYTES||
      createHash('sha512').update(bytes).digest('base64')!==NATIVE_BUN_CI_PIN.sha512)denied();
 }
 async function main(){
@@ -28,8 +70,7 @@ async function main(){
   const response=await fetch(NATIVE_BUN_CI_PIN.url,{
     redirect:'error',signal:AbortSignal.timeout(120_000),
   });
-  if(!response.ok)denied();
-  const bytes=new Uint8Array(await response.arrayBuffer());
+  const bytes=await readBoundedNativeBunResponse(response);
   verifyNativeBunArchive(bytes); // No extraction or execution before the pinned hash matches.
   const dir=mkdtempSync(join(tmpdir(),'b16-native-bun-pinned-'));
   const archive=join(dir,'bun.tgz');
