@@ -8,6 +8,13 @@ on:
       - '.github/workflows/saas-backend16-native-tls-experiment.yml'
       - 'scripts/saas-staging/verify-backend16-native-tls-version-probe-ci.ts'
       - 'src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16ExactSessionSqlRead.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16PhysicalPgAdmission.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16PrivateMtlsVersionedSecretReader.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16PrivateTenantProjectRead.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16StagingBunPhysicalPgPool.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16StagingVersionedPrincipalVault.ts'
+      - 'scripts/saas-staging/verify-backend16-native-pg-tls-ci.ts'
       - 'docs/saas/BACKEND_16_P1_NATIVE_BUN_SQL_ADR.ru.md'
       - 'docs/saas/BACKEND_16_DELIVERY_ROADMAP.ru.md'
       - 'docs/saas/BACKEND_16_NATIVE_BUN_SQL_TLS_E2E.md'
@@ -31,6 +38,9 @@ on:
       - 'scripts/saas-staging/verify-backend16-native-source-cross-runner-ci.mjs'
       - 'tests/saasBackend16NativeSourceCrossRunnerCi.test.mjs'
       - 'docs/saas/BACKEND_16_P2_NATIVE_SOURCE_CROSS_RUNNER.md'
+      - 'scripts/saas-staging/verify-backend16-native-tls-trigger-coverage-ci.mjs'
+      - 'tests/saasBackend16NativeTlsTriggerCoverageCi.test.mjs'
+      - 'docs/saas/BACKEND_16_P2_NATIVE_TLS_TRIGGER_COVERAGE.md'
       - 'tests/saasBackend16NativeSourceCycloneDxCi.test.mjs'
       - 'docs/saas/BACKEND_16_P2_NATIVE_SOURCE_CYCLONEDX.md'
   workflow_dispatch:
@@ -85,6 +95,8 @@ jobs:
           node --test tests/saasBackend16NativeServerArtifactEvidenceContractCi.test.mjs
           CI=true node scripts/saas-staging/verify-backend16-native-server-artifact-evidence-contract-ci.mjs
           node --test tests/saasBackend16NativeSourceCrossRunnerCi.test.mjs
+          node --test tests/saasBackend16NativeTlsTriggerCoverageCi.test.mjs
+          CI=true node scripts/saas-staging/verify-backend16-native-tls-trigger-coverage-ci.mjs
       - name: Install integrity-pinned upstream native SQL TLS fix
         run: node scripts/saas-staging/install-backend16-native-bun-ci.mjs
       - name: Reject bad host and probe REAL native TLS verification

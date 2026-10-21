@@ -7,6 +7,9 @@ on:
       - 'scripts/saas-staging/verify-backend16-native-source-cross-runner-ci.mjs'
       - 'tests/saasBackend16NativeSourceCrossRunnerCi.test.mjs'
       - 'docs/saas/BACKEND_16_P2_NATIVE_SOURCE_CROSS_RUNNER.md'
+      - 'scripts/saas-staging/verify-backend16-native-tls-trigger-coverage-ci.mjs'
+      - 'tests/saasBackend16NativeTlsTriggerCoverageCi.test.mjs'
+      - 'docs/saas/BACKEND_16_P2_NATIVE_TLS_TRIGGER_COVERAGE.md'
       - 'scripts/saas-staging/backend16-native-server-artifact-evidence-contract.v1.json'
       - 'scripts/saas-staging/verify-backend16-native-server-artifact-evidence-contract-ci.mjs'
       - 'scripts/saas-staging/backend16-native-server-source-closure.v1.json'
@@ -44,7 +47,9 @@ jobs:
         with:
           node-version: '24'
       - name: Recheck adversarial cross-runner receipt and release blocks
-        run: node --test tests/saasBackend16NativeSourceCrossRunnerCi.test.mjs
+        run: |
+          node --test tests/saasBackend16NativeSourceCrossRunnerCi.test.mjs
+          node --test tests/saasBackend16NativeTlsTriggerCoverageCi.test.mjs
       - name: Independently rehash reviewed source graph and blocked contract (A)
         id: proof
         env:
@@ -75,7 +80,9 @@ jobs:
         with:
           node-version: '24'
       - name: Recheck adversarial cross-runner receipt and release blocks
-        run: node --test tests/saasBackend16NativeSourceCrossRunnerCi.test.mjs
+        run: |
+          node --test tests/saasBackend16NativeSourceCrossRunnerCi.test.mjs
+          node --test tests/saasBackend16NativeTlsTriggerCoverageCi.test.mjs
       - name: Independently rehash reviewed source graph and blocked contract (B)
         id: proof
         env:
@@ -98,7 +105,9 @@ jobs:
         with:
           node-version: '24'
       - name: Refuse forged/missing/broken proof or absent approvals
-        run: node --test tests/saasBackend16NativeSourceCrossRunnerCi.test.mjs
+        run: |
+          node --test tests/saasBackend16NativeSourceCrossRunnerCi.test.mjs
+          node --test tests/saasBackend16NativeTlsTriggerCoverageCi.test.mjs
       - name: Compare separate hosted-job digests and independently verify local source
         env:
           CI: 'true'
