@@ -53,6 +53,11 @@ user-supplied path or mutable runtime config. It refuses:
 - a policy that claims `stableRuntimeApproved`,
   `serverArtifactBuilt` or `productionAuthorized`
 
+A following [scoped CycloneDX 1.6 source-only inventory](BACKEND_16_P2_NATIVE_SOURCE_CYCLONEDX.md) can render these
+verified files into deterministic JSON with SHA256 and source import edges.
+That JSON is still NOT a complete production SBOM and no server
+artifact is emitted.
+
 The CI-only inspector also computes a deterministic SHA256 of the
 observed **seven-file source inventory**, including relative paths,
 file byte counts, Git blob IDs, full file SHA256 hashes, declared
