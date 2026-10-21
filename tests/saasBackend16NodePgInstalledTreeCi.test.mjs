@@ -119,6 +119,12 @@ test('byte-tree proof runs after TWO authentic npm ci and before all PG16 E2E',(
     compare);
   assert.ok(compare<frozen&&frozen<physical&&physical<full);
   assert.ok(gate.includes('receipts.map(r=>r.dir)'));
-  assert.ok(gate.includes('B16_NODEPG_FROZEN_TREE_INDEPENDENT_MATCH_PASS'));
+  const validator=readFileSync(new URL(
+    '../scripts/saas-staging/verify-backend16-nodepg-installed-tree-ci.mjs',
+    import.meta.url),'utf8');
+  assert.ok(gate.includes(
+    'console.info(assertMatchingBackend16NodePgInstalledTrees(trees[0],trees[1]))'));
+  assert.ok(validator.includes(
+    "return 'B16_NODEPG_FROZEN_TREE_INDEPENDENT_MATCH_PASS'"));
   assert.doesNotMatch(gate,/NATIVE_SQL_TLS_PEER_AUTHENTICATION_VERIFIED=true/);
 });
