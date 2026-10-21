@@ -8,6 +8,10 @@ on:
       - '.github/workflows/saas-backend16-native-tls-experiment.yml'
       - 'scripts/saas-staging/verify-backend16-native-tls-version-probe-ci.ts'
       - 'src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts'
+      - 'docs/saas/BACKEND_16_P1_NATIVE_BUN_SQL_ADR.ru.md'
+      - 'docs/saas/BACKEND_16_DELIVERY_ROADMAP.ru.md'
+      - 'docs/saas/BACKEND_16_NATIVE_BUN_SQL_TLS_E2E.md'
+      - 'tests/saasBackend16NativeBunSqlDecision.test.ts'
   workflow_dispatch:
 
 permissions:
@@ -15,7 +19,7 @@ permissions:
 
 jobs:
   pinned-native-pg-tls:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 7
     services:
       postgres:
@@ -44,6 +48,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Verify Native Bun.SQL target choice and release hard stops
+        run: node --experimental-strip-types --test tests/saasBackend16NativeBunSqlDecision.test.ts
       - name: Install integrity-pinned upstream native SQL TLS fix
         run: node scripts/saas-staging/install-backend16-native-bun-ci.mjs
       - name: Reject bad host and probe REAL native TLS verification

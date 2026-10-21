@@ -1,5 +1,17 @@
 # Backend16 — native Bun.SQL authenticated TLS on disposable PostgreSQL16
 
+> **Архитектурное решение владельца (2026-10-21):**
+> [ADR Backend16 P1 — вариант A, Native Bun.SQL](BACKEND_16_P1_NATIVE_BUN_SQL_ADR.ru.md).
+> Native Bun.SQL выбран целевым transport, но **stable runtime не
+> утверждён, release BLOCKED**. Более ранняя рекомендация
+> «рассмотреть Node pg» ниже сохранена как историческая запись,
+> а не как действующий production fallback. Node pg теперь
+> CI-only comparator. Все обязательные negative TLS tests,
+> pinned CI-only canary и
+> `NATIVE_SQL_TLS_PEER_AUTHENTICATION_VERIFIED=false`
+> сохраняются до отдельных security/runtime/live operator approvals.
+
+
 > **Post-merge status (2026-10-21):** The RED observations below remain valid for stable Bun 1.3.14 and 1.4.3. The independently SHA512-pinned **CI-only** upstream `1.4.4-canary.1+6bb5dc195` passed real disposable PG16 TLS-negative acceptance on main `b0fd2b66fba5fc93c4e669ba4240fe38aef9c40e` ([run 39486761812](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/39486761812)). Production/runtime trust is still **not approved**; `NATIVE_SQL_TLS_PEER_AUTHENTICATION_VERIFIED=false` remains the staging hard stop. See [owner integration](BACKEND_16_OWNER_INTEGRATION.md).
 
 **Status: SECURITY BLOCKED / RED.** Stacked CI-only Draft, unmounted/default-off.
