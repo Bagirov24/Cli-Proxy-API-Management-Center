@@ -72,6 +72,13 @@ revision. Это **не production package** и не разрешённый fall
 
 ## 3. P1 — обязательный критерий выбора stable Native runtime
 
+**Первый реализуемый P1/P2 safeguard:** [offline stable archive
+preflight](BACKEND_16_P1_NATIVE_STABLE_PREFLIGHT.md) проверяет форму
+неизменяемого stable metadata и SHA512 фактических байтов **без**
+скачивания, распаковки или исполнения runtime. Он отвергает известные
+небезопасные stable и CI-only canary, никогда не утверждает release;
+тестовый `1.4.4` — вымышленный fixture, а не опубликованный binary.
+
 **Нельзя утверждать версию заранее.** После публикации нового
 поддерживаемого stable Bun runtime, отличный от CI-only canary,
 нужен независимый exact-SHA кандидат, который:

@@ -12,6 +12,9 @@ on:
       - 'docs/saas/BACKEND_16_DELIVERY_ROADMAP.ru.md'
       - 'docs/saas/BACKEND_16_NATIVE_BUN_SQL_TLS_E2E.md'
       - 'tests/saasBackend16NativeBunSqlDecision.test.ts'
+      - 'scripts/saas-staging/verify-backend16-native-stable-archive-preflight.mjs'
+      - 'tests/saasBackend16NativeStableArchivePreflight.test.mjs'
+      - 'docs/saas/BACKEND_16_P1_NATIVE_STABLE_PREFLIGHT.md'
   workflow_dispatch:
 
 permissions:
@@ -50,6 +53,8 @@ jobs:
           node-version: '24'
       - name: Verify Native Bun.SQL target choice and release hard stops
         run: node --experimental-strip-types --test tests/saasBackend16NativeBunSqlDecision.test.ts
+      - name: Reject unsafe future Native stable archives without executing them
+        run: node --test tests/saasBackend16NativeStableArchivePreflight.test.mjs
       - name: Install integrity-pinned upstream native SQL TLS fix
         run: node scripts/saas-staging/install-backend16-native-bun-ci.mjs
       - name: Reject bad host and probe REAL native TLS verification
