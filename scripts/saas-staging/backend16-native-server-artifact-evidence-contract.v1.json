@@ -1,0 +1,43 @@
+{
+  "schema": "backend16-native-server-artifact-evidence-contract-v1",
+  "scope": "P2_UNBUILT_SERVER_ARTIFACT_CONTRACT_ONLY",
+  "target": {
+    "transport": "Native Bun.SQL",
+    "platform": "linux",
+    "architecture": "x64",
+    "productionNodePgFallback": false,
+    "frontendBundleIncluded": false,
+    "serverEntrypointBuilt": false
+  },
+  "sourceClosure": {
+    "scope": "UNMOUNTED_NATIVE_TRANSPORT_AND_SECRET_CLIENTS_ONLY",
+    "fileCount": 7,
+    "sourceInventorySha256": "9a0e30c78d1c2d07ee3b4695cdfa1d570f5c8f0e2f75f2371b010a8edad5687c",
+    "sourceCycloneDxSha256": "c8617a1c461757f3325909435693471df8253fde2044a313af6953c46ef199e3",
+    "typeImportsIncluded": true
+  },
+  "requiredEvidence": {
+    "officialStableBunReleaseTag": null,
+    "stableBunFullSourceRevision": null,
+    "stableBunArchiveSha512": null,
+    "stableBunArchiveByteLength": null,
+    "nativePeerIdentityPhysicalPg16ReceiptSha256": null,
+    "serverOnlyPackageManifestSha256": null,
+    "serverOnlyLockfileSha256": null,
+    "reproducibleRuntimeDependencyGraphSha256": null,
+    "serverEntrypointSha256": null,
+    "oidcSessionAuthorityCompositionSha256": null,
+    "offHostAuditBindingSha256": null,
+    "reproducibleBuildRecipeSha256": null,
+    "immutableServerExecutableSha256": null,
+    "completeRuntimeSbomSha256": null,
+    "signedBuildProvenanceSha256": null,
+    "independentSecurityApprovalSha256": null,
+    "independentOperationsApprovalSha256": null
+  },
+  "releaseState": "BLOCKED_RELEASE",
+  "serverArtifactBuilt": false,
+  "stableRuntimeApproved": false,
+  "stagingAuthorized": false,
+  "productionAuthorized": false
+}
