@@ -146,6 +146,11 @@ function runNpm(args,dir){
 async function main(){
   enforceBackend16GenuineLockCiEnvironment(
     process.env,Number(process.versions.node.split('.')[0]));
+  // An isolated peer probe cannot also run another physical experiment.
+  if(process.env.SAAS_B16_LOCKED_NODEPG_PEER_CI!==undefined&&
+     (process.env.SAAS_B16_LOCKED_NODEPG_PEER_CI!=='true'||
+      process.env.SAAS_B16_LOCKED_PG16_CI!==undefined||
+      process.env.SAAS_B16_LOCKED_FULL_CHAIN_CI!==undefined))refuse();
   if(existsSync(join(ROOT,'package-lock.json')))refuse();
   const frontend=boundedJson(join(ROOT,'package.json'));
   if(frontend.name!=='cli-proxy-webui-react'||
@@ -204,6 +209,11 @@ async function main(){
     if(process.env.SAAS_B16_LOCKED_FULL_CHAIN_CI!==undefined){
       const {runLockedFullChainCi}=await import('./backend16-locked-full-chain-ci.mjs');
       runLockedFullChainCi(receipts.map(r=>r.dir));
+    }
+    if(process.env.SAAS_B16_LOCKED_NODEPG_PEER_CI==='true'){
+      const {runLockedNodePgPeerCi}=await import(
+        './backend16-locked-nodepg-peer-ci.mjs');
+      runLockedNodePgPeerCi(receipts.map(r=>r.dir));
     }
     console.info('PASS Backend16 Node24 independently resolved pg lock twice: '+
       receipts[0].proof.packageCount+' packages; canonical_sha256='+
