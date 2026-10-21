@@ -19,6 +19,9 @@ on:
       - 'scripts/saas-staging/backend16-native-server-source-closure.v1.json'
       - 'tests/saasBackend16NativeSourceClosureCi.test.mjs'
       - 'docs/saas/BACKEND_16_P2_NATIVE_SOURCE_CLOSURE.md'
+      - 'scripts/saas-staging/build-backend16-native-source-cyclonedx-ci.mjs'
+      - 'tests/saasBackend16NativeSourceCycloneDxCi.test.mjs'
+      - 'docs/saas/BACKEND_16_P2_NATIVE_SOURCE_CYCLONEDX.md'
   workflow_dispatch:
 
 permissions:
@@ -63,6 +66,10 @@ jobs:
         run: |
           node --test tests/saasBackend16NativeSourceClosureCi.test.mjs
           CI=true node scripts/saas-staging/verify-backend16-native-source-closure-ci.mjs
+      - name: Validate deterministic source-only CycloneDX and refuse unreviewed bytes
+        run: |
+          node --test tests/saasBackend16NativeSourceCycloneDxCi.test.mjs
+          CI=true node scripts/saas-staging/build-backend16-native-source-cyclonedx-ci.mjs
       - name: Install integrity-pinned upstream native SQL TLS fix
         run: node scripts/saas-staging/install-backend16-native-bun-ci.mjs
       - name: Reject bad host and probe REAL native TLS verification

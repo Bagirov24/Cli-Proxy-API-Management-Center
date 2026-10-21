@@ -124,6 +124,12 @@ bundle, npm lockfile в корне Bun-фронтенда или floating canary
 одобренный Bun server artifact. Основные `bun@1.3.14` / `bun.lock`
 пока неизменны.
 
+**Новый CI-only результат P2:** [ограниченный CycloneDX
+source inventory](BACKEND_16_P2_NATIVE_SOURCE_CYCLONEDX.md)
+добавляет детерминированный JSON с SHA256 семи проверенных модулей
+из [Native source closure](BACKEND_16_P2_NATIVE_SOURCE_CLOSURE.md).
+Это **не** complete runtime SBOM, серверная сборка или release approval.
+
 **Файлы:** `backend16StagingBunPhysicalPgPool.ts`,
 `install-backend16-native-bun-ci.mjs` (CI-only, не runtime
 installer), `verify-backend16-native-pg-tls-ci.ts`,
