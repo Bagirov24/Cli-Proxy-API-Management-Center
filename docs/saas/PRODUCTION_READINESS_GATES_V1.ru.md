@@ -1,5 +1,12 @@
 # SaaS Blueprint B — Production readiness gates (staging vs production)
 
+> **Current Backend16 implementation plan (2026-10-21):**
+> [full Backend16 delivery roadmap](BACKEND_16_DELIVERY_ROADMAP.ru.md)
+> tracks PRs #89–91, chosen runtime and packaging, private staging and all
+> ten signed live release gates. This historical broader 2G/SaaS document
+> remains context, never a staging or production deploy approval.
+
+
 **Status: SPEC/PROPOSED checklist, not production approval.**
 The current feature branch is not a deployable SaaS backend and does not
 authorize merging into `custom-no-apikey-fun`. Sensitive Core, Railway,
