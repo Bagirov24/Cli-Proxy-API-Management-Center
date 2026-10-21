@@ -114,6 +114,12 @@ test('two separate hosted jobs and a dependent comparer gate enforce real source
   const runner=readFileSync(new URL(
     '../scripts/saas-staging/verify-backend16-nodepg-cross-runner-ci.mjs',
     import.meta.url),'utf8');
+  const privateFlow=readFileSync(new URL(
+    '../.github/workflows/saas-backend16-private-read-contract.yml',
+    import.meta.url),'utf8');
+  const peerFlow=readFileSync(new URL(
+    '../.github/workflows/saas-backend16-nodepg-peer-ci.yml',
+    import.meta.url),'utf8');
   assert.ok(workflow.includes('  proof_a:'));
   assert.ok(workflow.includes('  proof_b:'));
   assert.ok(workflow.includes('  compare:'));
@@ -145,4 +151,15 @@ test('two separate hosted jobs and a dependent comparer gate enforce real source
   assert.ok(runner.includes('appendFileSync(e.GITHUB_OUTPUT'));
   assert.ok(runner.includes('NO RELEASE AUTHORIZATION'));
   assert.doesNotMatch(runner,/createBackend16ExactSqlReadPort|startSyntheticBackend16MtlsBroker|NATIVE_SQL_TLS_PEER_AUTHENTICATION_VERIFIED=true/);
+  for(const dependent of [privateFlow,peerFlow]){
+    for(const path of [
+      'scripts/saas-staging/verify-backend16-nodepg-cross-runner-ci.mjs',
+      'tests/saasBackend16NodePgCrossRunnerCi.test.mjs',
+      '.github/workflows/saas-backend16-nodepg-cross-runner-ci.yml',
+    ])assert.ok(dependent.includes("      - '"+path+"'"),
+      'uncovered cross-runner source change: '+path);
+  }
+  assert.ok(privateFlow.includes(
+    'node --test tests/saasBackend16NodePgCrossRunnerCi.test.mjs'));
+  assert.ok(peerFlow.includes('tests/saasBackend16NodePgCrossRunnerCi.test.mjs'));
 });
