@@ -157,3 +157,14 @@ test('historical genuine CI graph is pinned against registry drift before instal
     [null,14],
   ])refused(()=>assertObservedBackend16NodePgGraph(...invalid));
 });
+test('standalone peer option composes the existing independent lock gate',()=>{
+  const source=readFileSync(new URL(
+    '../scripts/saas-staging/verify-backend16-nodepg-real-lock-ci.mjs',
+    import.meta.url),'utf8');
+  assert.ok(source.includes("process.env.SAAS_B16_LOCKED_NODEPG_PEER_CI==='true'"));
+  assert.ok(source.includes("runLockedNodePgPeerCi(receipts.map(r=>r.dir))"));
+  assert.ok(source.includes("process.env.SAAS_B16_LOCKED_FULL_CHAIN_CI!==undefined"));
+  assert.ok(source.includes("process.env.SAAS_B16_LOCKED_PG16_CI!==undefined"));
+  assert.ok(source.indexOf('B16_REAL_LOCK_CI_FROZEN_INSTALL_PASS')<
+    source.indexOf('runLockedNodePgPeerCi(receipts.map(r=>r.dir))'));
+});

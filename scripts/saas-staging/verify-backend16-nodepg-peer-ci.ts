@@ -1,7 +1,8 @@
 /**
  * GitHub-only PostgreSQL16 Node TLS identity experiment; not runtime code.
  * Tests same authenticated physical PG connection, not a separate TLS probe.
- * The pinned node-postgres package is installed only into /tmp by its CI job.
+ * Node pg is supplied ONLY by two independently resolved, fingerprinted
+ * frozen installations from the existing genuine-lock supply-chain gate.
  */
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
@@ -17,7 +18,9 @@ import {createBackend16StagingPgTlsTrust}
 const e=process.env;
 const HOST='postgres.railway.internal';
 const id=e.SAAS_B16_CI_PG_CONTAINER??'';
-if(e.GITHUB_ACTIONS!=='true'||e.SAAS_B16_NODEPG_PEER_CI!=='true'||
+if(e.GITHUB_ACTIONS!=='true'||e.CI!=='true'||
+   e.SAAS_B16_NODEPG_PEER_CI!=='true'||
+   e.SAAS_B16_LOCKED_NODEPG_PEER_CI!=='true'||
    e.PGHOST!=='127.0.0.1'||e.PGPORT!=='5432'||
    e.PGUSER!=='postgres'||e.PGDATABASE!=='saas_ephemeral_test'||
    e.PGPASSWORD!=='ci_ephemeral_test_only'||
@@ -29,7 +32,12 @@ if(e.GITHUB_ACTIONS!=='true'||e.SAAS_B16_NODEPG_PEER_CI!=='true'||
   throw Error('B16 Node PG experiment refused non-disposable CI');
 
 const require=createRequire(import.meta.url);
-const packageRoot='/tmp/b16-nodepg-peer/node_modules';
+const packageDir=e.SAAS_B16_VERIFIED_NODEPG_DIR??'';
+if(!/^\/tmp\/b16-nodepg-dual-lock-ci-[a-zA-Z0-9]+\/independent-[ab]$/.test(
+  packageDir)||e.SAAS_B16_LOCKED_PG16_CI!==undefined||
+  e.SAAS_B16_LOCKED_FULL_CHAIN_CI!==undefined)
+  throw Error('B16 Node PG peer fixture needs a verified dual-lock install');
+const packageRoot=join(packageDir,'node_modules');
 const pkg=require(packageRoot+'/pg/package.json') as {version:string};
 if(pkg.version!=='8.23.1')throw Error('B16 Node PG candidate version refused');
 type QueryResult={rows:Record<string,unknown>[]};

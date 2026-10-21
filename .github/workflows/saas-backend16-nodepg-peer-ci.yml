@@ -6,6 +6,11 @@ on:
       - '.github/workflows/saas-backend16-nodepg-peer-ci.yml'
       - 'scripts/saas-staging/verify-backend16-nodepg-peer-ci.ts'
       - 'src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts'
+      - 'scripts/saas-staging/verify-backend16-nodepg-real-lock-ci.mjs'
+      - 'scripts/saas-staging/verify-backend16-nodepg-runtime-lock.mjs'
+      - 'scripts/saas-staging/backend16-locked-nodepg-peer-ci.mjs'
+      - 'tests/saasBackend16LockedNodePgPeerCi.test.mjs'
+      - 'tests/saasBackend16NodePgRealLockCi.test.mjs'
   workflow_dispatch:
 
 permissions:
@@ -14,7 +19,7 @@ permissions:
 jobs:
   nodepg-peer:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 9
     services:
       postgres:
         image: postgres:16.6
@@ -36,6 +41,8 @@ jobs:
       PGDATABASE: saas_ephemeral_test
       PGPASSWORD: ci_ephemeral_test_only
       SAAS_B16_NODEPG_PEER_CI: 'true'
+      SAAS_B16_LOCKED_NODEPG_PEER_CI: 'true'
+      CI: 'true'
     steps:
       - name: Checkout disposable source
         uses: actions/checkout@v4
@@ -43,8 +50,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Install separately pinned pg candidate in CI temp only
+      - name: Validate independently locked peer TLS contract without install
+        run: node --test tests/saasBackend16LockedNodePgPeerCi.test.mjs
+      - name: Verify two independent npm locks and physical PostgreSQL16 peer identities
         shell: bash
+        env:
+          SAAS_B16_CI_PG_CONTAINER: ${{ job.services.postgres.id }}
         run: |
           set -euo pipefail
           test "${GITHUB_ACTIONS}" = "true"
@@ -53,14 +64,7 @@ jobs:
           test "${PGDATABASE}" = "saas_ephemeral_test"
           test ! -e .env.production
           test ! -e /data/auths
-          mkdir -p /tmp/b16-nodepg-peer
-          npm install --prefix /tmp/b16-nodepg-peer --no-save --package-lock=false --ignore-scripts --no-audit --no-fund pg@8.23.1
-          node -p 'require("/tmp/b16-nodepg-peer/node_modules/pg/package.json").version' | grep -Fx 8.23.1
           test ! -e package-lock.json
-      - name: Real authenticated PostgreSQL16 TLS peer identity and denial cases
-        shell: bash
-        env:
-          SAAS_B16_CI_PG_CONTAINER: ${{ job.services.postgres.id }}
-        run: |
-          set -euo pipefail
-          timeout --signal=TERM --kill-after=3s 120s node --experimental-strip-types scripts/saas-staging/verify-backend16-nodepg-peer-ci.ts
+          timeout --signal=TERM --kill-after=5s 330s \
+            node scripts/saas-staging/verify-backend16-nodepg-real-lock-ci.mjs
+          test ! -e package-lock.json
