@@ -27,6 +27,10 @@ on:
       - 'scripts/saas-staging/verify-backend16-native-server-artifact-evidence-contract-ci.mjs'
       - 'tests/saasBackend16NativeServerArtifactEvidenceContractCi.test.mjs'
       - 'docs/saas/BACKEND_16_P2_NATIVE_SERVER_ARTIFACT_CONTRACT.md'
+      - '.github/workflows/saas-backend16-native-source-repro-ci.yml'
+      - 'scripts/saas-staging/verify-backend16-native-source-cross-runner-ci.mjs'
+      - 'tests/saasBackend16NativeSourceCrossRunnerCi.test.mjs'
+      - 'docs/saas/BACKEND_16_P2_NATIVE_SOURCE_CROSS_RUNNER.md'
       - 'tests/saasBackend16NativeSourceCycloneDxCi.test.mjs'
       - 'docs/saas/BACKEND_16_P2_NATIVE_SOURCE_CYCLONEDX.md'
   workflow_dispatch:
@@ -80,6 +84,7 @@ jobs:
           node --test tests/saasBackend16NativeSourceCycloneDxOfflineCi.test.mjs
           node --test tests/saasBackend16NativeServerArtifactEvidenceContractCi.test.mjs
           CI=true node scripts/saas-staging/verify-backend16-native-server-artifact-evidence-contract-ci.mjs
+          node --test tests/saasBackend16NativeSourceCrossRunnerCi.test.mjs
       - name: Install integrity-pinned upstream native SQL TLS fix
         run: node scripts/saas-staging/install-backend16-native-bun-ci.mjs
       - name: Reject bad host and probe REAL native TLS verification

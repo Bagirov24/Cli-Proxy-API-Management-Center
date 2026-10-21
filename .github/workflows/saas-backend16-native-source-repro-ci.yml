@@ -1,0 +1,122 @@
+name: Backend16 Native P2 source reproducibility (cross-runner, no release)
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/saas-backend16-native-source-repro-ci.yml'
+      - 'scripts/saas-staging/verify-backend16-native-source-cross-runner-ci.mjs'
+      - 'tests/saasBackend16NativeSourceCrossRunnerCi.test.mjs'
+      - 'docs/saas/BACKEND_16_P2_NATIVE_SOURCE_CROSS_RUNNER.md'
+      - 'scripts/saas-staging/backend16-native-server-artifact-evidence-contract.v1.json'
+      - 'scripts/saas-staging/verify-backend16-native-server-artifact-evidence-contract-ci.mjs'
+      - 'scripts/saas-staging/backend16-native-server-source-closure.v1.json'
+      - 'scripts/saas-staging/verify-backend16-native-source-closure-ci.mjs'
+      - 'scripts/saas-staging/build-backend16-native-source-cyclonedx-ci.mjs'
+      - 'scripts/saas-staging/verify-backend16-native-source-cyclonedx-offline-ci.mjs'
+      - 'src/features/saasBlueprint/controlApi/server/backend16*.ts'
+      - 'docs/saas/BACKEND_16_P2_NATIVE_SERVER_ARTIFACT_CONTRACT.md'
+      - 'package.json'
+      - 'bun.lock'
+
+permissions:
+  contents: read
+
+jobs:
+  proof_a:
+    name: Independent Native source-only receipt A
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      slot: ${{ steps.proof.outputs.slot }}
+      head: ${{ steps.proof.outputs.head }}
+      event: ${{ steps.proof.outputs.event }}
+      checkout: ${{ steps.proof.outputs.checkout }}
+      source: ${{ steps.proof.outputs.source }}
+      cyclonedx: ${{ steps.proof.outputs.cyclonedx }}
+      plan: ${{ steps.proof.outputs.plan }}
+      state: ${{ steps.proof.outputs.state }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Recheck adversarial cross-runner receipt and release blocks
+        run: node --test tests/saasBackend16NativeSourceCrossRunnerCi.test.mjs
+      - name: Independently rehash reviewed source graph and blocked contract (A)
+        id: proof
+        env:
+          CI: 'true'
+          B16_NATIVE_REPRO_SLOT: 'A'
+          B16_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/saas-staging/verify-backend16-native-source-cross-runner-ci.mjs record
+
+  proof_b:
+    name: Independent Native source-only receipt B
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      slot: ${{ steps.proof.outputs.slot }}
+      head: ${{ steps.proof.outputs.head }}
+      event: ${{ steps.proof.outputs.event }}
+      checkout: ${{ steps.proof.outputs.checkout }}
+      source: ${{ steps.proof.outputs.source }}
+      cyclonedx: ${{ steps.proof.outputs.cyclonedx }}
+      plan: ${{ steps.proof.outputs.plan }}
+      state: ${{ steps.proof.outputs.state }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Recheck adversarial cross-runner receipt and release blocks
+        run: node --test tests/saasBackend16NativeSourceCrossRunnerCi.test.mjs
+      - name: Independently rehash reviewed source graph and blocked contract (B)
+        id: proof
+        env:
+          CI: 'true'
+          B16_NATIVE_REPRO_SLOT: 'B'
+          B16_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/saas-staging/verify-backend16-native-source-cross-runner-ci.mjs record
+
+  compare:
+    name: Match both independent exact-head Native source receipts
+    needs: [proof_a, proof_b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Refuse forged/missing/broken proof or absent approvals
+        run: node --test tests/saasBackend16NativeSourceCrossRunnerCi.test.mjs
+      - name: Compare separate hosted-job digests and independently verify local source
+        env:
+          CI: 'true'
+          B16_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          B16_PROOF_A_SLOT: ${{ needs.proof_a.outputs.slot }}
+          B16_PROOF_A_HEAD: ${{ needs.proof_a.outputs.head }}
+          B16_PROOF_A_EVENT: ${{ needs.proof_a.outputs.event }}
+          B16_PROOF_A_CHECKOUT: ${{ needs.proof_a.outputs.checkout }}
+          B16_PROOF_A_SOURCE: ${{ needs.proof_a.outputs.source }}
+          B16_PROOF_A_CYCLONEDX: ${{ needs.proof_a.outputs.cyclonedx }}
+          B16_PROOF_A_PLAN: ${{ needs.proof_a.outputs.plan }}
+          B16_PROOF_A_STATE: ${{ needs.proof_a.outputs.state }}
+          B16_PROOF_B_SLOT: ${{ needs.proof_b.outputs.slot }}
+          B16_PROOF_B_HEAD: ${{ needs.proof_b.outputs.head }}
+          B16_PROOF_B_EVENT: ${{ needs.proof_b.outputs.event }}
+          B16_PROOF_B_CHECKOUT: ${{ needs.proof_b.outputs.checkout }}
+          B16_PROOF_B_SOURCE: ${{ needs.proof_b.outputs.source }}
+          B16_PROOF_B_CYCLONEDX: ${{ needs.proof_b.outputs.cyclonedx }}
+          B16_PROOF_B_PLAN: ${{ needs.proof_b.outputs.plan }}
+          B16_PROOF_B_STATE: ${{ needs.proof_b.outputs.state }}
+        run: node scripts/saas-staging/verify-backend16-native-source-cross-runner-ci.mjs compare
