@@ -17,9 +17,16 @@
 - [PR #91](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/pull/91):
   locked standalone Node24 `pg` peer TLS probe,
   `0607a1ec4ba27f49234353a46c4b5eddc812fbd4`, based on #90.
-- All three PRs were open/MERGEABLE/CLEAN with zero independent approvals.
-  `main` has `protected:false` and requires separate owner-authorized
-  branch-protection configuration and reviews.
+- Additional PRs [#92](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/pull/92)
+  (roadmap, `e24bf070f153abbb12cd4f8a567b1bb07b004e3a`),
+  [#93](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/pull/93)
+  (two frozen installed byte trees, `c9e10837f5758ac6759431c39bb5e2cc76328d59`)
+  and [#94](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/pull/94)
+  (cross-runner comparator, `644507a813b283723c50bb57138dea9fea38bd41`)
+  remain open; all six PRs #89–94 MERGEABLE/CLEAN with zero
+  independent approvals as of this decision.
+  `main` has `protected:false`; branch protection requires separate
+  owner-authorized governance action.
 - Exact #91 [Main CI 39573861124](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/39573861124):
   **2152 pass, 43 skip, 0 fail**;
   [PG16/RLS 39573860910](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/39573860910):
@@ -42,8 +49,11 @@ Registry drift MUST fail closed; never auto-update the fingerprint.
 
 ### P0. Review, merge, governance — READY_FOR_REVIEW
 
-**Work:** independently review PR #89 then #90 then #91;
-resolve security comments, check exact head/base SHA, all applicable
+**Work:** independently review PR #89, then stacked #90 → #91 →
+#93 → #94; review #92 (roadmap) separately atop #89, followed by
+this Native Bun.SQL ADR. Respect real branch dependencies instead
+of assuming every PR is on one linear branch. Resolve security comments,
+check exact head/base SHA, all applicable
 jobs, MERGEABLE/CLEAN, use matching-head merge protection and
 observe new `main` CI/PG16 after each merge. With explicit owner
 approval, enable GitHub required checks, branch protection,
@@ -52,36 +62,59 @@ CODEOWNERS/security reviews, and no privileged bypass.
 **Done:** reviewed merges, no unresolved critical findings, protected
 release branch and fresh post-merge CI. No live release authority.
 
-### P1. Choose safe stable server PostgreSQL driver — BLOCKED_RELEASE
+### P1. Native Bun.SQL выбран — ARCHITECTURE_SELECTED_RELEASE_BLOCKED
 
-**Work:** independently approved ADR for ONE runtime.
-Option A: stable supported Bun native SQL version with actual same
-authenticated-socket peer CA/exact SAN verification, always-deny
-callback, wrong-root and CA-signed wildcard rejection on real PG16.
-The current CI canary is NOT a production stable version.
-Option B: independently reviewed Node24 `pg` server-only package;
-physical exact SAN/CA, PID disposal, async-socket quarantine tests.
-Do NOT flip the Native Bun hard stop to make Node work.
-**Files:** `backend16StagingBunPhysicalPgPool.ts`,
-`backend16DisposableNodePgPhysicalPool.ts` and both E2E fixtures.
-**Done:** ADR + reviewed stable runtime/artifact digest + mandatory
-physical TLS negatives on that exact release build.
+**Архитектурное решение владельца (2026-10-21):**
+[ADR Native Bun.SQL](BACKEND_16_P1_NATIVE_BUN_SQL_ADR.ru.md).
+**Вариант A — Native Bun.SQL** единственный целевой физический
+PostgreSQL16 transport Backend16. **Вариант B — Node24 pg**
+сохраняется только как независимый CI-only security comparator,
+**не** как production fallback. Выбор архитектуры зафиксирован;
+stable runtime и live PKI не одобрены, поэтому **BLOCKED_RELEASE**.
 
-### P2. Build an independently approved server package — BLOCKED_RELEASE
+**Работа:** после выхода подходящего стабильного Bun runtime с
+точно закреплёнными revision, OS/arch и SHA512 — проверить
+same-socket authenticated PG16 exact CA+SAN, обе формы SQL ctor
+с always-deny callback, wrong-root, CA-signed wildcard denial,
+physical PID discard, два tenant RLS, cancellation и отказ
+при revocation. Canary `1.4.4-canary.1+6bb5dc195`
+остаётся **строго CI-only**; stable 1.3.14 и 1.4.3 отказались
+выполнять обязательные отрицательные TLS-тесты.
+Не включать staging factory и не обновлять root `bun@1.3.14`
+ради этого ADR.
 
-**Work:** separate Node/Bun server-only packaging boundary,
-reproducible installer and immutable dependency lock under an
-explicitly approved package-manager policy, SBOM, signed binaries,
-reviewed OS/arch, isolated secrets, clean startup/teardown. No
-`pg` dependency, npm lockfile, or runtime module in the React/Vite
-frontend. Historical dual-lock CI is supply-chain **drift detection**,
-not approval of published packages. Disable lifecycle scripts,
-native fallback, floating tarballs and unreviewed origins.
-**Files:** `verify-backend16-nodepg-real-lock-ci.mjs`,
-`verify-backend16-nodepg-runtime-lock.mjs`,
-`verify-backend16-nodepg-exact-pg16-ci.ts`, `AGENTS.md`.
-**Done:** exact artifact/manifest/lock/reproducibility receipts
-independently reviewed; package-specific real PG16 E2E green.
+**Файлы:** `backend16StagingBunPhysicalPgPool.ts`,
+`backend16StagingPgTlsTrust.ts`,
+`verify-backend16-native-pg-tls-ci.ts`,
+`verify-backend16-native-tls-version-probe-ci.ts`.
+**Done для runtime (ещё НЕ достигнуто):** independent stable
+artifact/security review и полный physical TLS/RLS acceptance на
+точном source+binary SHA без skip или обхода hard stop.
+
+### P2. Воспроизводимая Bun server-only упаковка — BLOCKED_RELEASE
+
+**Работа:** build из выбранной **stable Native Bun.SQL** версии,
+отдельный от React/Vite Management Center server-only runtime
+manifest/lock, exact binary/archive SHA512 и revision, SBOM,
+provenance, подписанные immutable artifact receipts, OS/arch pin,
+no install-script side effects, isolated credentials и bounded
+clean startup/teardown. Никакой Node24 `pg` fallback в production
+bundle, npm lockfile в корне Bun-фронтенда или floating canary.
+
+Проверенные dual-lock/cross-runner Node `pg` CI и historical graph
+оставить для независимого TLS/RLS сравнения, но не выдавать их за
+одобренный Bun server artifact. Основные `bun@1.3.14` / `bun.lock`
+пока неизменны.
+
+**Файлы:** `backend16StagingBunPhysicalPgPool.ts`,
+`install-backend16-native-bun-ci.mjs` (CI-only, не runtime
+installer), `verify-backend16-native-pg-tls-ci.ts`,
+`verify-backend16-native-tls-version-probe-ci.ts`,
+новый отдельно reviewed server-only build boundary.
+**Done:** reproducible stable Bun-only server build,
+подписанные source+artifact receipts и независимое утверждение
+package/runtime/security. Staging hard stop всё ещё регулируется
+отдельными P3–P13 и не снимается этим этапом.
 
 ### P3. Live private PostgreSQL TLS/PKI — LIVE_UNVERIFIED
 
@@ -264,7 +297,8 @@ the complete product above.
 
 ## E. Critical path and non-negotiable limits
 
-**Order:** P0 → P1 → P2; P3/P4/P5/P6 can then proceed with their
+**Order:** P0 → P1 → P2; Native Bun.SQL selected but stable runtime and
+Bun-only server artifact still blocked. P3/P4/P5/P6 can then proceed with their
 independent operator approvals; P7 and P8/P9 enable P10; then P11 →
 P12 → separately authorized P13. The product work in section D
 requires its own roadmap, scopes, code review and production gates.
