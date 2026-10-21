@@ -1,5 +1,7 @@
 # Locked Node24 full-chain CI composition (Draft, no release)
 
+> **Post-merge status (2026-10-21):** This document preserves the historical Draft/open-PR snapshot. PRs #75-88 are merged; on main `b0fd2b66fba5fc93c4e669ba4240fe38aef9c40e`, both independently locked Node PG full chains passed disposable PostgreSQL16 CI. See [owner integration](BACKEND_16_OWNER_INTEGRATION.md). No live/runtime approval follows from these CI results.
+
 Parent: PR #86, `7a479fd64b28f19b5300439fcb639ae62df29463`.
 Verified main at start: `268c09f56b676eb5d222ed23c012ccfff862e652`.
 
