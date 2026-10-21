@@ -17,7 +17,8 @@ permissions:
 
 jobs:
   browser:
-    runs-on: ubuntu-latest
+    # Playwright 1.55 Chromium has no ubuntu26.04 bundle. Do not float runners.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       VITE_ENABLE_SAAS_BLUEPRINT_DEMO: 'true'

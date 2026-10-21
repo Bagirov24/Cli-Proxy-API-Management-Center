@@ -53,6 +53,34 @@ is a historical staging observation, not a fresh signed one-hour release proof.
 Do not replay SQL0008, provision Railway, touch Core/Gateway or `/data`,
 publish a release or flip the native TLS hard stop to obtain green CI.
 
+
+## CI host toolchain drift observed on PR #89 (2026-10-21)
+
+Candidate `bfab6533f71bbc388ffb7a12f87a5980a9ba49b7` activated the
+physical PG16 workflow as intended and passed Main CI, private read,
+locked Node24 physical TLS, Demo and Management verification.
+Two independent workflow failures were diagnosed from full job logs:
+
+- [Browser QA 39553481948](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/39553481948):
+  Playwright 1.55.0 could not install Chromium on newly selected
+  `ubuntu26.04-x64`.
+- [PG16/RLS 39553481996](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/39553481996):
+  a newer host `pg_dump` generated `SET transaction_timeout = 0;`,
+  causing genuine `pg_restore --exit-on-error` against the unchanged
+  `postgres:16.6` service to fail. Earlier PG16 checks passed; all
+  subsequent physical tests were **not reached**, not skipped-successful.
+
+The proposed source-only correction pins those two workflows to
+`ubuntu-24.04`, and adds a **fail-closed PostgreSQL 16 client setup**
+that checks the actual `psql`, `pg_dump`, `pg_restore`, `createdb` and
+`dropdb` executable versions before any PostgreSQL acceptance.
+The versioned bin directory is propagated to subsequent steps, including
+the Node child processes that perform real two-database dump/restoration.
+No dump filters, SQL changes, expected failures, test skips, permanent DB,
+Railway changes or identity/trust bypasses are allowed. This correction is
+not accepted until all exact-head GitHub workflows, especially genuine
+restoration and full Backend16 physical PG16/mTLS/TLS markers, pass.
+
 ## Native TLS blocker resolution candidate
 
 Stable Bun 1.3.14 and 1.4.3 genuinely failed the same-socket security negatives.
