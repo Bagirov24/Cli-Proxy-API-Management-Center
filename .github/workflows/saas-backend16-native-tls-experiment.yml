@@ -20,6 +20,9 @@ on:
       - 'tests/saasBackend16NativeSourceClosureCi.test.mjs'
       - 'docs/saas/BACKEND_16_P2_NATIVE_SOURCE_CLOSURE.md'
       - 'scripts/saas-staging/build-backend16-native-source-cyclonedx-ci.mjs'
+      - 'scripts/saas-staging/verify-backend16-native-source-cyclonedx-offline-ci.mjs'
+      - 'tests/saasBackend16NativeSourceCycloneDxOfflineCi.test.mjs'
+      - 'docs/saas/BACKEND_16_P2_NATIVE_SOURCE_CYCLONEDX_OFFLINE.md'
       - 'tests/saasBackend16NativeSourceCycloneDxCi.test.mjs'
       - 'docs/saas/BACKEND_16_P2_NATIVE_SOURCE_CYCLONEDX.md'
   workflow_dispatch:
@@ -70,6 +73,7 @@ jobs:
         run: |
           node --test tests/saasBackend16NativeSourceCycloneDxCi.test.mjs
           CI=true node scripts/saas-staging/build-backend16-native-source-cyclonedx-ci.mjs
+          node --test tests/saasBackend16NativeSourceCycloneDxOfflineCi.test.mjs
       - name: Install integrity-pinned upstream native SQL TLS fix
         run: node scripts/saas-staging/install-backend16-native-bun-ci.mjs
       - name: Reject bad host and probe REAL native TLS verification
