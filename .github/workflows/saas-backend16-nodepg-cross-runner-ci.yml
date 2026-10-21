@@ -1,0 +1,96 @@
+name: Backend16 NodePG frozen tree cross-runner (disposable, no release)
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/saas-backend16-nodepg-cross-runner-ci.yml'
+      - 'scripts/saas-staging/verify-backend16-nodepg-real-lock-ci.mjs'
+      - 'scripts/saas-staging/verify-backend16-nodepg-runtime-lock.mjs'
+      - 'scripts/saas-staging/verify-backend16-nodepg-installed-tree-ci.mjs'
+      - 'scripts/saas-staging/verify-backend16-nodepg-cross-runner-ci.mjs'
+      - 'tests/saasBackend16NodePgCrossRunnerCi.test.mjs'
+      - 'tests/saasBackend16NodePgInstalledTreeCi.test.mjs'
+      - 'tests/saasBackend16NodePgRealLockCi.test.mjs'
+      - 'docs/saas/BACKEND_16_NODEPG_CROSS_RUNNER_CI.md'
+      - 'package.json'
+      - 'bun.lock'
+
+permissions:
+  contents: read
+
+jobs:
+  proof_a:
+    name: Node24 independent frozen package A (disposable)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    outputs:
+      slot: ${{ steps.proof.outputs.slot }}
+      head: ${{ steps.proof.outputs.head }}
+      checkout: ${{ steps.proof.outputs.checkout }}
+      graph: ${{ steps.proof.outputs.graph }}
+      tree: ${{ steps.proof.outputs.tree }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Offline bounded receipt and cross-runner CI guards
+        run: node --test tests/saasBackend16NodePgCrossRunnerCi.test.mjs
+      - name: Two genuine resolutions, two npm ci, full byte-tree comparison (A)
+        id: proof
+        env:
+          CI: 'true'
+          B16_CROSS_RUNNER_SLOT: 'A'
+          B16_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/saas-staging/verify-backend16-nodepg-cross-runner-ci.mjs record
+
+  proof_b:
+    name: Node24 independent frozen package B (disposable)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    outputs:
+      slot: ${{ steps.proof.outputs.slot }}
+      head: ${{ steps.proof.outputs.head }}
+      checkout: ${{ steps.proof.outputs.checkout }}
+      graph: ${{ steps.proof.outputs.graph }}
+      tree: ${{ steps.proof.outputs.tree }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Offline bounded receipt and cross-runner CI guards
+        run: node --test tests/saasBackend16NodePgCrossRunnerCi.test.mjs
+      - name: Two genuine resolutions, two npm ci, full byte-tree comparison (B)
+        id: proof
+        env:
+          CI: 'true'
+          B16_CROSS_RUNNER_SLOT: 'B'
+          B16_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/saas-staging/verify-backend16-nodepg-cross-runner-ci.mjs record
+
+  compare:
+    name: Independently match both GitHub runner byte-tree receipts
+    needs: [proof_a, proof_b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Fail-closed exact source, lock graph and byte-tree match
+        env:
+          CI: 'true'
+          B16_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          B16_PROOF_A_SLOT: ${{ needs.proof_a.outputs.slot }}
+          B16_PROOF_A_HEAD: ${{ needs.proof_a.outputs.head }}
+          B16_PROOF_A_CHECKOUT: ${{ needs.proof_a.outputs.checkout }}
+          B16_PROOF_A_GRAPH: ${{ needs.proof_a.outputs.graph }}
+          B16_PROOF_A_TREE: ${{ needs.proof_a.outputs.tree }}
+          B16_PROOF_B_SLOT: ${{ needs.proof_b.outputs.slot }}
+          B16_PROOF_B_HEAD: ${{ needs.proof_b.outputs.head }}
+          B16_PROOF_B_CHECKOUT: ${{ needs.proof_b.outputs.checkout }}
+          B16_PROOF_B_GRAPH: ${{ needs.proof_b.outputs.graph }}
+          B16_PROOF_B_TREE: ${{ needs.proof_b.outputs.tree }}
+        run: node scripts/saas-staging/verify-backend16-nodepg-cross-runner-ci.mjs compare

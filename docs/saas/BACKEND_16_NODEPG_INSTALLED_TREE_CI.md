@@ -64,10 +64,16 @@ oversized/deep entries and duplicate/forged receipts. The private-read,
 standalone peer and full PG16 workflows all need to run when the
 gate changes.
 
+A separate [cross-runner CI proof](BACKEND_16_NODEPG_CROSS_RUNNER_CI.md)
+now requires two independent GitHub-hosted jobs to match this installed
+byte-tree hash before a comparison job succeeds. The proof is an
+**unsigned CI job-output comparison**, not a supplier signature or
+independent security approval.
+
 Even matched installed bytes do not independently establish a signed
 software provenance, upstream publisher identity, approved vulnerability
-review, cross-runner reproducibility or reviewed production server
-artifact. The next P1/P2 stages remain a separate **stable runtime ADR**
+review, an independently signed reproducible build or a reviewed
+production server artifact. The next P1/P2 stages remain a separate **stable runtime ADR**
 and **server-only package lock/artifact approval**, followed by live
 PKI/IAM/OIDC/audit/restore and independently signed staging release gates.
 No production driver is wired into this React/Vite repository.
