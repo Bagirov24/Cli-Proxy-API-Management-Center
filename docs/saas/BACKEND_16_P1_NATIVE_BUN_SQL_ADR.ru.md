@@ -85,7 +85,8 @@ revision. Это **не production package** и не разрешённый fall
    `new SQL(options)` и `new SQL(url, options)` с явным
    always-deny `checkServerIdentity`. Оба должны отказать ДО
    PostgreSQL authentication; callback обязан фактически сработать.
-3. На одном и том же аутентифицированном PostgreSQL16 backend PID
+3. На одном и том же аутентифицированном (same-socket) PostgreSQL16
+   backend PID
    подтверждает pinned root CA, exact DNS SAN, разрешённый
    `TLSv1.2/1.3` / `pg_stat_ssl.ssl=true` и оба tenant read flows.
    Нужна явная проверка отсутствия unauthorized physical LOGIN.
