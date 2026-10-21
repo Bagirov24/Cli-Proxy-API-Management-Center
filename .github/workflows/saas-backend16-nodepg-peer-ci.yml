@@ -7,6 +7,9 @@ on:
       - 'scripts/saas-staging/verify-backend16-nodepg-peer-ci.ts'
       - 'src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts'
       - 'scripts/saas-staging/verify-backend16-nodepg-real-lock-ci.mjs'
+      - 'scripts/saas-staging/verify-backend16-nodepg-cross-runner-ci.mjs'
+      - 'tests/saasBackend16NodePgCrossRunnerCi.test.mjs'
+      - '.github/workflows/saas-backend16-nodepg-cross-runner-ci.yml'
       - 'scripts/saas-staging/verify-backend16-nodepg-installed-tree-ci.mjs'
       - 'tests/saasBackend16NodePgInstalledTreeCi.test.mjs'
       - 'scripts/saas-staging/verify-backend16-nodepg-runtime-lock.mjs'
@@ -53,7 +56,7 @@ jobs:
         with:
           node-version: '24'
       - name: Validate independently locked peer TLS contract without install
-        run: node --test tests/saasBackend16LockedNodePgPeerCi.test.mjs tests/saasBackend16NodePgInstalledTreeCi.test.mjs
+        run: node --test tests/saasBackend16LockedNodePgPeerCi.test.mjs tests/saasBackend16NodePgInstalledTreeCi.test.mjs tests/saasBackend16NodePgCrossRunnerCi.test.mjs
       - name: Verify two independent npm locks and physical PostgreSQL16 peer identities
         shell: bash
         env:

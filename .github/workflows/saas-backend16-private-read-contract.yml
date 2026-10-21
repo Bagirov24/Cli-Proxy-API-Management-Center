@@ -14,6 +14,9 @@ on:
       - 'scripts/saas-staging/verify-backend16-nodepg-runtime-lock.mjs'
       - 'tests/saasBackend16NodePgRuntimeLock.test.mjs'
       - 'scripts/saas-staging/verify-backend16-nodepg-real-lock-ci.mjs'
+      - 'scripts/saas-staging/verify-backend16-nodepg-cross-runner-ci.mjs'
+      - 'tests/saasBackend16NodePgCrossRunnerCi.test.mjs'
+      - '.github/workflows/saas-backend16-nodepg-cross-runner-ci.yml'
       - 'scripts/saas-staging/verify-backend16-nodepg-installed-tree-ci.mjs'
       - 'tests/saasBackend16NodePgInstalledTreeCi.test.mjs'
       - 'tests/saasBackend16NodePgRealLockCi.test.mjs'
@@ -95,6 +98,8 @@ jobs:
         run: node --test tests/saasBackend16NodePgRuntimeLock.test.mjs
       - name: Node24 genuine ephemeral npm lock CI guards (no install)
         run: node --test tests/saasBackend16NodePgRealLockCi.test.mjs
+      - name: Node24 independent hosted runner marker and head-binding guards
+        run: node --test tests/saasBackend16NodePgCrossRunnerCi.test.mjs
       - name: Reject mutated byte trees of two frozen Node pg installs (offline)
         run: node --test tests/saasBackend16NodePgInstalledTreeCi.test.mjs
       - name: Node24 locked PostgreSQL16 TLS gate unit tests (no socket)
