@@ -83,6 +83,13 @@ physical PID discard, два tenant RLS, cancellation и отказ
 Не включать staging factory и не обновлять root `bun@1.3.14`
 ради этого ADR.
 
+**Новый offline safeguard (не runtime approval):**
+[Stable Bun archive preflight](BACKEND_16_P1_NATIVE_STABLE_PREFLIGHT.md)
+проверяет будущий immutable metadata + фактический SHA512 без
+скачивания, распаковки/выполнения или production разрешения.
+Вымышленный stable fixture из теста **не** означает опубликованный
+upstream Bun 1.4.4. CI-only canary также запрещён как stable.
+
 **Файлы:** `backend16StagingBunPhysicalPgPool.ts`,
 `backend16StagingPgTlsTrust.ts`,
 `verify-backend16-native-pg-tls-ci.ts`,
