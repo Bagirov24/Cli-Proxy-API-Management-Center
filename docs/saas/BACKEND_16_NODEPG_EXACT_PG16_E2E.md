@@ -1,5 +1,7 @@
 # Backend16 — Node24 same-socket PostgreSQL16 exact-session RLS acceptance
 
+> **Post-merge status (2026-10-21):** The stacked `CI PENDING` and native RED passages below are historical. Both independently resolved `pg@8.23.1` installations completed the synthetic mTLS broker -> immutable vault -> physical PG16 exact-session RLS chain on main `b0fd2b66fba5fc93c4e669ba4240fe38aef9c40e` ([run 39486761812](https://github.com/Bagirov24/Cli-Proxy-API-Management-Center/actions/runs/39486761812)). This is disposable CI evidence, not live IAM, approved server packaging, or production authorization. See [owner integration](BACKEND_16_OWNER_INTEGRATION.md).
+
 **Status: SOURCE-ONLY / CI-ONLY, not a release, staging deployment or
 production-enabled adapter.** Stacked on Draft #77 / #76 / #75. Keep the
 native Bun.SQL trust hard stop from #76. No reviewed Node runtime package
