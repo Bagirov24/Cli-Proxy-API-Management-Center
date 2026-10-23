@@ -34,7 +34,7 @@ test('stable full native TLS is byte-identical to original canary negative asser
     'B16_NATIVE_SQL_TLS_ALWAYS_DENY_CALLBACK_',
     'B16_NATIVE_SQL_TLS_WRONG_ROOT_',
     'B16_NATIVE_SQL_TLS_CA_SIGNED_WILDCARD_',
-    'pg_backend_pid()',
+    'BACKEND16_EXACT_READ_SQL.identity',
     'createBackend16StagingVersionedPrincipalVault',
   ])assert.ok(stable.includes(m),m);
   noBypass(stable);
