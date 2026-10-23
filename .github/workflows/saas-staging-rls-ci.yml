@@ -83,6 +83,10 @@ on:
       - 'scripts/saas-staging/verify-backend16-official-stable-144-tls-ci.ts'
       - 'tests/saasBackend16OfficialStable144Ci.test.mjs'
       - 'docs/saas/BACKEND_16_P1_STABLE_144_TLS_CANDIDATE.md'
+      - 'scripts/saas-staging/verify-backend16-official-stable-144-physical-pg16-ci.ts'
+      - 'scripts/saas-staging/verify-backend16-official-stable-144-mtls-ci.ts'
+      - 'tests/saasBackend16Stable144FullPhysicalCi.test.mjs'
+      - 'docs/saas/BACKEND_16_P1_STABLE_144_FULL_PHYSICAL_CI.md'
       - 'tests/saasBackend16NativeSourceCycloneDxCi.test.mjs'
       - 'docs/saas/BACKEND_16_P2_NATIVE_SOURCE_CYCLONEDX.md'
       - 'src/features/saasBlueprint/controlApi/server/backend16StagingBunPhysicalPgPool.ts'
@@ -151,6 +155,9 @@ jobs:
     steps:
       - name: Checkout isolated feature branch
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Pin PostgreSQL 16 client for real PG16 backup and restore
         shell: bash
@@ -1482,6 +1489,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Pin OFFICIAL stable Bun144 for additional full physical PG16 only
+        env:
+          SAAS_B16_STABLE_144_CI: 'true'
+          B16_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          node --test tests/saasBackend16Stable144FullPhysicalCi.test.mjs
+          node scripts/saas-staging/install-backend16-official-stable-144-ci.mjs
 
       - name: Install integrity-pinned upstream native SQL TLS fix (CI only)
         run: |
@@ -1492,6 +1506,8 @@ jobs:
         shell: bash
         env:
           SAAS_B16_CI_PG_CONTAINER: ${{ job.services.postgres.id }}
+          B16_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SAAS_B16_STABLE_144_FULL_PG16_CI: 'true'
         run: |
           set -euo pipefail
           test "${GITHUB_ACTIONS}" = "true"
