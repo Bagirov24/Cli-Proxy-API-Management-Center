@@ -11,6 +11,14 @@ fail(){ echo 'Backend16 SQL0008 disposable PG16 acceptance STOP' >&2; exit 1; }
 [[ "${SAAS_B16_EPHEMERAL_MIGRATOR_PASSWORD:-}" =~ ^[a-f0-9]{64}$ ]] || fail
 migrator_pw="$SAAS_B16_EPHEMERAL_MIGRATOR_PASSWORD"
 unset SAAS_B16_EPHEMERAL_MIGRATOR_PASSWORD
+# Stable Bun v1.4.4 remains strictly a disposable EXTRA CI candidate.
+# The exact-head, SHA256/revision-pinned binary was installed BEFORE canary.
+[[ "${SAAS_B16_STABLE_144_FULL_PG16_CI:-}" == true &&
+   "${B16_PR_HEAD_SHA:-}" =~ ^[0-9a-f]{40}$ &&
+   "$(git rev-parse HEAD)" == "$B16_PR_HEAD_SHA" ]] || fail
+[[ "${SAAS_B16_STABLE_144_BIN:-}" =~ ^/tmp/b16-official-stable-144-ci-[A-Za-z0-9]{6}/bun$ ]] || fail
+[[ "$("$SAAS_B16_STABLE_144_BIN" --revision)" == '1.4.4+38afee6c8' ]] || fail
+
 [[ "${GITHUB_SHA:-}" =~ ^[a-f0-9]{40}$ ]] || fail
 sha7="$(sha256sum staging/saas-bootstrap/0007_operator_subject_binding_fence.sql | cut -d ' ' -f1)"
 sha8="$(sha256sum staging/saas-bootstrap/0008_exact_subject_session_gate.sql | cut -d ' ' -f1)"
@@ -133,6 +141,28 @@ SAAS_B16_CI_B_BINDING="$binding_b" \
   > /tmp/b16-bun-physical-ci.log 2>&1 ||
   { tail -n 24 /tmp/b16-bun-physical-ci.log >&2; fail; }
 grep -q 'PASS Backend16.7: real Bun.SQL' /tmp/b16-bun-physical-ci.log || fail
+# Rerun the SAME real PG16 two-LOGIN PID, versioned vault, revoke/abort,
+# FOR SHARE cancellation, no-retry and quarantine tests on official stable.
+# The original Bun 1.3.14 physical run above remains unchanged.
+SAAS_B16_PHYSICAL_CI=true \
+SAAS_B16_CI_A_PASSWORD="$a_pw" \
+SAAS_B16_CI_B_PASSWORD="$b_pw" \
+SAAS_B16_CI_A_SUBJECT_SHA="$fp_a" \
+SAAS_B16_CI_B_SUBJECT_SHA="$fp_b" \
+SAAS_B16_CI_A_TENANT="$tenant_a" \
+SAAS_B16_CI_B_TENANT="$tenant_b" \
+SAAS_B16_CI_A_SESSION="$session_a" \
+SAAS_B16_CI_B_SESSION="$session_b" \
+SAAS_B16_CI_A_BINDING="$binding_a" \
+SAAS_B16_CI_B_BINDING="$binding_b" \
+  timeout --signal=TERM --kill-after=3s 125s \
+    "$SAAS_B16_STABLE_144_BIN" scripts/saas-staging/verify-backend16-bun-physical-pid-ci.ts \
+  > /tmp/b16-stable144-physical-pid-ci.log 2>&1 ||
+  { tail -n 24 /tmp/b16-stable144-physical-pid-ci.log >&2; fail; }
+grep -Fxq 'PASS Backend16.9: staging Bun.SQL core real PG16 physical LOGIN, locked exact session, cross-tenant deny, cancel/PID death and no retry' /tmp/b16-stable144-physical-pid-ci.log || fail
+grep -Fxq 'PASS Backend16.7: real Bun.SQL two distinct PG16 LOGIN backend PIDs, exact bound read, physical discard, forced cancellation, no credential spoof' /tmp/b16-stable144-physical-pid-ci.log || fail
+echo 'B16_STABLE_144_PHYSICAL_VAULT_FOR_SHARE_REVOKE_PID_PASS'
+
 # Independently verified Node24 TLS driver on the SAME disposable SQL0008
 # database BEFORE the existing native Bun red security-regression probe.
 # Candidate package is temporary CI only; Bun.lock is unchanged.
@@ -171,6 +201,19 @@ grep -q 'B16_NODEPG_MTLS_REVOKED_IN_FLIGHT_PREAUTH_DENY' \
 grep -Fxq 'B16_NODEPG_ASYNC_SOCKET_ERROR_QUARANTINE_PID_DEATH_PASS' \
  /tmp/b16-nodepg-exact-pg16-ci.log || fail
 echo 'PASS Backend16 Node PG async socket error quarantine physical PID death'
+# Node24 loopback mTLS broker with a real OFFICIAL stable Bun HTTPS client.
+# Original independent dual-install Node pg and canary acceptance are kept.
+timeout --signal=TERM --kill-after=3s 95s \
+  node --experimental-strip-types scripts/saas-staging/verify-backend16-official-stable-144-mtls-ci.ts \
+  > /tmp/b16-stable144-mtls-ci.log 2>&1 ||
+  { tail -n 20 /tmp/b16-stable144-mtls-ci.log >&2; fail; }
+grep -Fxq 'B16_MTLS_BROKER_CI_BUN_CLIENT_PASS' /tmp/b16-stable144-mtls-ci.log || fail
+grep -Fxq 'PASS Backend16.15 actual mutual TLS immutable-version reader' /tmp/b16-stable144-mtls-ci.log || fail
+for marker in B16_MTLS_BROKER_CI_WRONG_SERVER_SAN_DENY B16_MTLS_BROKER_CI_WILDCARD_SERVER_SAN_DENY; do
+  grep -Fxq "$marker" /tmp/b16-stable144-mtls-ci.log || fail
+done
+echo 'B16_STABLE_144_MTLS_BROKER_VERSIONED_VAULT_PASS'
+
 
 
 # Newly isolated native verify-full Bun.SQL acceptance, using the exact
@@ -201,6 +244,50 @@ for marker in \
 done
 grep -Fx 'PASS Backend16 native Bun.SQL TLS to real disposable PG16' \
  /tmp/b16-native-pg-tls-ci.log || fail
+# Original canary physical wrong-root/wildcard/always-deny test has passed.
+# Return disposable PG16 to its initial ssl=off state ONLY for the second
+# independent complete stable runtime physical TLS probe.
+PGOPTIONS='-c saas.staging_only=true' PGUSER=postgres \
+  psql -X -v ON_ERROR_STOP=1 -d saas_staging_ci \
+    -c "ALTER SYSTEM SET ssl='off'" > /tmp/b16-stable144-reset-ssl.log 2>&1 || fail
+PGOPTIONS='-c saas.staging_only=true' PGUSER=postgres \
+  psql -X -v ON_ERROR_STOP=1 -d saas_staging_ci \
+    -c "SELECT pg_reload_conf()" >> /tmp/b16-stable144-reset-ssl.log 2>&1 || fail
+sleep 1
+[[ "$(PGOPTIONS='-c saas.staging_only=true' PGUSER=postgres \
+  psql -XAt -v ON_ERROR_STOP=1 -d saas_staging_ci -c 'SHOW ssl')" == off ]] || fail
+# Byte-for-byte SAME full native TLS+two-tenant vault/RLS/PID/wildcard test,
+# differing only in official stable revision and CI-only stable hard stop.
+SAAS_B16_PHYSICAL_CI=true \
+SAAS_B16_CI_A_PASSWORD="$a_pw" \
+SAAS_B16_CI_B_PASSWORD="$b_pw" \
+SAAS_B16_CI_A_SUBJECT_SHA="$fp_a" \
+SAAS_B16_CI_B_SUBJECT_SHA="$fp_b" \
+SAAS_B16_CI_A_TENANT="$tenant_a" \
+SAAS_B16_CI_B_TENANT="$tenant_b" \
+SAAS_B16_CI_A_SESSION="$session_a" \
+SAAS_B16_CI_B_SESSION="$session_b" \
+SAAS_B16_CI_A_BINDING="$binding_a" \
+SAAS_B16_CI_B_BINDING="$binding_b" \
+SAAS_B16_PHYSICAL_TLS_CI=true \
+  timeout --signal=TERM --kill-after=3s 125s \
+    "$SAAS_B16_STABLE_144_BIN" scripts/saas-staging/verify-backend16-official-stable-144-physical-pg16-ci.ts \
+  > /tmp/b16-stable144-physical-tls-ci.log 2>&1 ||
+  { tail -n 22 /tmp/b16-stable144-physical-tls-ci.log >&2; fail; }
+for marker in \
+  B16_NATIVE_SQL_TLS_REAL_PID_VERIFIED \
+  B16_NATIVE_SQL_TLS_TWO_TENANT_RLS_PASS \
+  B16_NATIVE_SQL_TLS_ALWAYS_DENY_CALLBACK_ENFORCED \
+  B16_NATIVE_SQL_TLS_WRONG_ROOT_DENIED \
+  B16_NATIVE_SQL_TLS_CA_SIGNED_WILDCARD_DENIED; do
+  grep -Fxq "$marker" /tmp/b16-stable144-physical-tls-ci.log || fail
+done
+grep -Fxq 'PASS Backend16 native Bun.SQL TLS to real disposable PG16' \
+  /tmp/b16-stable144-physical-tls-ci.log || fail
+echo 'B16_STABLE_144_TLS_TWO_TENANT_VAULT_RLS_PID_NEGATIVES_PASS'
+echo 'B16_STABLE_144_FULL_DISPOSABLE_PG16_CANDIDATE_PASS_NOT_RELEASE_APPROVAL'
+echo 'NO RELEASE AUTHORIZATION'
+
 eq wrong_session f "$(a "$(query "$tenant_a" "$session_b" "$binding_a" "$fp_a")")"
 eq wrong_binding f "$(a "$(query "$tenant_a" "$session_a" "$binding_b" "$fp_a")")"
 eq wrong_digest f "$(a "$(query "$tenant_a" "$session_a" "$binding_a" "$fp_b")")"

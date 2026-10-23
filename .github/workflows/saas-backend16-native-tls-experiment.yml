@@ -46,6 +46,10 @@ on:
       - 'scripts/saas-staging/verify-backend16-official-stable-144-tls-ci.ts'
       - 'tests/saasBackend16OfficialStable144Ci.test.mjs'
       - 'docs/saas/BACKEND_16_P1_STABLE_144_TLS_CANDIDATE.md'
+      - 'scripts/saas-staging/verify-backend16-official-stable-144-physical-pg16-ci.ts'
+      - 'scripts/saas-staging/verify-backend16-official-stable-144-mtls-ci.ts'
+      - 'tests/saasBackend16Stable144FullPhysicalCi.test.mjs'
+      - 'docs/saas/BACKEND_16_P1_STABLE_144_FULL_PHYSICAL_CI.md'
       - 'tests/saasBackend16NativeSourceCycloneDxCi.test.mjs'
       - 'docs/saas/BACKEND_16_P2_NATIVE_SOURCE_CYCLONEDX.md'
   workflow_dispatch:

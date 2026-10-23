@@ -8,6 +8,19 @@ on:
       - 'scripts/saas-staging/verify-backend16-official-stable-144-tls-ci.ts'
       - 'tests/saasBackend16OfficialStable144Ci.test.mjs'
       - 'docs/saas/BACKEND_16_P1_STABLE_144_TLS_CANDIDATE.md'
+      - 'scripts/saas-staging/verify-backend16-official-stable-144-physical-pg16-ci.ts'
+      - 'scripts/saas-staging/verify-backend16-official-stable-144-mtls-ci.ts'
+      - 'tests/saasBackend16Stable144FullPhysicalCi.test.mjs'
+      - 'docs/saas/BACKEND_16_P1_STABLE_144_FULL_PHYSICAL_CI.md'
+      - 'scripts/saas-staging/verify-backend16-exact-session-pg16.sh'
+      - 'scripts/saas-staging/verify-backend16-bun-physical-pid-ci.ts'
+      - 'scripts/saas-staging/verify-backend16-mtls-secret-broker-ci.ts'
+      - '.github/workflows/saas-staging-rls-ci.yml'
+      - 'src/features/saasBlueprint/controlApi/server/backend16ExactSessionSqlRead.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16PhysicalPgAdmission.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16PrivateMtlsVersionedSecretReader.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16PrivateTenantProjectRead.ts'
+      - 'src/features/saasBlueprint/controlApi/server/backend16StagingVersionedPrincipalVault.ts'
       - 'scripts/saas-staging/verify-backend16-native-tls-version-probe-ci.ts'
       - 'scripts/saas-staging/verify-backend16-native-pg-tls-ci.ts'
       - 'src/features/saasBlueprint/controlApi/server/backend16StagingPgTlsTrust.ts'
@@ -61,6 +74,13 @@ jobs:
         run: node --test tests/saasBackend16OfficialStable144Ci.test.mjs
       - name: Download OFFICIAL pinned release SHA256 before extracting, then verify exact revision
         run: node scripts/saas-staging/install-backend16-official-stable-144-ci.mjs
+      - name: Official stable Bun client through disposable mutual-TLS versioned broker
+        env:
+          SAAS_B16_EPHEMERAL_CI: 'true'
+          SAAS_B16_STABLE_144_FULL_PG16_CI: 'true'
+        run: |
+          node --test tests/saasBackend16Stable144FullPhysicalCi.test.mjs
+          node --experimental-strip-types scripts/saas-staging/verify-backend16-official-stable-144-mtls-ci.ts
       - name: Actual official stable Bun.SQL peer TLS positive and all negatives on disposable PG16
         shell: bash
         env:
