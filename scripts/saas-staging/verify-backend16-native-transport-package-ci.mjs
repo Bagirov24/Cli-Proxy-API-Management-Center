@@ -132,7 +132,20 @@ function execute(binary,args,cwd,env,maxBuffer=1_000_000){
     cwd,env,encoding:'utf8',stdio:['ignore','pipe','pipe'],
     timeout:45_000,killSignal:'SIGKILL',maxBuffer,
   });
-  if(result.error||result.signal||result.status!==0)fail();
+  if(result.error||result.signal||result.status!==0){
+    // Only isolated, credential-free CI children may expose bounded diagnostics.
+    // Never include argv, inherited environment or live transport errors.
+    if(binary==='/usr/bin/sudo'){
+      const diagnostic=value=>String(value??'').slice(0,2048)
+        .replace(/\x1b\[[0-9;]*m/g,'').replace(/[\x00-\x08\x0b-\x1f\x7f]/g,'?');
+      console.error('B16_OFFLINE_CHILD_FAILURE '+JSON.stringify({
+        status:result.status,signal:result.signal,
+        errorCode:result.error?.code??null,
+        stdout:diagnostic(result.stdout),stderr:diagnostic(result.stderr),
+      }));
+    }
+    fail();
+  }
   return result.stdout;
 }
 function offline(binary,args,cwd,env){
@@ -206,8 +219,11 @@ async function main(){
       // Zero external packages: native frozen DRY RUN validates the checked lock;
       // deliberately do not claim a dependency installation when there is nothing to install.
       offline(binary,['install','--frozen-lockfile','--ignore-scripts','--dry-run'],dir,env);
+      stage='frozen-manifest-preserved-'+slot;
       assert.deepEqual(readTransportPackageFile(join(dir,'package.json')),inputs['package.json']);
+      stage='frozen-lock-preserved-'+slot;
       assert.deepEqual(readTransportPackageFile(join(dir,'bun.lock')),inputs['bun.lock']);
+      stage='no-package-install-'+slot;
       assert.equal(readdirSync(dir).includes('node_modules'),false);
       stage='offline-build-'+slot;
       assert.equal(offline(binary,['--no-install','build.mjs'],dir,env).trim(),
