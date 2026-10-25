@@ -1,0 +1,105 @@
+name: Backend16 isolated Native transport package (NOT a server release)
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CI: 'true'
+  SAAS_B16_NATIVE_PACKAGE_CI: 'true'
+  B16_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
+jobs:
+  package:
+    name: Isolated Bun transport package ${{ matrix.lane }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [A, B]
+    services:
+      postgres:
+        image: postgres:16.6
+        env:
+          POSTGRES_DB: saas_ephemeral_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_ephemeral_test_only
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d saas_ephemeral_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGDATABASE: saas_ephemeral_test
+      PGPASSWORD: ci_ephemeral_test_only
+      SAAS_B16_STABLE_144_CI: 'true'
+      SAAS_B16_STABLE_144_PROBE_CI: 'true'
+    steps:
+      - name: Checkout exact PR HEAD without retained write credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Node24 supervises CI only; it is not the packaged runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Package guards and unchanged official runtime pin regression
+        run: |
+          node --test tests/saasBackend16NativePackageCi.test.mjs
+          node --test tests/saasBackend16OfficialStable144Ci.test.mjs
+          node scripts/saas-staging/verify-backend16-native-source-closure-ci.mjs
+          node scripts/saas-staging/verify-backend16-native-server-artifact-evidence-contract-ci.mjs
+      - name: Acquire the unchanged SHA256-pinned candidate, not a runtime approval
+        run: node scripts/saas-staging/install-backend16-official-stable-144-ci.mjs
+      - name: Keep original physical TLS positives and negative identity checks mandatory
+        env:
+          SAAS_B16_CI_PG_CONTAINER: ${{ job.services.postgres.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          "${SAAS_B16_STABLE_144_BIN:?}" scripts/saas-staging/verify-backend16-official-stable-144-tls-ci.ts
+      - name: Isolated manifest and pinned inputs, real library bundle and default-deny smoke
+        run: node scripts/saas-staging/verify-backend16-native-package-ci.mjs --build ${{ matrix.lane }}
+      - name: Retain unsigned hash receipt only, not source, secrets or deployable binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: b16-native-package-${{ matrix.lane }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/b16-native-package-evidence-${{ matrix.lane }}/receipt.json
+          if-no-files-found: error
+          retention-days: 7
+
+  compare:
+    name: Exact-head Native package bytes match across both runners
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v4
+        with:
+          name: b16-native-package-A-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/b16-native-package-compare/A
+      - uses: actions/download-artifact@v4
+        with:
+          name: b16-native-package-B-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/b16-native-package-compare/B
+      - name: No stale receipt, mismatched bytes, approval flags or same-lane substitution
+        run: >-
+          node scripts/saas-staging/verify-backend16-native-package-ci.mjs --compare
+          b16-native-package-compare/A/receipt.json
+          b16-native-package-compare/B/receipt.json
