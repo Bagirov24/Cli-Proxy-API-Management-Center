@@ -3,6 +3,12 @@ name: Backend16 Official Stable Bun 1.4.4 TLS Candidate (disposable, no release)
 on:
   pull_request:
     paths:
+      - 'scripts/saas-staging/backend16-native-server-source-closure.v1.json'
+      - 'scripts/saas-staging/verify-backend16-native-source-closure-ci.mjs'
+      - 'scripts/saas-staging/backend16-native-transport-package-ci/**'
+      - 'scripts/saas-staging/verify-backend16-native-transport-package-ci.mjs'
+      - 'tests/saasBackend16NativeTransportPackageCi.test.mjs'
+      - 'docs/saas/BACKEND_16_P2_NATIVE_TRANSPORT_PACKAGE_CI.md'
       - '.github/workflows/saas-backend16-stable-144-tls-ci.yml'
       - 'scripts/saas-staging/install-backend16-official-stable-144-ci.mjs'
       - 'scripts/saas-staging/verify-backend16-official-stable-144-tls-ci.ts'
@@ -100,3 +106,9 @@ jobs:
           test ! -e .env.production
           test ! -e /data/auths
           "${SAAS_B16_STABLE_144_BIN:?stable candidate binary required}" scripts/saas-staging/verify-backend16-official-stable-144-tls-ci.ts
+      - name: P2 isolated transport package - two offline builds, never server release
+        env:
+          SAAS_B16_TRANSPORT_PACKAGE_CI: 'true'
+        run: |
+          node --test tests/saasBackend16NativeTransportPackageCi.test.mjs
+          node scripts/saas-staging/verify-backend16-native-transport-package-ci.mjs

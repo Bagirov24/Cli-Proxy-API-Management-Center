@@ -3,6 +3,10 @@ name: Backend16 Pinned Native TLS Acceptance (disposable, no release)
 on:
   pull_request:
     paths:
+      - 'scripts/saas-staging/backend16-native-transport-package-ci/**'
+      - 'scripts/saas-staging/verify-backend16-native-transport-package-ci.mjs'
+      - 'tests/saasBackend16NativeTransportPackageCi.test.mjs'
+      - 'docs/saas/BACKEND_16_P2_NATIVE_TRANSPORT_PACKAGE_CI.md'
       - 'scripts/saas-staging/install-backend16-native-bun-ci.mjs'
       - 'tests/saasBackend16NativeBunCiPin.test.mjs'
       - '.github/workflows/saas-backend16-native-tls-experiment.yml'
