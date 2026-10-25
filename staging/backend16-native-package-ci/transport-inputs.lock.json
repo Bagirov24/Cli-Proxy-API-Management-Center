@@ -1,0 +1,44 @@
+{
+  "schema": "backend16-native-transport-input-lock-v1",
+  "scope": "SOURCE_INPUTS_ONLY_NOT_A_PACKAGE_MANAGER_LOCK",
+  "sourceInventorySha256": "9a0e30c78d1c2d07ee3b4695cdfa1d570f5c8f0e2f75f2371b010a8edad5687c",
+  "modules": [
+    {
+      "file": "backend16ExactSessionSqlRead.ts",
+      "gitBlobSha1": "8edd2bbb331f264536ce65824c1b61dd9f502b4e"
+    },
+    {
+      "file": "backend16PhysicalPgAdmission.ts",
+      "gitBlobSha1": "af73b78f3fcc6c31881a39049f01d0ef6d446bec"
+    },
+    {
+      "file": "backend16PrivateMtlsVersionedSecretReader.ts",
+      "gitBlobSha1": "12f6e69423aed3d3f86e0ecbee17bdc26bb16352"
+    },
+    {
+      "file": "backend16PrivateTenantProjectRead.ts",
+      "gitBlobSha1": "096f4490efc9985f583b26f13ed708605365dc56"
+    },
+    {
+      "file": "backend16StagingBunPhysicalPgPool.ts",
+      "gitBlobSha1": "d0e05e0b814e040991ba131eb982df4eb70b6948"
+    },
+    {
+      "file": "backend16StagingPgTlsTrust.ts",
+      "gitBlobSha1": "4e2a60f4365e5d6020bd9196b7fb46343353c566"
+    },
+    {
+      "file": "backend16StagingVersionedPrincipalVault.ts",
+      "gitBlobSha1": "9281864cbdabfe5e0809d923c25716715ffc0d96"
+    }
+  ],
+  "allowedBuiltins": [
+    "node:crypto",
+    "node:https",
+    "node:tls"
+  ],
+  "externalPackageDependencies": [],
+  "packageManagerLockVerified": false,
+  "serverEntrypointBuilt": false,
+  "releaseState": "BLOCKED_RELEASE"
+}

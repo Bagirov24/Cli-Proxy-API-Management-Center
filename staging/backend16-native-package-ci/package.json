@@ -1,0 +1,15 @@
+{
+  "name": "backend16-native-transport-ci-only",
+  "version": "0.0.0-ci-only",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.4",
+  "engines": {
+    "bun": "1.4.4"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "optionalDependencies": {},
+  "peerDependencies": {},
+  "trustedDependencies": []
+}
