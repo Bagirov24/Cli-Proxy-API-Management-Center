@@ -168,3 +168,135 @@ test('CI-only shell and real mTLS fixture fail closed on untrusted local invocat
   assert.notEqual(b.status,0);
   assert.equal(b.stdout,'');
 });
+
+// Additional composition regressions: the original eight tests above are unchanged.
+import {createHash as combinedHash} from 'node:crypto';
+import {
+  COMBINED_STEPS,COMBINED_MARKERS,assertCombinedEnvironment,
+  combinedChildEnvironment,parseCombinedCommand,assertCombinedBrokerReceipt,
+} from '../scripts/saas-staging/backend16-stable-144-combined-contract.mjs';
+const combinedHead='a'.repeat(40);
+function combinedEnv(){
+  const e={CI:'true',GITHUB_ACTIONS:'true',GITHUB_EVENT_NAME:'pull_request',
+    GITHUB_REPOSITORY:'Bagirov24/Cli-Proxy-API-Management-Center',
+    RUNNER_OS:'Linux',RUNNER_ARCH:'X64',B16_PR_HEAD_SHA:combinedHead,GITHUB_SHA:'b'.repeat(40),
+    SAAS_B16_EPHEMERAL_CI:'true',SAAS_B16_STABLE_144_FULL_PG16_CI:'true',
+    SAAS_B16_STABLE_144_COMBINED_CI:'true',PGHOST:'127.0.0.1',PGPORT:'5432',PGUSER:'postgres',
+    PGDATABASE:'saas_ephemeral_test',PGPASSWORD:'ci_ephemeral_test_only',
+    SAAS_B16_STABLE_144_BIN:'/tmp/b16-official-stable-144-ci-Ab12cd/bun',
+    SAAS_B16_CI_PG_CONTAINER:'c'.repeat(64),PATH:'/usr/bin:/bin'};
+  for(const k of ['A','B']){
+    e['SAAS_B16_CI_'+k+'_PASSWORD']='d'.repeat(64);
+    e['SAAS_B16_CI_'+k+'_SUBJECT_SHA']='e'.repeat(64);
+    for(const f of ['TENANT','SESSION','BINDING'])
+      e['SAAS_B16_CI_'+k+'_'+f]='11111111-1111-4111-8111-111111111111';
+  }
+  return e;
+}
+const combinedDenied=fn=>assert.throws(fn,/Backend16 stable combined CI refused/);
+
+test('combined exact-head environment denies production, external DB, wrong runner and candidate',()=>{
+  const e=combinedEnv();assert.equal(assertCombinedEnvironment(e,24,combinedHead),true);
+  for(const [key,value] of Object.entries({
+    CI:'false',GITHUB_ACTIONS:'false',GITHUB_EVENT_NAME:'push',GITHUB_REPOSITORY:'other/repo',
+    RUNNER_OS:'Windows',RUNNER_ARCH:'ARM64',B16_PR_HEAD_SHA:'bad',GITHUB_SHA:'bad',
+    SAAS_B16_EPHEMERAL_CI:'false',SAAS_B16_STABLE_144_FULL_PG16_CI:'false',
+    SAAS_B16_STABLE_144_COMBINED_CI:'false',PGHOST:'live.private',PGPORT:'6432',PGUSER:'runtime',
+    PGDATABASE:'live',PGPASSWORD:'live',NODE_ENV:'production',NODE_TLS_REJECT_UNAUTHORIZED:'0',
+    DATABASE_URL:'postgres://live',RAILWAY_SERVICE_ID:'live',SAAS_B16_STABLE_144_BIN:'/bin/bun',
+    SAAS_B16_CI_PG_CONTAINER:'bad',SAAS_B16_CI_A_PASSWORD:'short',SAAS_B16_CI_B_SESSION:'bad',
+  }))combinedDenied(()=>assertCombinedEnvironment({...e,[key]:value},24,combinedHead));
+  combinedDenied(()=>assertCombinedEnvironment(e,22,combinedHead));
+  combinedDenied(()=>assertCombinedEnvironment(e,24,'f'.repeat(40)));
+  combinedDenied(()=>assertCombinedEnvironment(null,24,combinedHead));
+});
+
+test('combined child cannot inherit principal passwords or arbitrary process injection',()=>{
+  const e={...combinedEnv(),NODE_OPTIONS:'--require evil',GITHUB_TOKEN:'private',OTHER_SECRET:'hidden'};
+  const child=combinedChildEnvironment(e);
+  for(const key of ['SAAS_B16_CI_A_PASSWORD','SAAS_B16_CI_B_PASSWORD',
+    'NODE_OPTIONS','GITHUB_TOKEN','OTHER_SECRET'])assert.equal(Object.hasOwn(child,key),false);
+  assert.equal(child.PGPASSWORD,'ci_ephemeral_test_only');
+  assert.equal(child.SAAS_B16_BROKER_MTLS_CI,'true');
+  assert.equal(child.SAAS_B16_CI_A_SUBJECT_SHA,e.SAAS_B16_CI_A_SUBJECT_SHA);
+  assert.ok(Object.isFrozen(child));
+});
+
+test('combined control protocol rejects skips, duplicate keys, extra data and reordered commands',()=>{
+  for(const [i,op] of COMBINED_STEPS.entries()){
+    const line=JSON.stringify({id:i+1,op});
+    assert.equal(parseCombinedCommand(line,i).op,op);
+    for(const bad of [line+'\n',line.replace('"id":','"extra":0,"id":'),
+      JSON.stringify({op,id:i+1}),JSON.stringify({id:99,op}),
+      JSON.stringify({id:i+1,op:'approve'}),line.replace('"id":','"id":0,"id":')])
+      combinedDenied(()=>parseCombinedCommand(bad,i));
+  }
+  for(const bad of ['',null,'[]','{"id":1}', 'x'.repeat(161)])
+    combinedDenied(()=>parseCombinedCommand(bad,0));
+  combinedDenied(()=>parseCombinedCommand('{"id":1,"op":"stats"}',13));
+});
+
+function combinedReceipts(){
+  return [...Array(8).fill('a'),...Array(4).fill('b')].map(k=>({
+    pgLogin:k==='a'?'saas_b14_person':'saas_b16_person_b',
+    secretId:'b16-stg-pg-'+k.repeat(20),version:k.repeat(32),
+  }));
+}
+test('combined receipt requires twelve actual exact-version requests across both LOGINs',()=>{
+  assert.equal(assertCombinedBrokerReceipt(12,combinedReceipts()),true);
+  for(const n of [0,11,13])combinedDenied(()=>assertCombinedBrokerReceipt(n,combinedReceipts()));
+  for(const update of [{pgLogin:'postgres'},{secretId:'unreviewed'},{version:'latest'},
+    {password:'should-never-be-in-receipt'}]){
+    const rows=combinedReceipts();rows[0]={...rows[0],...update};
+    combinedDenied(()=>assertCombinedBrokerReceipt(12,rows));
+  }
+  const rows=combinedReceipts();rows[0]=rows[11];
+  combinedDenied(()=>assertCombinedBrokerReceipt(12,rows));
+  combinedDenied(()=>assertCombinedBrokerReceipt(12,combinedReceipts().slice(1)));
+});
+
+test('combined runner composes real mTLS, real native SQL and counted credential release',()=>{
+  const child=read('../scripts/saas-staging/backend16-stable-144-combined-child.ts');
+  const parent=read('../scripts/saas-staging/verify-backend16-stable-144-combined-ci.ts');
+  for(const s of ['createBackend16DisposableCiMtlsSecretReader(setup.trust,setup.port)',
+    'source:reader,manifest:','const secret=await vault.readPrincipal(login,signal)',
+    'createBackend16StagingDisposableCiTlsPhysicalPgPool(observed,trust(ca))',
+    'assert.equal(e.SAAS_B16_CI_A_PASSWORD,undefined)',
+    "e.SAAS_B16_BROKER_MTLS_CI='false'",'wait_event_type=\'Lock\'',
+    'assert.equal(released,9)',"assert.equal(await rpc('stats'),12)"])
+    assert.ok(child.includes(s),s);
+  assert.ok(parent.includes('env:combinedChildEnvironment(e)'));
+  assert.ok(parent.includes('code===0&&!signal&&!failed&&index===COMBINED_STEPS.length'));
+  assert.ok(parent.includes('assertCombinedBrokerReceipt(broker.calls(),broker.received)'));
+  assert.ok(parent.includes("proc.kill('SIGKILL')"));
+  noBypass(child);noBypass(parent);
+});
+
+test('combined shell addition leaves every previous physical assertion byte-identical',()=>{
+  const start=shell.indexOf('# BEGIN stable combined mTLS');
+  const endMarker='# END stable combined; SSL reset to off has been independently read back.\n\n';
+  const end=shell.indexOf(endMarker,start);
+  assert.ok(start>0&&end>start);
+  const original=Buffer.from(shell.slice(0,start)+shell.slice(end+endMarker.length));
+  assert.equal(combinedHash('sha1').update('blob '+original.length+'\0').update(original).digest('hex'),
+    '09ae6983e3f87df3edd20d957a08f0b2706edb46');
+  assert.ok(shell.includes('SAAS_B16_STABLE_144_COMBINED_CI=true'));
+  assert.ok(shell.includes('grep -Fxc "$marker" /tmp/b16-stable144-combined-ci.log'));
+  for(const marker of COMBINED_MARKERS)assert.ok(shell.includes(marker),marker);
+  assert.ok(start<shell.indexOf('# Newly isolated native verify-full'));
+});
+
+test('combined source and docs rerun physical, canary, stable and source-repro checks',()=>{
+  const inputs=['scripts/saas-staging/backend16-stable-144-combined-contract.mjs',
+    'scripts/saas-staging/verify-backend16-stable-144-combined-ci.ts',
+    'scripts/saas-staging/backend16-stable-144-combined-child.ts',
+    'docs/saas/BACKEND_16_P1_STABLE_144_COMBINED_MTLS_PG16.md'];
+  for(const file of ['saas-backend16-native-tls-experiment.yml',
+    'saas-backend16-native-source-repro-ci.yml','saas-backend16-stable-144-tls-ci.yml']){
+    const flow=read('../.github/workflows/'+file);
+    for(const p of inputs)assert.ok(flow.includes("      - '"+p+"'"),p);
+  }
+  for(const p of ['scripts/saas-staging/**','docs/saas/**',
+    'tests/saasBackend16Stable144FullPhysicalCi.test.mjs'])
+    assert.ok(workflow.includes("      - '"+p+"'"),p);
+});

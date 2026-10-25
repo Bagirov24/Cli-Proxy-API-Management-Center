@@ -216,6 +216,36 @@ echo 'B16_STABLE_144_MTLS_BROKER_VERSIONED_VAULT_PASS'
 
 
 
+# BEGIN stable combined mTLS -> immutable vault -> native TLS SQL0008.
+# Principal passwords are supplied ONLY to the independent Node24 broker parent.
+SAAS_B16_STABLE_144_COMBINED_CI=true \
+SAAS_B16_CI_A_PASSWORD="$a_pw" \
+SAAS_B16_CI_B_PASSWORD="$b_pw" \
+SAAS_B16_CI_A_SUBJECT_SHA="$fp_a" \
+SAAS_B16_CI_B_SUBJECT_SHA="$fp_b" \
+SAAS_B16_CI_A_TENANT="$tenant_a" \
+SAAS_B16_CI_B_TENANT="$tenant_b" \
+SAAS_B16_CI_A_SESSION="$session_a" \
+SAAS_B16_CI_B_SESSION="$session_b" \
+SAAS_B16_CI_A_BINDING="$binding_a" \
+SAAS_B16_CI_B_BINDING="$binding_b" \
+  timeout --signal=TERM --kill-after=3s 150s \
+    node --experimental-strip-types scripts/saas-staging/verify-backend16-stable-144-combined-ci.ts \
+  > /tmp/b16-stable144-combined-ci.log 2>&1 ||
+  { tail -n 5 /tmp/b16-stable144-combined-ci.log >&2; fail; }
+for marker in \
+  B16_STABLE_144_COMBINED_MTLS_TWO_TENANT_TLS_RLS_PID_PASS \
+  B16_STABLE_144_COMBINED_WRONG_VERSION_EXPIRED_PREAUTH_DENY \
+  B16_STABLE_144_COMBINED_REVOKED_IN_FLIGHT_PREAUTH_DENY \
+  B16_STABLE_144_COMBINED_LOCK_ABORT_PID_DEATH_QUARANTINE_PASS \
+  B16_STABLE_144_COMBINED_WRONG_PG_ROOT_DENIED \
+  B16_STABLE_144_COMBINED_12_FRESH_BROKER_READS_PASS \
+  B16_STABLE_144_COMBINED_BLOCKED_RELEASE; do
+  [[ "$(grep -Fxc "$marker" /tmp/b16-stable144-combined-ci.log)" == 1 ]] || fail
+  echo "$marker"
+done
+# END stable combined; SSL reset to off has been independently read back.
+
 # Newly isolated native verify-full Bun.SQL acceptance, using the exact
 # GitHub Actions PostgreSQL service container only (never permanent SQL0008).
 SAAS_B16_PHYSICAL_CI=true \
