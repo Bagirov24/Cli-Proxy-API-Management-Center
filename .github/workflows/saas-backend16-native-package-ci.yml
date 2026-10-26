@@ -55,6 +55,7 @@ jobs:
       - name: Package guards and unchanged official runtime pin regression
         run: |
           node --test tests/saasBackend16NativePackageCi.test.mjs
+          node --test tests/saasBackend16NativeBundlePhysicalCi.test.mjs
           node --test tests/saasBackend16OfficialStable144Ci.test.mjs
           node scripts/saas-staging/verify-backend16-native-source-closure-ci.mjs
           node scripts/saas-staging/verify-backend16-native-server-artifact-evidence-contract-ci.mjs

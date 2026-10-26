@@ -244,6 +244,33 @@ for marker in \
   [[ "$(grep -Fxc "$marker" /tmp/b16-stable144-combined-ci.log)" == 1 ]] || fail
   echo "$marker"
 done
+# BEGIN emitted-only bounded log readback.
+node --input-type=module <<'B16_EMITTED_LOG'
+import {openSync,constants,fstatSync,readSync,closeSync} from 'node:fs';
+import {readInput,sha256} from './scripts/saas-staging/backend16-native-package-contract.mjs';
+import {BUNDLE_MARKERS,emittedHarness,parseBundleLog,stop}
+  from './scripts/saas-staging/backend16-native-bundle-physical-contract.mjs';
+const fd=openSync('/tmp/b16-stable144-combined-ci.log',constants.O_RDONLY|constants.O_NOFOLLOW);
+try{
+  const before=fstatSync(fd);
+  if(!before.isFile()||(before.mode&0o022)||before.uid!==process.getuid()||
+     before.size<1||before.size>65536)stop();
+  const bytes=Buffer.alloc(before.size+1);let size=0;
+  while(size<bytes.length){const n=readSync(fd,bytes,size,bytes.length-size,null);if(!n)break;size+=n;}
+  const after=fstatSync(fd);
+  if(size!==before.size||after.size!==before.size||after.mtimeMs!==before.mtimeMs||
+     after.ctimeMs!==before.ctimeMs)stop();
+  const receipt=parseBundleLog(bytes.subarray(0,size).toString('utf8'),{
+    headSha:process.env.B16_PR_HEAD_SHA,runId:process.env.GITHUB_RUN_ID,
+    runAttempt:process.env.GITHUB_RUN_ATTEMPT,
+  });
+  if(receipt.harnessSha256!==sha256(emittedHarness(readInput(process.cwd(),
+    'scripts/saas-staging/backend16-stable-144-combined-child.ts'))))stop();
+  for(const marker of BUNDLE_MARKERS)console.info(marker);
+  console.info('B16_EMITTED_BUNDLE_RECEIPT='+JSON.stringify(receipt));
+}finally{closeSync(fd);}
+B16_EMITTED_LOG
+# END emitted-only bounded log readback.
 # END stable combined; SSL reset to off has been independently read back.
 
 # Newly isolated native verify-full Bun.SQL acceptance, using the exact

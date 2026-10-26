@@ -83,6 +83,9 @@ async function main(){
       // Only disposable broker PKI travels through stdin, NEVER principal DB passwords.
       proc.stdin!.write(JSON.stringify({id:0,port:broker.port,trust:broker.trust})+'\n');
     });
+    // Extra emitted-only proof; original source scenario and assertions stay mandatory.
+    const {runBundledPhysicalCi}=await import('./verify-backend16-native-bundle-physical-ci.mjs');
+    await runBundledPhysicalCi(root,e);
     for(const marker of COMBINED_MARKERS)console.info(marker);
     console.info('NO RELEASE AUTHORIZATION');
   }finally{
